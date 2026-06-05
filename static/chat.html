@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Oshino</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #f5f5f5;
+        }
+
+        #topbar {
+            height: 50px;
+            background: #2c2c2c;
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            z-index: 5;
+        }
+
+        #menu-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            margin-right: 15px;
+        }
+
+        #overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        #overlay.open {
+            display: block;
+        }
+
+        #sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: max(50px, min(50vw, 300px));
+            background: #2c2c2c;
+            color: white;
+            z-index: 15;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            padding: 20px 10px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #sidebar.open {
+            transform: translateX(0);
+        }
+
+        #sidebar h3 {
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+
+        #search-container {
+            margin-bottom: 20px;
+        }
+
+        #search-input {
+            width: 100%;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        #search-results {
+            background: #1a1a1a;
+            border-radius: 5px;
+            margin-top: 5px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        #search-results li {
+            list-style: none;
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #444;
+        }
+
+        #search-results li:hover {
+            background: #444;
+        }
+
+        #users {
+            list-style: none;
+            flex: 1;
+        }
+
+        #users li {
+            padding: 12px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background 0.2s;
+        }
+
+        #users li:hover {
+            background: #444;
+        }
+
+        #users li.active {
+            background: #4a90e2;
+        }
+
+        #chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 60%;
+        }
+
+        .message.own {
+            background: #4a90e2;
+            color: white;
+            margin-left: auto;
+        }
+
+        .message.other {
+            background: white;
+        }
+
+        #input-area {
+            display: flex;
+            padding: 10px;
+            background: white;
+            border-top: 1px solid #ddd;
+        }
+
+        #input-area input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        #input-area button {
+            margin-left: 10px;
+            padding: 10px 20px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="topbar">
+        <button id="menu-btn">☰</button>
+        <span>Oshino</span>
+    </div>
+
+    <div id="overlay"></div>
+
+    <div id="sidebar">
+        <div id="search-container">
+            <input type="text" id="search-input" placeholder="Поиск...">
+            <ul id="search-results"></ul>
+        </div>
+
+        <h3>Диалоги</h3>
+        <ul id="users"></ul>
+    </div>
+
+    <div id="chat">
+        <div id="messages"></div>
+        <div id="input-area">
+            <input type="text" placeholder="Сообщение...">
+            <button>Отправить</button>
+        </div>
+    </div>
+
+    <script>
+        const menuBtn = document.getElementById('menu-btn');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        const usersList = document.getElementById('users');
+        const messagesDiv = document.getElementById('messages');
+        const inputField = document.querySelector('#input-area input');
+        const sendBtn = document.querySelector('#input-area button');
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+
+        let currentUser = null;
+        let conversations = {};
+        let ws = null;
+
+        function connectWS() {
+            ws = new WebSocket('ws://localhost:8080/ws');
+
+            ws.onopen = () => {
+                console.log('WebSocket подключен');
+                ws.send('getdialogs');
+            };
+
+            ws.onmessage = (event) => {
+                const message = event.data;
+
+                if (message.startsWith('dialogs:')) {
+                    const dialogs = JSON.parse(message.substring(8));
+                    displayDialogs(dialogs);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket ошибка:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket закрыт');
+                setTimeout(connectWS, 3000);
+            };
+        }
+
+        connectWS();
+
+        menuBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('open');
+        });
+
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+        });
+
+        searchInput.addEventListener('input', async (e) => {
+            const query = e.target.value.trim();
+            if (!query) {
+                searchResults.innerHTML = '';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                const results = await response.json();
+
+                searchResults.innerHTML = '';
+                if (results.length === 0) {
+                    const li = document.createElement('li');
+                    li.textContent = 'не найдено';
+                    searchResults.appendChild(li);
+                } else {
+                    results.forEach(user => {
+                        const li = document.createElement('li');
+                        li.textContent = user;
+                        li.addEventListener('click', () => {
+                            addDialog(user);
+                            searchInput.value = '';
+                            searchResults.innerHTML = '';
+                        });
+                        searchResults.appendChild(li);
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка поиска:', error);
+            }
+        });
+
+        usersList.addEventListener('click', (e) => {
+            if (e.target.tagName === 'LI') {
+                document.querySelectorAll('#users li').forEach(li => li.classList.remove('active'));
+                e.target.classList.add('active');
+                currentUser = e.target.textContent;
+                sidebar.classList.remove('open');
+                overlay.classList.remove('open');
+                showConversation();
+            }
+        });
+
+        sendBtn.addEventListener('click', () => {
+            if (!currentUser) {
+                alert('Выберите пользователя');
+                return;
+            }
+
+            const message = inputField.value.trim();
+            if (!message) return;
+
+            if (!conversations[currentUser]) {
+                conversations[currentUser] = [];
+            }
+
+            conversations[currentUser].push({
+                text: message,
+                own: true
+            });
+
+            inputField.value = '';
+            showConversation();
+        });
+
+        function addDialog(user) {
+            if (!conversations[user]) {
+                conversations[user] = [];
+            }
+            displayDialogs(Object.keys(conversations));
+        }
+
+        function displayDialogs(users) {
+            usersList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user;
+                usersList.appendChild(li);
+            });
+        }
+
+        function showConversation() {
+            messagesDiv.innerHTML = '';
+
+            if (!currentUser || !conversations[currentUser]) {
+                messagesDiv.innerHTML = '<p>Нет сообщений</p>';
+                return;
+            }
+
+            conversations[currentUser].forEach(msg => {
+                const div = document.createElement('div');
+                div.className = 'message ' + (msg.own ? 'own' : 'other');
+                div.textContent = msg.text;
+                messagesDiv.appendChild(div);
+            });
+
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>
