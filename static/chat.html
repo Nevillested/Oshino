@@ -2,30 +2,39 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Oshino</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
         }
 
         body {
-            font-family: sans-serif;
-            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f5f5f5;
             display: flex;
             flex-direction: column;
-            background: #f5f5f5;
         }
 
         #topbar {
-            height: 50px;
+            height: auto;
             background: #2c2c2c;
             color: white;
             display: flex;
             align-items: center;
-            padding: 0 15px;
+            padding: 12px 16px;
             z-index: 5;
+            flex-shrink: 0;
+            gap: 12px;
         }
 
         #menu-btn {
@@ -34,7 +43,16 @@
             color: white;
             font-size: 24px;
             cursor: pointer;
-            margin-right: 15px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        #topbar span {
+            font-size: 18px;
+            font-weight: 600;
         }
 
         #overlay {
@@ -57,13 +75,13 @@
             top: 0;
             left: 0;
             height: 100%;
-            width: max(50px, min(50vw, 300px));
+            width: 100%;
             background: #2c2c2c;
             color: white;
             z-index: 15;
             transform: translateX(-100%);
             transition: transform 0.3s ease;
-            padding: 20px 10px;
+            padding: 16px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -73,42 +91,69 @@
             transform: translateX(0);
         }
 
-        #sidebar h3 {
-            font-size: 13px;
-            color: #aaa;
-            margin-bottom: 15px;
-            text-transform: uppercase;
+        #close-menu-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
 
         #search-container {
-            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
         }
 
         #search-input {
-            width: 100%;
-            padding: 8px;
+            flex: 1;
+            padding: 12px;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             outline: none;
+            font-size: 16px;
         }
 
         #search-results {
             background: #1a1a1a;
-            border-radius: 5px;
-            margin-top: 5px;
-            max-height: 150px;
+            border-radius: 6px;
+            margin-top: 6px;
+            max-height: 200px;
             overflow-y: auto;
         }
 
         #search-results li {
             list-style: none;
-            padding: 10px;
-            cursor: pointer;
+            padding: 12px;
             border-bottom: 1px solid #444;
+            cursor: pointer;
+            font-size: 15px;
         }
 
-        #search-results li:hover {
-            background: #444;
+        #search-results li:last-child {
+            border-bottom: none;
+        }
+
+        #search-results li:active {
+            background: #333;
+        }
+
+        #sidebar h3 {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 16px;
+            margin-top: 16px;
+            text-transform: uppercase;
+        }
+
+        #sidebar h3:first-child {
+            margin-top: 0;
         }
 
         #users {
@@ -117,11 +162,16 @@
         }
 
         #users li {
-            padding: 12px 10px;
-            border-radius: 5px;
+            padding: 14px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 15px;
-            transition: background 0.2s;
+            font-size: 16px;
+            margin-bottom: 6px;
+            touch-action: manipulation;
+        }
+
+        #users li:active {
+            background: #444;
         }
 
         #users li:hover {
@@ -130,35 +180,82 @@
 
         #users li.active {
             background: #4a90e2;
+            font-weight: 600;
+        }
+
+        #logout-btn-sidebar {
+            margin-top: auto;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 6px;
+            font-size: 16px;
+            width: 100%;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        #logout-btn-sidebar:active {
+            background: #357abd;
+        }
+
+        #logout-btn-sidebar:hover {
+            background: #357abd;
         }
 
         #chat {
             flex: 1;
             display: flex;
             flex-direction: column;
+            min-height: 0;
+            width: 100%;
+        }
+
+        #offline-notice {
+            flex: 1;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #999;
+            font-size: 16px;
         }
 
         #messages {
             flex: 1;
-            padding: 20px;
+            padding: 16px;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
         .message {
-            margin-bottom: 10px;
-            padding: 10px;
-            border-radius: 5px;
-            max-width: 60%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            word-wrap: break-word;
+            max-width: 80%;
+            font-size: 15px;
+            line-height: 1.4;
         }
 
         .message.own {
             background: #4a90e2;
             color: white;
-            margin-left: auto;
+            align-self: flex-end;
         }
 
         .message.other {
             background: white;
+            align-self: flex-start;
+        }
+
+        #placeholder {
+            color: #999;
+            text-align: center;
+            font-size: 16px;
+            padding: 20px;
         }
 
         #input-area {
@@ -166,24 +263,217 @@
             padding: 10px;
             background: white;
             border-top: 1px solid #ddd;
+            gap: 10px;
+            flex-shrink: 0;
+            width: 100%;
         }
 
-        #input-area input {
+        #form-area {
+            display: flex;
+            width: 100%;
+            gap: 10px;
+        }
+
+        #form-area input {
             flex: 1;
-            padding: 10px;
+            min-width: 100px;
+            padding: 12px;
             border: 1px solid #ddd;
-            border-radius: 5px;
+            border-radius: 6px;
             outline: none;
+            font-size: 16px;
         }
 
-        #input-area button {
-            margin-left: 10px;
-            padding: 10px 20px;
+        #form-area input:disabled {
+            background: #eee;
+            cursor: not-allowed;
+        }
+
+        #form-area button {
+            padding: 12px 16px;
             background: #4a90e2;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        #form-area button:active {
+            background: #357abd;
+        }
+
+        #form-area button:hover {
+            background: #357abd;
+        }
+
+        #form-area button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Desktop стили */
+        @media (min-width: 768px) {
+            #topbar {
+                height: auto;
+                padding: 12px 16px;
+            }
+
+            #topbar span {
+                font-size: 18px;
+            }
+
+            #sidebar {
+                position: fixed;
+                width: 300px;
+                transform: translateX(-100%);
+                height: 100%;
+            }
+
+            #sidebar.open {
+                transform: translateX(0);
+            }
+
+            #overlay.open {
+                display: block;
+            }
+
+            #chat {
+                width: 100%;
+            }
+
+            #users li {
+                padding: 12px 10px;
+                font-size: 15px;
+                margin-bottom: 4px;
+            }
+            
+            .message {
+                max-width: 60%;
+                font-size: 15px;
+                padding: 10px 16px;
+            }
+            
+            #form-area input {
+                font-size: 15px;
+                padding: 10px;
+            }
+            
+            #form-area button {
+                font-size: 15px;
+                padding: 10px 20px;
+            }
+
+            #search-input {
+                font-size: 15px;
+                padding: 10px;
+            }
+
+            #logout-btn-sidebar {
+                font-size: 15px;
+                padding: 12px;
+            }
+        }
+
+        /* Mobile стили - полная ширина */
+        @media (max-width: 767px) {
+            #topbar {
+                height: 56px;
+                padding: 12px 16px;
+                gap: 16px;
+            }
+
+            #menu-btn {
+                font-size: 28px;
+                padding: 8px;
+            }
+
+            #topbar span {
+                font-size: 18px;
+                font-weight: 700;
+            }
+
+            #sidebar {
+                width: 100vw;
+                padding: 20px;
+            }
+
+            #search-container {
+                display: flex;
+                gap: 12px;
+                align-items: center;
+                margin-bottom: 16px;
+            }
+
+            #close-menu-btn {
+                font-size: 28px;
+                padding: 8px;
+            }
+
+            #search-input {
+                flex: 1;
+                font-size: 18px;
+                padding: 16px;
+            }
+
+            #search-results li {
+                font-size: 17px;
+                padding: 16px;
+            }
+
+            #sidebar h3 {
+                font-size: 14px;
+                margin-bottom: 18px;
+                margin-top: 20px;
+            }
+
+            #users li {
+                padding: 18px;
+                font-size: 20px;
+                margin-bottom: 10px;
+            }
+
+            #users li.active {
+                font-size: 20px;
+            }
+
+            #logout-btn-sidebar {
+                font-size: 18px;
+                padding: 16px;
+            }
+
+            .message {
+                max-width: 85%;
+                font-size: 18px;
+                padding: 12px 16px;
+            }
+            
+            #messages {
+                padding: 20px;
+                gap: 12px;
+            }
+            
+            #form-area input {
+                font-size: 20px;
+                padding: 16px;
+            }
+            
+            #form-area button {
+                font-size: 20px;
+                padding: 16px 22px;
+                min-width: 100px;
+            }
+
+            #placeholder {
+                font-size: 20px;
+                padding: 30px 20px;
+            }
+
+            #offline-notice {
+                font-size: 20px;
+            }
         }
     </style>
 </head>
@@ -197,39 +487,54 @@
 
     <div id="sidebar">
         <div id="search-container">
-            <input type="text" id="search-input" placeholder="Поиск...">
-            <ul id="search-results"></ul>
+            <button id="close-menu-btn">☰</button>
+            <input type="text" id="search-input" placeholder="Найти пользователя...">
         </div>
+        <ul id="search-results"></ul>
 
         <h3>Диалоги</h3>
         <ul id="users"></ul>
+
+        <button id="logout-btn-sidebar">Выход</button>
     </div>
 
     <div id="chat">
+        <div id="offline-notice">Пользователь не в сети</div>
         <div id="messages"></div>
         <div id="input-area">
-            <input type="text" placeholder="Сообщение...">
-            <button>Отправить</button>
+            <div id="placeholder">Выберите пользователя для начала диалога</div>
+            <div id="form-area" style="display: none;">
+                <input type="text" placeholder="Сообщение...">
+                <button>Отправить</button>
+            </div>
         </div>
     </div>
 
     <script>
+        let currentLogin = null;
+        let currentUser = null;
+        let conversations = {};
+        let onlineUsers = [];
+        let unreadCount = {};
+        let ws = null;
+
         const menuBtn = document.getElementById('menu-btn');
+        const closeMenuBtn = document.getElementById('close-menu-btn');
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('overlay');
         const usersList = document.getElementById('users');
         const messagesDiv = document.getElementById('messages');
-        const inputField = document.querySelector('#input-area input');
-        const sendBtn = document.querySelector('#input-area button');
+        const inputField = document.querySelector('#form-area input');
+        const sendBtn = document.querySelector('#form-area button');
         const searchInput = document.getElementById('search-input');
         const searchResults = document.getElementById('search-results');
-
-        let currentUser = null;
-        let conversations = {};
-        let ws = null;
+        const offlineNotice = document.getElementById('offline-notice');
+        const placeholder = document.getElementById('placeholder');
+        const formArea = document.getElementById('form-area');
 
         function connectWS() {
-            ws = new WebSocket('ws://localhost:8080/ws');
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(protocol + '//' + window.location.host + '/ws');
 
             ws.onopen = () => {
                 console.log('WebSocket подключен');
@@ -238,20 +543,36 @@
 
             ws.onmessage = (event) => {
                 const message = event.data;
+                console.log('Получено:', message);
 
-                if (message.startsWith('dialogs:')) {
+                if (message.startsWith('user:')) {
+                    currentLogin = message.substring(5);
+                    console.log('Мой логин:', currentLogin);
+                } else if (message.startsWith('dialogs:')) {
                     const dialogs = JSON.parse(message.substring(8));
                     displayDialogs(dialogs);
+                } else if (message.startsWith('online:')) {
+                    onlineUsers = JSON.parse(message.substring(7));
+                    console.log('Онлайн пользователи:', onlineUsers);
+                    updateFormState();
+                } else if (message.startsWith('msg:')) {
+                    const msg = JSON.parse(message.substring(4));
+                    receiveMessage(msg);
                 }
             };
 
             ws.onerror = (error) => {
                 console.error('WebSocket ошибка:', error);
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
             };
 
             ws.onclose = () => {
                 console.log('WebSocket закрыт');
-                setTimeout(connectWS, 3000);
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
             };
         }
 
@@ -260,6 +581,11 @@
         menuBtn.addEventListener('click', () => {
             sidebar.classList.toggle('open');
             overlay.classList.toggle('open');
+        });
+
+        closeMenuBtn.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
         });
 
         overlay.addEventListener('click', () => {
@@ -304,33 +630,24 @@
             if (e.target.tagName === 'LI') {
                 document.querySelectorAll('#users li').forEach(li => li.classList.remove('active'));
                 e.target.classList.add('active');
-                currentUser = e.target.textContent;
+                currentUser = e.target.getAttribute('data-user');
                 sidebar.classList.remove('open');
                 overlay.classList.remove('open');
                 showConversation();
+                updateFormState();
             }
         });
 
-        sendBtn.addEventListener('click', () => {
-            if (!currentUser) {
-                alert('Выберите пользователя');
-                return;
+        inputField.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                sendMessage();
             }
+        });
 
-            const message = inputField.value.trim();
-            if (!message) return;
+        sendBtn.addEventListener('click', sendMessage);
 
-            if (!conversations[currentUser]) {
-                conversations[currentUser] = [];
-            }
-
-            conversations[currentUser].push({
-                text: message,
-                own: true
-            });
-
-            inputField.value = '';
-            showConversation();
+        document.getElementById('logout-btn-sidebar').addEventListener('click', () => {
+            window.location.href = '/logout';
         });
 
         function addDialog(user) {
@@ -344,7 +661,16 @@
             usersList.innerHTML = '';
             users.forEach(user => {
                 const li = document.createElement('li');
+                const count = unreadCount[user] || 0;
+                
+                li.setAttribute('data-user', user);
                 li.textContent = user;
+                
+                if (count > 0) {
+                    li.style.fontWeight = 'bold';
+                    li.textContent += ' (' + count + ')';
+                }
+                
                 usersList.appendChild(li);
             });
         }
@@ -353,9 +679,12 @@
             messagesDiv.innerHTML = '';
 
             if (!currentUser || !conversations[currentUser]) {
-                messagesDiv.innerHTML = '<p>Нет сообщений</p>';
+                messagesDiv.innerHTML = '<p style="text-align: center; color: #999; margin-top: 20px;">Нет сообщений</p>';
                 return;
             }
+
+            unreadCount[currentUser] = 0;
+            displayDialogs(Object.keys(conversations));
 
             conversations[currentUser].forEach(msg => {
                 const div = document.createElement('div');
@@ -365,6 +694,84 @@
             });
 
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateFormState() {
+            if (!currentUser) {
+                placeholder.style.display = 'block';
+                formArea.style.display = 'none';
+                return;
+            }
+
+            const isOnline = onlineUsers.includes(currentUser);
+
+            if (isOnline) {
+                placeholder.style.display = 'none';
+                formArea.style.display = 'flex';
+                inputField.disabled = false;
+                sendBtn.disabled = false;
+                offlineNotice.style.display = 'none';
+                messagesDiv.style.display = 'flex';
+            } else {
+                placeholder.style.display = 'none';
+                formArea.style.display = 'flex';
+                inputField.disabled = true;
+                sendBtn.disabled = true;
+                offlineNotice.style.display = 'flex';
+                messagesDiv.style.display = 'none';
+            }
+        }
+
+        function receiveMessage(msg) {
+            if (!conversations[msg.from]) {
+                conversations[msg.from] = [];
+                addDialog(msg.from);
+            }
+
+            conversations[msg.from].push({
+                text: msg.text,
+                own: false
+            });
+
+            if (currentUser !== msg.from) {
+                unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;
+            }
+
+            displayDialogs(Object.keys(conversations));
+
+            if (currentUser === msg.from) {
+                showConversation();
+            }
+        }
+
+        function sendMessage() {
+            if (!currentUser) {
+                alert('Выберите пользователя');
+                return;
+            }
+
+            const message = inputField.value.trim();
+            if (!message) return;
+
+            const msg = {
+                from: currentLogin,
+                to: currentUser,
+                text: message
+            };
+
+            ws.send('msg:' + JSON.stringify(msg));
+
+            if (!conversations[currentUser]) {
+                conversations[currentUser] = [];
+            }
+
+            conversations[currentUser].push({
+                text: message,
+                own: true
+            });
+
+            inputField.value = '';
+            showConversation();
         }
     </script>
 </body>

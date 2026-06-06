@@ -2,14 +2,139 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oshino</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 32px;
+            color: #2c2c2c;
+            margin-bottom: 40px;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 300px;
+        }
+
+        input {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            text-align: center;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #2c2c2c;
+        }
+
+        button {
+            padding: 12px;
+            background: #3a3a3a;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2a2a2a;
+        }
+
+        #error {
+            color: #d32f2f;
+            text-align: center;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 28px;
+                margin-bottom: 30px;
+            }
+
+            form {
+                width: 100%;
+                max-width: 280px;
+                gap: 15px;
+            }
+
+            input {
+                padding: 14px;
+                font-size: 18px;
+            }
+
+            button {
+                padding: 14px;
+                font-size: 18px;
+            }
+        }
+    </style>
 </head>
 <body>
     <h1>Oshino</h1>
-    <form action="/login" method="POST">
-        <input type="text" name="login" placeholder="Логин"><br>
-        <input type="password" name="password" placeholder="Пароль"><br>
+    <form id="login-form">
+        <input type="text" name="login" placeholder="Логин" required>
+        <input type="password" name="password" placeholder="Пароль" required>
         <button type="submit">Войти</button>
+        <div id="error"></div>
     </form>
+
+    <script>
+        const form = document.getElementById('login-form');
+        const errorDiv = document.getElementById('error');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const login = form.querySelector('input[name="login"]').value;
+            const password = form.querySelector('input[name="password"]').value;
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: `login=${encodeURIComponent(login)}&password=${encodeURIComponent(password)}`
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    errorDiv.textContent = data.error;
+                    errorDiv.style.display = 'block';
+                } else if (data.success) {
+                    window.location.href = '/chat';
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+            }
+        });
+    </script>
 </body>
 </html>
