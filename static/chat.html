@@ -168,6 +168,9 @@
             font-size: 16px;
             margin-bottom: 6px;
             touch-action: manipulation;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         #users li:active {
@@ -181,6 +184,18 @@
         #users li.active {
             background: #4a90e2;
             font-weight: 600;
+        }
+
+        .unread-badge {
+            background: #e74c3c;
+            color: white;
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 12px;
+            font-weight: 700;
+            min-width: 22px;
+            text-align: center;
+            flex-shrink: 0;
         }
 
         #logout-btn-sidebar {
@@ -231,6 +246,14 @@
             gap: 10px;
         }
 
+        #load-more-indicator {
+            text-align: center;
+            color: #aaa;
+            font-size: 13px;
+            padding: 6px 0 2px;
+            display: none;
+        }
+
         .message {
             padding: 10px 14px;
             border-radius: 10px;
@@ -274,7 +297,7 @@
             gap: 10px;
         }
 
-        #form-area input {
+        #form-area textarea {
             flex: 1;
             min-width: 100px;
             padding: 12px;
@@ -284,7 +307,7 @@
             font-size: 16px;
         }
 
-        #form-area input:disabled {
+        #form-area textarea:disabled {
             background: #eee;
             cursor: not-allowed;
         }
@@ -356,7 +379,7 @@
                 padding: 10px 16px;
             }
             
-            #form-area input {
+            #form-area textarea {
                 font-size: 15px;
                 padding: 10px;
             }
@@ -455,7 +478,7 @@
                 gap: 12px;
             }
             
-            #form-area input {
+            #form-area textarea {
                 font-size: 20px;
                 padding: 16px;
             }
@@ -500,11 +523,13 @@
 
     <div id="chat">
         <div id="offline-notice">Пользователь не в сети</div>
-        <div id="messages"></div>
+        <div id="messages">
+            <div id="load-more-indicator">загрузка...</div>
+        </div>
         <div id="input-area">
             <div id="placeholder">Выберите пользователя для начала диалога</div>
             <div id="form-area" style="display: none;">
-                <input type="text" placeholder="Сообщение...">
+                <textarea placeholder="Сообщение..."></textarea>
                 <button>Отправить</button>
             </div>
         </div>
@@ -513,10 +538,15 @@
     <script>
         let currentLogin = null;
         let currentUser = null;
-        let conversations = {};
         let onlineUsers = [];
         let unreadCount = {};
         let ws = null;
+        let wsReady = false;
+        let reconnectTimer = null;
+        let reconnecting = false;
+
+        // Состояние пагинации по диалогам: { login: { oldestId, allLoaded } }
+        let historyState = {};
 
         const menuBtn = document.getElementById('menu-btn');
         const closeMenuBtn = document.getElementById('close-menu-btn');
@@ -524,36 +554,42 @@
         const overlay = document.getElementById('overlay');
         const usersList = document.getElementById('users');
         const messagesDiv = document.getElementById('messages');
-        const inputField = document.querySelector('#form-area input');
+        const inputField = document.querySelector('#form-area textarea');
         const sendBtn = document.querySelector('#form-area button');
         const searchInput = document.getElementById('search-input');
         const searchResults = document.getElementById('search-results');
         const offlineNotice = document.getElementById('offline-notice');
         const placeholder = document.getElementById('placeholder');
         const formArea = document.getElementById('form-area');
+        const loadMoreIndicator = document.getElementById('load-more-indicator');
+
+        // ── WebSocket ───────────────────────────────────────────────────────────
 
         function connectWS() {
+            if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(protocol + '//' + window.location.host + '/ws');
+            wsReady = false;
 
             ws.onopen = () => {
                 console.log('WebSocket подключен');
+                wsReady = true;
+                reconnecting = false;
                 ws.send('getdialogs');
+                loadUnreadCounts();
             };
 
             ws.onmessage = (event) => {
                 const message = event.data;
-                console.log('Получено:', message);
 
                 if (message.startsWith('user:')) {
                     currentLogin = message.substring(5);
-                    console.log('Мой логин:', currentLogin);
                 } else if (message.startsWith('dialogs:')) {
                     const dialogs = JSON.parse(message.substring(8));
-                    displayDialogs(dialogs);
+                    mergeDialogs(dialogs);
                 } else if (message.startsWith('online:')) {
                     onlineUsers = JSON.parse(message.substring(7));
-                    console.log('Онлайн пользователи:', onlineUsers);
                     updateFormState();
                 } else if (message.startsWith('msg:')) {
                     const msg = JSON.parse(message.substring(4));
@@ -561,22 +597,42 @@
                 }
             };
 
-            ws.onerror = (error) => {
-                console.error('WebSocket ошибка:', error);
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 1000);
+            ws.onerror = () => {
+                // ничего не делаем — onclose сработает следом
             };
 
             ws.onclose = () => {
-                console.log('WebSocket закрыт');
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 1000);
+                wsReady = false;
+                console.log('WebSocket закрыт, переподключение через 3с...');
+                if (!reconnecting) {
+                    reconnecting = true;
+                    scheduleReconnect();
+                }
             };
         }
 
+        function scheduleReconnect() {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(() => {
+                // Не переподключаемся если вкладка скрыта — подождём visibilitychange
+                if (document.hidden) {
+                    reconnecting = true; // флаг, чтобы сразу подключились при возврате
+                    return;
+                }
+                connectWS();
+            }, 3000);
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && (reconnecting || !wsReady)) {
+                clearTimeout(reconnectTimer);
+                connectWS();
+            }
+        });
+
         connectWS();
+
+        // ── Sidebar ─────────────────────────────────────────────────────────────
 
         menuBtn.addEventListener('click', () => {
             sidebar.classList.toggle('open');
@@ -592,6 +648,8 @@
             sidebar.classList.remove('open');
             overlay.classList.remove('open');
         });
+
+        // ── Поиск ───────────────────────────────────────────────────────────────
 
         searchInput.addEventListener('input', async (e) => {
             const query = e.target.value.trim();
@@ -626,153 +684,261 @@
             }
         });
 
+        // ── Список диалогов ──────────────────────────────────────────────────────
+
         usersList.addEventListener('click', (e) => {
-            if (e.target.tagName === 'LI') {
-                document.querySelectorAll('#users li').forEach(li => li.classList.remove('active'));
-                e.target.classList.add('active');
-                currentUser = e.target.getAttribute('data-user');
-                sidebar.classList.remove('open');
-                overlay.classList.remove('open');
-                showConversation();
-                updateFormState();
-            }
-        });
-
-        inputField.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.key === 'Enter') {
-                sendMessage();
-            }
-        });
-
-        sendBtn.addEventListener('click', sendMessage);
-
-        document.getElementById('logout-btn-sidebar').addEventListener('click', () => {
-            window.location.href = '/logout';
+            const li = e.target.closest('li');
+            if (!li) return;
+            document.querySelectorAll('#users li').forEach(el => el.classList.remove('active'));
+            li.classList.add('active');
+            currentUser = li.getAttribute('data-user');
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            openDialog(currentUser);
         });
 
         function addDialog(user) {
-            if (!conversations[user]) {
-                conversations[user] = [];
+            if (!historyState[user]) {
+                historyState[user] = { oldestId: 0, allLoaded: false, messages: [] };
             }
-            displayDialogs(Object.keys(conversations));
+            renderDialogList();
+            // Если ещё не выбран — открываем
+            if (!currentUser) {
+                currentUser = user;
+                document.querySelectorAll('#users li').forEach(el => el.classList.remove('active'));
+                const li = usersList.querySelector(`[data-user="${user}"]`);
+                if (li) li.classList.add('active');
+                openDialog(user);
+            }
         }
 
-        function displayDialogs(users) {
-            usersList.innerHTML = '';
-            users.forEach(user => {
-                const li = document.createElement('li');
-                const count = unreadCount[user] || 0;
-                
-                li.setAttribute('data-user', user);
-                li.textContent = user;
-                
-                if (count > 0) {
-                    li.style.fontWeight = 'bold';
-                    li.textContent += ' (' + count + ')';
+        function mergeDialogs(users) {
+            users.forEach(u => {
+                if (!historyState[u]) {
+                    historyState[u] = { oldestId: 0, allLoaded: false, messages: [] };
                 }
-                
+            });
+            renderDialogList();
+        }
+
+        function renderDialogList() {
+            // Сохраняем активный элемент
+            usersList.innerHTML = '';
+            Object.keys(historyState).forEach(user => {
+                const li = document.createElement('li');
+                li.setAttribute('data-user', user);
+                if (user === currentUser) li.classList.add('active');
+
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = user;
+                li.appendChild(nameSpan);
+
+                const count = unreadCount[user] || 0;
+                if (count > 0) {
+                    const badge = document.createElement('span');
+                    badge.className = 'unread-badge';
+                    badge.textContent = count;
+                    li.appendChild(badge);
+                }
+
                 usersList.appendChild(li);
             });
         }
 
-        function showConversation() {
-            messagesDiv.innerHTML = '';
+        // ── История сообщений ────────────────────────────────────────────────────
 
-            if (!currentUser || !conversations[currentUser]) {
-                messagesDiv.innerHTML = '<p style="text-align: center; color: #999; margin-top: 20px;">Нет сообщений</p>';
-                return;
+        async function openDialog(user) {
+            currentUser = user;
+            fetch(`/mark-read?with=${encodeURIComponent(user)}`);
+            unreadCount[user] = 0;
+            renderDialogList();
+            updateFormState();
+
+            const state = historyState[user];
+
+            // Если уже есть сообщения в памяти — показываем сразу, потом дозагружаем
+            if (state && state.messages && state.messages.length > 0) {
+                renderMessages(state.messages);
+            } else {
+                messagesDiv.innerHTML = '';
+                messagesDiv.appendChild(loadMoreIndicator);
+                loadMoreIndicator.style.display = 'none';
+                // Первая загрузка
+                await loadHistory(user, 0, 20);
             }
+        }
 
-            unreadCount[currentUser] = 0;
-            displayDialogs(Object.keys(conversations));
+        async function loadHistory(user, beforeId, limit) {
+            const state = historyState[user];
+            if (!state || state.allLoaded) return;
+            if (state.loading) return;
+            state.loading = true;
 
-            conversations[currentUser].forEach(msg => {
+            try {
+                const url = `/history?with=${encodeURIComponent(user)}&before_id=${beforeId}&limit=${limit}`;
+                const resp = await fetch(url);
+                if (!resp.ok) { state.loading = false; return; }
+                const msgs = await resp.json();
+
+                if (msgs.length < limit) {
+                    state.allLoaded = true;
+                }
+
+                if (msgs.length > 0) {
+                    // Сохраняем самый старый id
+                    state.oldestId = msgs[0].id;
+                    // Добавляем в начало
+                    state.messages = msgs.concat(state.messages);
+                }
+
+                if (currentUser === user) {
+                    renderMessages(state.messages);
+                    if (beforeId === 0) {
+                        // Первая загрузка — скролл вниз
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    }
+                    // Иначе скролл сохраняется через сохранение высоты
+                }
+            } catch(e) {
+                console.error('Ошибка загрузки истории:', e);
+            } finally {
+                state.loading = false;
+            }
+        }
+
+        function renderMessages(msgs) {
+            // Сохраняем позицию скролла для подгрузки вверх
+            const prevScrollHeight = messagesDiv.scrollHeight;
+            const prevScrollTop = messagesDiv.scrollTop;
+
+            messagesDiv.innerHTML = '';
+            messagesDiv.appendChild(loadMoreIndicator);
+
+            const state = historyState[currentUser];
+            loadMoreIndicator.style.display = (state && !state.allLoaded) ? 'block' : 'none';
+
+            msgs.forEach(msg => {
                 const div = document.createElement('div');
                 div.className = 'message ' + (msg.own ? 'own' : 'other');
                 div.textContent = msg.text;
                 messagesDiv.appendChild(div);
             });
 
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            // Восстанавливаем позицию скролла если подгружали сверху
+            if (prevScrollTop === 0 && prevScrollHeight > 0) {
+                const newScrollHeight = messagesDiv.scrollHeight;
+                messagesDiv.scrollTop = newScrollHeight - prevScrollHeight;
+            }
         }
 
-        function updateFormState() {
-            if (!currentUser) {
-                placeholder.style.display = 'block';
-                formArea.style.display = 'none';
+        // Подгрузка при скролле вверх
+        messagesDiv.addEventListener('scroll', async () => {
+            if (messagesDiv.scrollTop > 40) return;
+            if (!currentUser) return;
+            const state = historyState[currentUser];
+            if (!state || state.allLoaded || state.loading) return;
+
+            const scrollHeightBefore = messagesDiv.scrollHeight;
+
+            await loadHistory(currentUser, state.oldestId, 10);
+
+            // Восстанавливаем позицию
+            const scrollHeightAfter = messagesDiv.scrollHeight;
+            messagesDiv.scrollTop = scrollHeightAfter - scrollHeightBefore;
+        });
+
+        // ── Отправка / получение ─────────────────────────────────────────────────
+
+        inputField.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.ctrlKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+
+        function sendMessage() {
+            if (!currentUser) return;
+            const text = inputField.value.trim();
+            if (!text) return;
+            if (!wsReady) {
+                alert('Нет соединения, попробуйте ещё раз');
                 return;
             }
 
-            const isOnline = onlineUsers.includes(currentUser);
+            const msg = { from: currentLogin, to: currentUser, text };
+            ws.send('msg:' + JSON.stringify(msg));
 
-            if (isOnline) {
-                placeholder.style.display = 'none';
-                formArea.style.display = 'flex';
-                inputField.disabled = false;
-                sendBtn.disabled = false;
-                offlineNotice.style.display = 'none';
-                messagesDiv.style.display = 'flex';
-            } else {
-                placeholder.style.display = 'none';
-                formArea.style.display = 'flex';
-                inputField.disabled = true;
-                sendBtn.disabled = true;
-                offlineNotice.style.display = 'flex';
-                messagesDiv.style.display = 'none';
+            const state = historyState[currentUser];
+            if (state) {
+                // Временный id (отрицательный) чтобы не путаться с серверными
+                const tmpId = -(Date.now());
+                state.messages.push({ id: tmpId, from: currentLogin, text, own: true });
             }
+
+            inputField.value = '';
+            renderMessages(historyState[currentUser].messages);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
         function receiveMessage(msg) {
-            if (!conversations[msg.from]) {
-                conversations[msg.from] = [];
-                addDialog(msg.from);
+            if (!historyState[msg.from]) {
+                historyState[msg.from] = { oldestId: 0, allLoaded: false, messages: [] };
             }
 
-            conversations[msg.from].push({
-                text: msg.text,
-                own: false
-            });
+            const state = historyState[msg.from];
+            const tmpId = -(Date.now());
+            state.messages.push({ id: tmpId, from: msg.from, text: msg.text, own: false });
 
             if (currentUser !== msg.from) {
                 unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;
             }
 
-            displayDialogs(Object.keys(conversations));
+            renderDialogList();
 
             if (currentUser === msg.from) {
-                showConversation();
+                renderMessages(state.messages);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
         }
 
-        function sendMessage() {
+        // ── Состояние формы ──────────────────────────────────────────────────────
+
+        function updateFormState() {
             if (!currentUser) {
-                alert('Выберите пользователя');
+                placeholder.style.display = 'block';
+                formArea.style.display = 'none';
+                offlineNotice.style.display = 'none';
+                messagesDiv.style.display = 'flex';
                 return;
             }
 
-            const message = inputField.value.trim();
-            if (!message) return;
+            const isOnline = onlineUsers.includes(currentUser);
 
-            const msg = {
-                from: currentLogin,
-                to: currentUser,
-                text: message
-            };
-
-            ws.send('msg:' + JSON.stringify(msg));
-
-            if (!conversations[currentUser]) {
-                conversations[currentUser] = [];
-            }
-
-            conversations[currentUser].push({
-                text: message,
-                own: true
-            });
-
-            inputField.value = '';
-            showConversation();
+            placeholder.style.display = 'none';
+            formArea.style.display = 'flex';
+            offlineNotice.style.display = 'none';
+            messagesDiv.style.display = 'flex';
         }
+
+        async function loadUnreadCounts() {
+            try {
+                const resp = await fetch('/unread-counts');
+                if (!resp.ok) return;
+
+                unreadCount = await resp.json();
+                renderDialogList();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // ── Logout ───────────────────────────────────────────────────────────────
+
+        document.getElementById('logout-btn-sidebar').addEventListener('click', () => {
+            window.location.href = '/logout';
+        });
     </script>
 </body>
 </html>
