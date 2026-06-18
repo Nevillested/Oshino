@@ -258,20 +258,40 @@
             padding: 10px 14px;
             border-radius: 10px;
             word-wrap: break-word;
-            max-width: 80%;
             font-size: 15px;
             line-height: 1.4;
+        }
+
+        .message-wrap {
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+        }
+
+        .message-wrap.own {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .message-wrap.other {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 2px;
+            padding: 0 4px;
         }
 
         .message.own {
             background: #4a90e2;
             color: white;
-            align-self: flex-end;
         }
 
         .message.other {
             background: white;
-            align-self: flex-start;
         }
 
         #placeholder {
@@ -373,8 +393,11 @@
                 margin-bottom: 4px;
             }
             
-            .message {
+            .message-wrap {
                 max-width: 60%;
+            }
+
+            .message {
                 font-size: 15px;
                 padding: 10px 16px;
             }
@@ -467,8 +490,11 @@
                 padding: 16px;
             }
 
-            .message {
+            .message-wrap {
                 max-width: 85%;
+            }
+
+            .message {
                 font-size: 18px;
                 padding: 12px 16px;
             }
@@ -591,6 +617,9 @@
                 } else if (message.startsWith('online:')) {
                     onlineUsers = JSON.parse(message.substring(7));
                     updateFormState();
+                } else if (message.startsWith('msgack:')) {
+                    const msg = JSON.parse(message.substring(7));
+                    applyMessageAck(msg);
                 } else if (message.startsWith('msg:')) {
                     const msg = JSON.parse(message.substring(4));
                     receiveMessage(msg);
@@ -806,6 +835,35 @@
             }
         }
 
+        function formatMessageTime(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            if (isNaN(date.getTime())) return '';
+
+            const now = new Date();
+            const isToday = date.getFullYear() === now.getFullYear()
+                && date.getMonth() === now.getMonth()
+                && date.getDate() === now.getDate();
+
+            const timePart = date.toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
+            if (isToday) {
+                return timePart;
+            }
+
+            const datePart = date.toLocaleDateString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+
+            return datePart + ' ' + timePart;
+        }
+
         function renderMessages(msgs) {
             // Сохраняем позицию скролла для подгрузки вверх
             const prevScrollHeight = messagesDiv.scrollHeight;
@@ -818,10 +876,23 @@
             loadMoreIndicator.style.display = (state && !state.allLoaded) ? 'block' : 'none';
 
             msgs.forEach(msg => {
-                const div = document.createElement('div');
-                div.className = 'message ' + (msg.own ? 'own' : 'other');
-                div.textContent = msg.text;
-                messagesDiv.appendChild(div);
+                const wrap = document.createElement('div');
+                wrap.className = 'message-wrap ' + (msg.own ? 'own' : 'other');
+
+                const bubble = document.createElement('div');
+                bubble.className = 'message ' + (msg.own ? 'own' : 'other');
+                bubble.textContent = msg.text;
+                wrap.appendChild(bubble);
+
+                const timeLabel = formatMessageTime(msg.created_at);
+                if (timeLabel) {
+                    const timeDiv = document.createElement('div');
+                    timeDiv.className = 'message-time';
+                    timeDiv.textContent = timeLabel;
+                    wrap.appendChild(timeDiv);
+                }
+
+                messagesDiv.appendChild(wrap);
             });
 
             // Восстанавливаем позицию скролла если подгружали сверху
@@ -872,14 +943,42 @@
 
             const state = historyState[currentUser];
             if (state) {
-                // Временный id (отрицательный) чтобы не путаться с серверными
+                // Временный id (отрицательный) чтобы не путаться с серверными,
+                // и временная метка локального времени до получения подтверждения от сервера
                 const tmpId = -(Date.now());
-                state.messages.push({ id: tmpId, from: currentLogin, text, own: true });
+                state.messages.push({
+                    id: tmpId,
+                    from: currentLogin,
+                    text,
+                    own: true,
+                    created_at: new Date().toISOString(),
+                    pending: true
+                });
             }
 
             inputField.value = '';
             renderMessages(historyState[currentUser].messages);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Серверное подтверждение отправленного сообщения с реальным created_at из БД
+        function applyMessageAck(msg) {
+            const state = historyState[msg.to];
+            if (!state) return;
+
+            // Находим самое последнее своё непроверенное сообщение с тем же текстом
+            for (let i = state.messages.length - 1; i >= 0; i--) {
+                const m = state.messages[i];
+                if (m.pending && m.own && m.text === msg.text) {
+                    m.created_at = msg.created_at;
+                    delete m.pending;
+                    break;
+                }
+            }
+
+            if (currentUser === msg.to) {
+                renderMessages(state.messages);
+            }
         }
 
         function receiveMessage(msg) {
@@ -889,7 +988,13 @@
 
             const state = historyState[msg.from];
             const tmpId = -(Date.now());
-            state.messages.push({ id: tmpId, from: msg.from, text: msg.text, own: false });
+            state.messages.push({
+                id: tmpId,
+                from: msg.from,
+                text: msg.text,
+                own: false,
+                created_at: msg.created_at
+            });
 
             if (currentUser !== msg.from) {
                 unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;

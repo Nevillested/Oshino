@@ -40,9 +40,10 @@ type Client struct {
 }
 
 type Message struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-	Text string `json:"text"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Text      string `json:"text"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 type HistoryMessage struct {
@@ -71,7 +72,7 @@ func main() {
 	}
 
 	connStr := fmt.Sprintf(
-		"host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
+		"host=%s port=%s dbname=%s user=%s password=%s sslmode=disable timezone=UTC",
 		os.Getenv("DB_HOST"),
 		os.Getenv("DB_PORT"),
 		os.Getenv("DB_NAME"),
@@ -303,23 +304,28 @@ func (a *App) getOrCreateConversation(login1, login2 string) (int, error) {
 	return convID, nil
 }
 
-func (a *App) saveMessage(from, to, text string) error {
+func (a *App) saveMessage(from, to, text string) (string, error) {
 	convID, err := a.getOrCreateConversation(from, to)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	var senderID int
 	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	_, err = a.db.Exec(
-		"INSERT INTO messenger.messages (conversation_id, sender_id, content) VALUES ($1, $2, $3)",
+	var createdAt time.Time
+	err = a.db.QueryRow(
+		"INSERT INTO messenger.messages (conversation_id, sender_id, content) VALUES ($1, $2, $3) RETURNING created_at AT TIME ZONE 'UTC'",
 		convID, senderID, text,
-	)
-	return err
+	).Scan(&createdAt)
+	if err != nil {
+		return "", err
+	}
+
+	return createdAt.UTC().Format(time.RFC3339), nil
 }
 
 // handleHistory отдаёт историю сообщений с пагинацией
@@ -361,9 +367,9 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	var rows *sql.Rows
 	if beforeID == 0 {
 		rows, err = a.db.Query(`
-			SELECT m.id, u.login, m.content
+			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC'
 			FROM (
-				SELECT id, sender_id, content
+				SELECT id, sender_id, content, created_at
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				ORDER BY id DESC
@@ -374,9 +380,9 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		`, convID, limit)
 	} else {
 		rows, err = a.db.Query(`
-			SELECT m.id, u.login, m.content
+			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC'
 			FROM (
-				SELECT id, sender_id, content
+				SELECT id, sender_id, content, created_at
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				ORDER BY id DESC
@@ -394,17 +400,20 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type HistMsg struct {
-		ID   int    `json:"id"`
-		From string `json:"from"`
-		Text string `json:"text"`
-		Own  bool   `json:"own"`
+		ID        int    `json:"id"`
+		From      string `json:"from"`
+		Text      string `json:"text"`
+		Own       bool   `json:"own"`
+		CreatedAt string `json:"created_at"`
 	}
 
 	var messages []HistMsg
 	for rows.Next() {
 		var m HistMsg
-		rows.Scan(&m.ID, &m.From, &m.Text)
+		var createdAt time.Time
+		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt)
 		m.Own = strings.EqualFold(m.From, login)
+		m.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		messages = append(messages, m)
 	}
 	if messages == nil {
@@ -496,10 +505,12 @@ func (c *Client) readPump(a *App) {
 		} else if len(msgStr) > 4 && msgStr[:4] == "msg:" {
 			var msg Message
 			json.Unmarshal([]byte(msgStr[4:]), &msg)
-			// Сохраняем в БД
-			if err := a.saveMessage(msg.From, msg.To, msg.Text); err != nil {
+			// Сохраняем в БД и получаем точное время отправки
+			createdAt, err := a.saveMessage(msg.From, msg.To, msg.Text)
+			if err != nil {
 				log.Println("Ошибка сохранения сообщения:", err)
 			}
+			msg.CreatedAt = createdAt
 			// Добавляем диалог отправителю
 			c.dialogs[msg.To] = true
 			a.routeMessage(msg)
@@ -545,6 +556,7 @@ func (a *App) routeMessage(msg Message) {
 
 	data, _ := json.Marshal(msg)
 	payload := append([]byte("msg:"), data...)
+	ackPayload := append([]byte("msgack:"), data...)
 
 	if recipientOnline {
 		// Добавляем диалог получателю в памяти
@@ -552,9 +564,9 @@ func (a *App) routeMessage(msg Message) {
 		recipient.send <- payload
 		recipient.sendDialogs()
 	}
-	// Эхо отправителю тоже не нужно — он уже добавил локально.
-	// Но обновляем его список диалогов
+	// Подтверждение отправителю с реальным временем из БД
 	if senderOnline {
+		sender.send <- ackPayload
 		sender.sendDialogs()
 	}
 }
