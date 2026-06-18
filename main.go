@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -44,6 +45,9 @@ type Message struct {
 	To        string `json:"to"`
 	Text      string `json:"text"`
 	CreatedAt string `json:"created_at,omitempty"`
+	ImageID   int    `json:"image_id,omitempty"`
+	ImageName string `json:"image_name,omitempty"`
+	ImageMime string `json:"image_mime,omitempty"`
 }
 
 type HistoryMessage struct {
@@ -55,6 +59,15 @@ type HistoryMessage struct {
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+const maxImageSize = 10 << 20 // 10 МБ
+
+var allowedImageMimes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
+	"image/gif":  true,
 }
 
 func generateToken() string {
@@ -110,6 +123,8 @@ func main() {
 	http.HandleFunc("/history", app.handleHistory)
 	http.HandleFunc("/mark-read", app.handleMarkRead)
 	http.HandleFunc("/unread-counts", app.handleUnreadCounts)
+	http.HandleFunc("/upload-image", app.handleUploadImage)
+	http.HandleFunc("/image/", app.handleGetImage)
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -328,6 +343,33 @@ func (a *App) saveMessage(from, to, text string) (string, error) {
 	return createdAt.UTC().Format(time.RFC3339), nil
 }
 
+// saveImageMessage сохраняет сообщение-картинку в БД и возвращает id сообщения и время отправки
+func (a *App) saveImageMessage(from, to string, imageData []byte, mime, filename string) (int, string, error) {
+	convID, err := a.getOrCreateConversation(from, to)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var senderID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var msgID int
+	var createdAt time.Time
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, image_data, image_mime, image_filename)
+		VALUES ($1, $2, '', $3, $4, $5)
+		RETURNING id, created_at AT TIME ZONE 'UTC'
+	`, convID, senderID, imageData, mime, filename).Scan(&msgID, &createdAt)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return msgID, createdAt.UTC().Format(time.RFC3339), nil
+}
+
 // handleHistory отдаёт историю сообщений с пагинацией
 // GET /history?with=<login>&before_id=<id>&limit=<n>
 // before_id=0 — последние limit сообщений
@@ -367,9 +409,10 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	var rows *sql.Rows
 	if beforeID == 0 {
 		rows, err = a.db.Query(`
-			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC'
+			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
+			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image
 			FROM (
-				SELECT id, sender_id, content, created_at
+				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				ORDER BY id DESC
@@ -380,9 +423,10 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		`, convID, limit)
 	} else {
 		rows, err = a.db.Query(`
-			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC'
+			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
+			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image
 			FROM (
-				SELECT id, sender_id, content, created_at
+				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				ORDER BY id DESC
@@ -405,15 +449,25 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		Text      string `json:"text"`
 		Own       bool   `json:"own"`
 		CreatedAt string `json:"created_at"`
+		ImageID   int    `json:"image_id,omitempty"`
+		ImageName string `json:"image_name,omitempty"`
+		ImageMime string `json:"image_mime,omitempty"`
 	}
 
 	var messages []HistMsg
 	for rows.Next() {
 		var m HistMsg
 		var createdAt time.Time
-		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt)
+		var imageMime, imageFilename sql.NullString
+		var hasImage bool
+		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt, &imageMime, &imageFilename, &hasImage)
 		m.Own = strings.EqualFold(m.From, login)
 		m.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		if hasImage {
+			m.ImageID = m.ID
+			m.ImageMime = imageMime.String
+			m.ImageName = imageFilename.String
+		}
 		messages = append(messages, m)
 	}
 	if messages == nil {
@@ -477,6 +531,165 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+// handleUploadImage принимает multipart-форму с картинкой, проверяет тип/размер,
+// сохраняет в БД как новое сообщение и рассылает его через WS как обычное сообщение.
+// POST /upload-image (multipart/form-data: file, to)
+func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize+(1<<20)) // небольшой запас на метаданные формы
+
+	if err := r.ParseMultipartForm(maxImageSize + (1 << 20)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой или форма повреждена"})
+		return
+	}
+
+	to := r.FormValue("to")
+	if to == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не указан получатель"})
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл не найден"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxImageSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 10 МБ)"})
+		return
+	}
+
+	// Читаем первые байты для определения реального MIME-типа (не доверяем заголовку от клиента)
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	detectedMime := http.DetectContentType(buf[:n])
+
+	if !allowedImageMimes[detectedMime] {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Недопустимый тип файла. Разрешены: JPG, PNG, WEBP, GIF"})
+		return
+	}
+
+	// Возвращаемся в начало файла и читаем целиком
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	imageData, err := io.ReadAll(io.LimitReader(file, maxImageSize+1))
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	if len(imageData) > maxImageSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 10 МБ)"})
+		return
+	}
+
+	filename := header.Filename
+	if filename == "" {
+		filename = "image"
+	}
+
+	msgID, createdAt, err := a.saveImageMessage(login, to, imageData, detectedMime, filename)
+	if err != nil {
+		log.Println("Ошибка сохранения картинки:", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	msg := Message{
+		From:      login,
+		To:        to,
+		CreatedAt: createdAt,
+		ImageID:   msgID,
+		ImageName: filename,
+		ImageMime: detectedMime,
+	}
+
+	a.mu.Lock()
+	if client, ok := a.clients[login]; ok {
+		client.dialogs[to] = true
+	}
+	a.mu.Unlock()
+
+	a.routeMessage(msg)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"image_id":   msgID,
+		"created_at": createdAt,
+	})
+}
+
+// handleGetImage отдаёт бинарные данные картинки по id сообщения
+// GET /image/<id>
+func (a *App) handleGetImage(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/image/")
+	msgID, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&myID)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	var imageData []byte
+	var mime string
+	err = a.db.QueryRow(`
+		SELECT m.image_data, m.image_mime
+		FROM messenger.messages m
+		JOIN messenger.conversations c ON c.id = m.conversation_id
+		WHERE m.id = $1
+		  AND m.image_data IS NOT NULL
+		  AND (c.user1_id = $2 OR c.user2_id = $2)
+	`, msgID, myID).Scan(&imageData, &mime)
+
+	if err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Write(imageData)
 }
 
 func (c *Client) readPump(a *App) {

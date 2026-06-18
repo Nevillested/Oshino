@@ -357,6 +357,171 @@
             cursor: not-allowed;
         }
 
+        #attach-btn {
+            background: none;
+            color: #4a90e2;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border-radius: 6px;
+        }
+
+        #attach-btn:hover {
+            background: #f0f0f0;
+        }
+
+        #attach-btn:active {
+            background: #e5e5e5;
+        }
+
+        #attach-btn:disabled {
+            color: #ccc;
+            background: none;
+            cursor: not-allowed;
+        }
+
+        #upload-progress-bar {
+            background: white;
+            border-top: 1px solid #eee;
+            padding: 10px 16px;
+            flex-shrink: 0;
+        }
+
+        #upload-progress-track {
+            height: 4px;
+            background: #e5e5e5;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        #upload-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: #4a90e2;
+            border-radius: 2px;
+            transition: width 0.15s ease;
+        }
+
+        #upload-progress-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #666;
+        }
+
+        #upload-progress-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #upload-progress-check {
+            color: #2ecc71;
+            font-weight: 700;
+            margin-left: 8px;
+            display: none;
+            flex-shrink: 0;
+        }
+
+        #upload-progress-check.show {
+            display: inline;
+        }
+
+        .message-image {
+            max-width: 260px;
+            max-height: 260px;
+            border-radius: 10px;
+            cursor: pointer;
+            display: block;
+        }
+
+        .message-wrap.own .message-image {
+            margin-left: auto;
+        }
+
+        #image-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 50;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #image-modal-overlay.open {
+            display: flex;
+        }
+
+        #image-modal {
+            position: relative;
+            max-width: 85vw;
+            max-height: 85vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #image-modal-img {
+            max-width: 85vw;
+            max-height: 85vh;
+            object-fit: contain;
+            border-radius: 8px;
+            display: block;
+        }
+
+        #image-modal-close {
+            position: absolute;
+            top: -44px;
+            right: 0;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #image-modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        @media (max-width: 767px) {
+            #image-modal-overlay {
+                background: rgba(0, 0, 0, 0.92);
+            }
+
+            #image-modal {
+                max-width: 100vw;
+                max-height: 100vh;
+                width: 100%;
+                height: 100%;
+            }
+
+            #image-modal-img {
+                max-width: 100vw;
+                max-height: 100vh;
+            }
+
+            #image-modal-close {
+                top: 16px;
+                right: 16px;
+                background: rgba(0, 0, 0, 0.4);
+            }
+        }
+
         /* Desktop стили */
         @media (min-width: 768px) {
             #topbar {
@@ -552,12 +717,36 @@
         <div id="messages">
             <div id="load-more-indicator">загрузка...</div>
         </div>
+        <div id="upload-progress-bar" style="display: none;">
+            <div id="upload-progress-track">
+                <div id="upload-progress-fill"></div>
+            </div>
+            <div id="upload-progress-info">
+                <span id="upload-progress-name"></span>
+                <span id="upload-progress-check">✓</span>
+            </div>
+        </div>
         <div id="input-area">
             <div id="placeholder">Выберите пользователя для начала диалога</div>
             <div id="form-area" style="display: none;">
+                <input type="file" id="image-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                <button id="attach-btn" type="button" title="Прикрепить картинку">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <path d="M21 15l-5-5L5 21"></path>
+                    </svg>
+                </button>
                 <textarea placeholder="Сообщение..."></textarea>
-                <button>Отправить</button>
+                <button id="send-btn">Отправить</button>
             </div>
+        </div>
+    </div>
+
+    <div id="image-modal-overlay">
+        <div id="image-modal">
+            <button id="image-modal-close">✕</button>
+            <img id="image-modal-img" src="" alt="">
         </div>
     </div>
 
@@ -581,7 +770,9 @@
         const usersList = document.getElementById('users');
         const messagesDiv = document.getElementById('messages');
         const inputField = document.querySelector('#form-area textarea');
-        const sendBtn = document.querySelector('#form-area button');
+        const sendBtn = document.getElementById('send-btn');
+        const attachBtn = document.getElementById('attach-btn');
+        const imageInput = document.getElementById('image-input');
         const searchInput = document.getElementById('search-input');
         const searchResults = document.getElementById('search-results');
         const offlineNotice = document.getElementById('offline-notice');
@@ -879,10 +1070,22 @@
                 const wrap = document.createElement('div');
                 wrap.className = 'message-wrap ' + (msg.own ? 'own' : 'other');
 
-                const bubble = document.createElement('div');
-                bubble.className = 'message ' + (msg.own ? 'own' : 'other');
-                bubble.textContent = msg.text;
-                wrap.appendChild(bubble);
+                if (msg.image_id) {
+                    const img = document.createElement('img');
+                    img.className = 'message-image';
+                    img.src = msg.local_preview || ('/image/' + msg.image_id);
+                    img.alt = msg.image_name || 'картинка';
+                    img.loading = 'lazy';
+                    if (!msg.pending) {
+                        img.addEventListener('click', () => openImageModal('/image/' + msg.image_id));
+                    }
+                    wrap.appendChild(img);
+                } else {
+                    const bubble = document.createElement('div');
+                    bubble.className = 'message ' + (msg.own ? 'own' : 'other');
+                    bubble.textContent = msg.text;
+                    wrap.appendChild(bubble);
+                }
 
                 const timeLabel = formatMessageTime(msg.created_at);
                 if (timeLabel) {
@@ -901,6 +1104,32 @@
                 messagesDiv.scrollTop = newScrollHeight - prevScrollHeight;
             }
         }
+
+        // ── Просмотр картинки на весь экран ──────────────────────────────────────
+
+        const imageModalOverlay = document.getElementById('image-modal-overlay');
+        const imageModalImg = document.getElementById('image-modal-img');
+        const imageModalClose = document.getElementById('image-modal-close');
+
+        function openImageModal(src) {
+            imageModalImg.src = src;
+            imageModalOverlay.classList.add('open');
+        }
+
+        function closeImageModal() {
+            imageModalOverlay.classList.remove('open');
+            imageModalImg.src = '';
+        }
+
+        imageModalClose.addEventListener('click', closeImageModal);
+        imageModalOverlay.addEventListener('click', (e) => {
+            if (e.target === imageModalOverlay) closeImageModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && imageModalOverlay.classList.contains('open')) {
+                closeImageModal();
+            }
+        });
 
         // Подгрузка при скролле вверх
         messagesDiv.addEventListener('scroll', async () => {
@@ -966,13 +1195,31 @@
             const state = historyState[msg.to];
             if (!state) return;
 
-            // Находим самое последнее своё непроверенное сообщение с тем же текстом
-            for (let i = state.messages.length - 1; i >= 0; i--) {
-                const m = state.messages[i];
-                if (m.pending && m.own && m.text === msg.text) {
-                    m.created_at = msg.created_at;
-                    delete m.pending;
-                    break;
+            if (msg.image_id) {
+                // Сопоставляем с самым старым ожидающим подтверждения сообщением-картинкой
+                for (let i = 0; i < state.messages.length; i++) {
+                    const m = state.messages[i];
+                    if (m.pending && m.own && m.isImage && !m.image_id) {
+                        m.image_id = msg.image_id;
+                        m.image_name = msg.image_name;
+                        m.created_at = msg.created_at;
+                        if (m.local_preview) {
+                            URL.revokeObjectURL(m.local_preview);
+                            delete m.local_preview;
+                        }
+                        delete m.pending;
+                        break;
+                    }
+                }
+            } else {
+                // Находим самое последнее своё непроверенное текстовое сообщение с тем же текстом
+                for (let i = state.messages.length - 1; i >= 0; i--) {
+                    const m = state.messages[i];
+                    if (m.pending && m.own && !m.isImage && m.text === msg.text) {
+                        m.created_at = msg.created_at;
+                        delete m.pending;
+                        break;
+                    }
                 }
             }
 
@@ -988,13 +1235,25 @@
 
             const state = historyState[msg.from];
             const tmpId = -(Date.now());
-            state.messages.push({
-                id: tmpId,
-                from: msg.from,
-                text: msg.text,
-                own: false,
-                created_at: msg.created_at
-            });
+
+            if (msg.image_id) {
+                state.messages.push({
+                    id: tmpId,
+                    from: msg.from,
+                    own: false,
+                    created_at: msg.created_at,
+                    image_id: msg.image_id,
+                    image_name: msg.image_name
+                });
+            } else {
+                state.messages.push({
+                    id: tmpId,
+                    from: msg.from,
+                    text: msg.text,
+                    own: false,
+                    created_at: msg.created_at
+                });
+            }
 
             if (currentUser !== msg.from) {
                 unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;
@@ -1005,6 +1264,138 @@
             if (currentUser === msg.from) {
                 renderMessages(state.messages);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        // ── Отправка картинок ────────────────────────────────────────────────────
+
+        attachBtn.addEventListener('click', () => {
+            if (!currentUser) {
+                alert('Выберите пользователя');
+                return;
+            }
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files[0];
+            imageInput.value = '';
+            if (!file) return;
+
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+            if (!allowedTypes.includes(file.type)) {
+                alert('Допустимые форматы: JPG, PNG, WEBP, GIF');
+                return;
+            }
+
+            const maxSize = 10 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert('Файл слишком большой (максимум 10 МБ)');
+                return;
+            }
+
+            uploadImage(file);
+        });
+
+        const uploadProgressBar = document.getElementById('upload-progress-bar');
+        const uploadProgressFill = document.getElementById('upload-progress-fill');
+        const uploadProgressName = document.getElementById('upload-progress-name');
+        const uploadProgressCheck = document.getElementById('upload-progress-check');
+
+        function uploadImage(file) {
+            if (!currentUser) return;
+
+            uploadProgressBar.style.display = 'block';
+            uploadProgressFill.style.width = '0%';
+            uploadProgressName.textContent = file.name;
+            uploadProgressCheck.classList.remove('show');
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('to', currentUser);
+
+            const xhr = new XMLHttpRequest();
+
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    uploadProgressFill.style.width = pct + '%';
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    uploadProgressFill.style.width = '100%';
+                    uploadProgressCheck.classList.add('show');
+
+                    let resp = {};
+                    try { resp = JSON.parse(xhr.responseText); } catch (e) {}
+
+                    addPendingImageMessage(currentUser, file, resp);
+
+                    setTimeout(() => {
+                        uploadProgressBar.style.display = 'none';
+                    }, 900);
+                } else {
+                    let errMsg = 'Ошибка загрузки картинки';
+                    try { errMsg = JSON.parse(xhr.responseText).error || errMsg; } catch (e) {}
+                    alert(errMsg);
+                    uploadProgressBar.style.display = 'none';
+                }
+            });
+
+            xhr.addEventListener('error', () => {
+                alert('Ошибка соединения при загрузке картинки');
+                uploadProgressBar.style.display = 'none';
+            });
+
+            xhr.open('POST', '/upload-image');
+            xhr.send(formData);
+        }
+
+        function addPendingImageMessage(user, file, resp) {
+            const state = historyState[user];
+            if (!state) return;
+
+            const tmpId = -(Date.now());
+            const localPreview = URL.createObjectURL(file);
+
+            const msgEntry = {
+                id: tmpId,
+                from: currentLogin,
+                own: true,
+                isImage: true,
+                local_preview: localPreview,
+                image_name: file.name,
+                created_at: resp.created_at || new Date().toISOString()
+            };
+
+            // HTTP-ответ уже содержит id и время сохранения из БД — сразу финализируем
+            if (resp.image_id) {
+                msgEntry.image_id = resp.image_id;
+            } else {
+                msgEntry.pending = true;
+            }
+
+            state.messages.push(msgEntry);
+
+            if (currentUser === user) {
+                renderMessages(state.messages);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
+            // Локальный blob больше не нужен после того как картинка точно сохранена на сервере —
+            // освобождаем память, дальнейшие показы будут идти через /image/<id>
+            if (msgEntry.image_id) {
+                setTimeout(() => {
+                    if (msgEntry.local_preview) {
+                        URL.revokeObjectURL(msgEntry.local_preview);
+                        delete msgEntry.local_preview;
+                        if (currentUser === user) {
+                            renderMessages(state.messages);
+                        }
+                    }
+                }, 5000);
             }
         }
 
