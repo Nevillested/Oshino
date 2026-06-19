@@ -41,13 +41,15 @@ type Client struct {
 }
 
 type Message struct {
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Text      string `json:"text"`
-	CreatedAt string `json:"created_at,omitempty"`
-	ImageID   int    `json:"image_id,omitempty"`
-	ImageName string `json:"image_name,omitempty"`
-	ImageMime string `json:"image_mime,omitempty"`
+	From          string `json:"from"`
+	To            string `json:"to"`
+	Text          string `json:"text"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	ImageID       int    `json:"image_id,omitempty"`
+	ImageName     string `json:"image_name,omitempty"`
+	ImageMime     string `json:"image_mime,omitempty"`
+	AudioID       int    `json:"audio_id,omitempty"`
+	AudioDuration int    `json:"audio_duration,omitempty"`
 }
 
 type HistoryMessage struct {
@@ -62,12 +64,22 @@ var upgrader = websocket.Upgrader{
 }
 
 const maxImageSize = 10 << 20 // 10 МБ
+const maxAudioSize = 20 << 20 // 20 МБ
 
 var allowedImageMimes = map[string]bool{
 	"image/jpeg": true,
 	"image/png":  true,
 	"image/webp": true,
 	"image/gif":  true,
+}
+
+var allowedAudioMimes = map[string]bool{
+	"audio/webm":  true,
+	"audio/ogg":   true,
+	"audio/mpeg":  true,
+	"audio/mp4":   true,
+	"audio/wav":   true,
+	"audio/x-wav": true,
 }
 
 func generateToken() string {
@@ -125,6 +137,8 @@ func main() {
 	http.HandleFunc("/unread-counts", app.handleUnreadCounts)
 	http.HandleFunc("/upload-image", app.handleUploadImage)
 	http.HandleFunc("/image/", app.handleGetImage)
+	http.HandleFunc("/upload-audio", app.handleUploadAudio)
+	http.HandleFunc("/audio/", app.handleGetAudio)
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -410,9 +424,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if beforeID == 0 {
 		rows, err = a.db.Query(`
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
-			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image
+			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
+			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration
 			FROM (
-				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data
+				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
+				       audio_data, audio_duration
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				ORDER BY id DESC
@@ -424,9 +440,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rows, err = a.db.Query(`
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
-			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image
+			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
+			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration
 			FROM (
-				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data
+				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
+				       audio_data, audio_duration
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				ORDER BY id DESC
@@ -444,14 +462,16 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type HistMsg struct {
-		ID        int    `json:"id"`
-		From      string `json:"from"`
-		Text      string `json:"text"`
-		Own       bool   `json:"own"`
-		CreatedAt string `json:"created_at"`
-		ImageID   int    `json:"image_id,omitempty"`
-		ImageName string `json:"image_name,omitempty"`
-		ImageMime string `json:"image_mime,omitempty"`
+		ID            int    `json:"id"`
+		From          string `json:"from"`
+		Text          string `json:"text"`
+		Own           bool   `json:"own"`
+		CreatedAt     string `json:"created_at"`
+		ImageID       int    `json:"image_id,omitempty"`
+		ImageName     string `json:"image_name,omitempty"`
+		ImageMime     string `json:"image_mime,omitempty"`
+		AudioID       int    `json:"audio_id,omitempty"`
+		AudioDuration int    `json:"audio_duration,omitempty"`
 	}
 
 	var messages []HistMsg
@@ -459,14 +479,21 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var m HistMsg
 		var createdAt time.Time
 		var imageMime, imageFilename sql.NullString
-		var hasImage bool
-		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt, &imageMime, &imageFilename, &hasImage)
+		var hasImage, hasAudio bool
+		var audioDuration sql.NullInt64
+		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
+			&imageMime, &imageFilename, &hasImage,
+			&hasAudio, &audioDuration)
 		m.Own = strings.EqualFold(m.From, login)
 		m.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		if hasImage {
 			m.ImageID = m.ID
 			m.ImageMime = imageMime.String
 			m.ImageName = imageFilename.String
+		}
+		if hasAudio {
+			m.AudioID = m.ID
+			m.AudioDuration = int(audioDuration.Int64)
 		}
 		messages = append(messages, m)
 	}
@@ -690,6 +717,187 @@ func (a *App) handleGetImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	w.Write(imageData)
+}
+
+// saveAudioMessage сохраняет голосовое сообщение в БД
+func (a *App) saveAudioMessage(from, to string, audioData []byte, mime string, duration int) (int, string, error) {
+	convID, err := a.getOrCreateConversation(from, to)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var senderID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var msgID int
+	var createdAt time.Time
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, audio_data, audio_mime, audio_duration)
+		VALUES ($1, $2, '', $3, $4, $5)
+		RETURNING id, created_at AT TIME ZONE 'UTC'
+	`, convID, senderID, audioData, mime, duration).Scan(&msgID, &createdAt)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return msgID, createdAt.UTC().Format(time.RFC3339), nil
+}
+
+// handleUploadAudio — POST /upload-audio (multipart: file, to, duration)
+func (a *App) handleUploadAudio(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxAudioSize+(1<<20))
+	if err := r.ParseMultipartForm(maxAudioSize + (1 << 20)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой или форма повреждена"})
+		return
+	}
+
+	to := r.FormValue("to")
+	if to == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не указан получатель"})
+		return
+	}
+
+	durationSec := 0
+	if d, err := strconv.Atoi(r.FormValue("duration")); err == nil && d > 0 {
+		durationSec = d
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл не найден"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxAudioSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 20 МБ)"})
+		return
+	}
+
+	audioData, err := io.ReadAll(io.LimitReader(file, maxAudioSize+1))
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	if len(audioData) > maxAudioSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 20 МБ)"})
+		return
+	}
+
+	// Определяем MIME по заголовку Content-Type файла (у аудио http.DetectContentType ненадёжен)
+	mimeType := header.Header.Get("Content-Type")
+	if mimeType == "" {
+		mimeType = "audio/webm"
+	}
+	// Нормализуем — убираем параметры вроде codecs=...
+	if idx := strings.Index(mimeType, ";"); idx != -1 {
+		mimeType = strings.TrimSpace(mimeType[:idx])
+	}
+	if !allowedAudioMimes[mimeType] {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Недопустимый формат аудио"})
+		return
+	}
+
+	msgID, createdAt, err := a.saveAudioMessage(login, to, audioData, mimeType, durationSec)
+	if err != nil {
+		log.Println("Ошибка сохранения голосового:", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	msg := Message{
+		From:          login,
+		To:            to,
+		CreatedAt:     createdAt,
+		AudioID:       msgID,
+		AudioDuration: durationSec,
+	}
+
+	a.mu.Lock()
+	if client, ok := a.clients[login]; ok {
+		client.dialogs[to] = true
+	}
+	a.mu.Unlock()
+
+	a.routeMessage(msg)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":        true,
+		"audio_id":       msgID,
+		"audio_duration": durationSec,
+		"created_at":     createdAt,
+	})
+}
+
+// handleGetAudio — GET /audio/<id>
+func (a *App) handleGetAudio(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/audio/")
+	msgID, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&myID)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	var audioData []byte
+	var mime string
+	err = a.db.QueryRow(`
+		SELECT m.audio_data, m.audio_mime
+		FROM messenger.messages m
+		JOIN messenger.conversations c ON c.id = m.conversation_id
+		WHERE m.id = $1
+		  AND m.audio_data IS NOT NULL
+		  AND (c.user1_id = $2 OR c.user2_id = $2)
+	`, msgID, myID).Scan(&audioData, &mime)
+
+	if err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Write(audioData)
 }
 
 func (c *Client) readPump(a *App) {

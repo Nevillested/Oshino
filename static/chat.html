@@ -382,6 +382,191 @@
             cursor: not-allowed;
         }
 
+        #mic-btn {
+            background: none;
+            color: #4a90e2;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+        }
+
+        #mic-btn:hover { background: #f0f0f0; }
+        #mic-btn:active { background: #e5e5e5; }
+        #mic-btn.recording {
+            color: #e74c3c;
+            animation: mic-pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes mic-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #recording-bar {
+            background: white;
+            border-top: 1px solid #ddd;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        #recording-cancel-btn {
+            background: none;
+            border: none;
+            color: #e74c3c;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        #recording-cancel-btn:hover { background: #fef0f0; }
+
+        #recording-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        #recording-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #e74c3c;
+            animation: dot-blink 1s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes dot-blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+
+        #recording-timer {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2c2c2c;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #recording-stop-hint {
+            font-size: 12px;
+            color: #999;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        #recording-send-btn {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        #recording-send-btn:hover {
+            background: #357abd;
+        }
+
+        /* Аудио-плеер в чате */
+        .audio-player {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            min-width: 200px;
+            max-width: 280px;
+        }
+
+        .audio-player.own {
+            background: #4a90e2;
+        }
+
+        .audio-player.other {
+            background: white;
+            border: 1px solid #e5e5e5;
+        }
+
+        .audio-play-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.25);
+            color: white;
+            transition: background 0.15s;
+        }
+
+        .audio-player.other .audio-play-btn {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .audio-play-btn:hover { background: rgba(255,255,255,0.4); }
+        .audio-player.other .audio-play-btn:hover { background: #357abd; }
+
+        .audio-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .audio-progress {
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.35);
+            cursor: pointer;
+            position: relative;
+        }
+
+        .audio-player.other .audio-progress {
+            background: #ddd;
+        }
+
+        .audio-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: white;
+            width: 0%;
+            transition: width 0.1s linear;
+            pointer-events: none;
+        }
+
+        .audio-player.other .audio-progress-fill {
+            background: #4a90e2;
+        }
+
+        .audio-duration {
+            font-size: 12px;
+            color: rgba(255,255,255,0.85);
+        }
+
+        .audio-player.other .audio-duration {
+            color: #888;
+        }
+
         #upload-progress-bar {
             background: white;
             border-top: 1px solid #eee;
@@ -726,6 +911,14 @@
                 <span id="upload-progress-check">✓</span>
             </div>
         </div>
+        <div id="recording-bar" style="display: none;">
+            <button id="recording-cancel-btn" type="button">✕ Отмена</button>
+            <div id="recording-indicator">
+                <span id="recording-dot"></span>
+                <span id="recording-timer">0:00</span>
+            </div>
+            <button id="recording-send-btn" type="button">Отправить</button>
+        </div>
         <div id="input-area">
             <div id="placeholder">Выберите пользователя для начала диалога</div>
             <div id="form-area" style="display: none;">
@@ -735,6 +928,14 @@
                         <rect x="3" y="3" width="18" height="18" rx="2"></rect>
                         <circle cx="8.5" cy="8.5" r="1.5"></circle>
                         <path d="M21 15l-5-5L5 21"></path>
+                    </svg>
+                </button>
+                <button id="mic-btn" type="button" title="Голосовое сообщение">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+                        <path d="M5 10a7 7 0 0 0 14 0"></path>
+                        <line x1="12" y1="19" x2="12" y2="22"></line>
+                        <line x1="8" y1="22" x2="16" y2="22"></line>
                     </svg>
                 </button>
                 <textarea placeholder="Сообщение..."></textarea>
@@ -773,6 +974,11 @@
         const sendBtn = document.getElementById('send-btn');
         const attachBtn = document.getElementById('attach-btn');
         const imageInput = document.getElementById('image-input');
+        const micBtn = document.getElementById('mic-btn');
+        const recordingBar = document.getElementById('recording-bar');
+        const recordingTimer = document.getElementById('recording-timer');
+        const recordingCancelBtn = document.getElementById('recording-cancel-btn');
+        const recordingSendBtn = document.getElementById('recording-send-btn');
         const searchInput = document.getElementById('search-input');
         const searchResults = document.getElementById('search-results');
         const offlineNotice = document.getElementById('offline-notice');
@@ -1026,6 +1232,93 @@
             }
         }
 
+        function formatAudioSec(sec) {
+            if (!sec || sec < 0) return '0:00';
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec) % 60;
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        function buildAudioPlayer(src, durationSec, side) {
+            const audio = new Audio(src);
+
+            const player = document.createElement('div');
+            player.className = 'audio-player ' + side;
+
+            // Кнопка play/pause
+            const playBtn = document.createElement('button');
+            playBtn.className = 'audio-play-btn';
+            playBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <polygon points="5,3 19,12 5,21"/>
+            </svg>`;
+
+            // Прогресс-бар и длительность
+            const info = document.createElement('div');
+            info.className = 'audio-info';
+
+            const progressBar = document.createElement('div');
+            progressBar.className = 'audio-progress';
+            const progressFill = document.createElement('div');
+            progressFill.className = 'audio-progress-fill';
+            progressBar.appendChild(progressFill);
+
+            const durationLabel = document.createElement('div');
+            durationLabel.className = 'audio-duration';
+            durationLabel.textContent = formatAudioSec(durationSec);
+
+            info.appendChild(progressBar);
+            info.appendChild(durationLabel);
+            player.appendChild(playBtn);
+            player.appendChild(info);
+
+            const pauseIcon = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/>
+            </svg>`;
+            const playIcon = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <polygon points="5,3 19,12 5,21"/>
+            </svg>`;
+
+            // Клик по кнопке
+            playBtn.addEventListener('click', () => {
+                if (audio.paused) {
+                    // Останавливаем все другие аудио на странице
+                    document.querySelectorAll('audio').forEach(a => { if (a !== audio) a.pause(); });
+                    audio.play().catch(() => {});
+                } else {
+                    audio.pause();
+                }
+            });
+
+            audio.addEventListener('play', () => { playBtn.innerHTML = pauseIcon; });
+            audio.addEventListener('pause', () => { playBtn.innerHTML = playIcon; });
+            audio.addEventListener('ended', () => {
+                playBtn.innerHTML = playIcon;
+                progressFill.style.width = '0%';
+                durationLabel.textContent = formatAudioSec(durationSec);
+            });
+
+            audio.addEventListener('timeupdate', () => {
+                const dur = audio.duration || durationSec || 1;
+                const pct = (audio.currentTime / dur) * 100;
+                progressFill.style.width = pct + '%';
+                const remaining = (audio.duration || durationSec) - audio.currentTime;
+                durationLabel.textContent = formatAudioSec(remaining > 0 ? remaining : 0);
+            });
+
+            // Клик по прогресс-бару для перемотки
+            progressBar.addEventListener('click', (e) => {
+                const rect = progressBar.getBoundingClientRect();
+                const pct = (e.clientX - rect.left) / rect.width;
+                if (audio.duration) {
+                    audio.currentTime = pct * audio.duration;
+                } else if (durationSec) {
+                    audio.currentTime = pct * durationSec;
+                }
+            });
+
+            return player;
+        }
+
         function formatMessageTime(isoString) {
             if (!isoString) return '';
             const date = new Date(isoString);
@@ -1080,6 +1373,10 @@
                         img.addEventListener('click', () => openImageModal('/image/' + msg.image_id));
                     }
                     wrap.appendChild(img);
+                } else if (msg.audio_id || msg.local_audio_url) {
+                    const audioSrc = msg.local_audio_url || ('/audio/' + msg.audio_id);
+                    const player = buildAudioPlayer(audioSrc, msg.audio_duration || 0, msg.own ? 'own' : 'other');
+                    wrap.appendChild(player);
                 } else {
                     const bubble = document.createElement('div');
                     bubble.className = 'message ' + (msg.own ? 'own' : 'other');
@@ -1211,6 +1508,24 @@
                         break;
                     }
                 }
+            } else if (msg.audio_id) {
+                // Сопоставляем с самым старым ожидающим аудио-сообщением
+                for (let i = 0; i < state.messages.length; i++) {
+                    const m = state.messages[i];
+                    if (m.pending && m.own && m.isAudio && !m.audio_id) {
+                        m.audio_id = msg.audio_id;
+                        m.audio_duration = msg.audio_duration;
+                        m.created_at = msg.created_at;
+                        if (m.local_audio_url) {
+                            setTimeout(() => {
+                                URL.revokeObjectURL(m.local_audio_url);
+                                delete m.local_audio_url;
+                            }, 5000);
+                        }
+                        delete m.pending;
+                        break;
+                    }
+                }
             } else {
                 // Находим самое последнее своё непроверенное текстовое сообщение с тем же текстом
                 for (let i = state.messages.length - 1; i >= 0; i--) {
@@ -1244,6 +1559,15 @@
                     created_at: msg.created_at,
                     image_id: msg.image_id,
                     image_name: msg.image_name
+                });
+            } else if (msg.audio_id) {
+                state.messages.push({
+                    id: tmpId,
+                    from: msg.from,
+                    own: false,
+                    created_at: msg.created_at,
+                    audio_id: msg.audio_id,
+                    audio_duration: msg.audio_duration
                 });
             } else {
                 state.messages.push({
@@ -1396,6 +1720,181 @@
                         }
                     }
                 }, 5000);
+            }
+        }
+
+        // ── Голосовые сообщения ──────────────────────────────────────────────────
+
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recordingTimerInterval = null;
+        let recordingSeconds = 0;
+        let isRecording = false;
+
+        micBtn.addEventListener('click', async () => {
+            if (!currentUser) { alert('Выберите пользователя'); return; }
+            if (isRecording) {
+                stopRecording(false); // false = отправить
+            } else {
+                await startRecording();
+            }
+        });
+
+        recordingCancelBtn.addEventListener('click', () => {
+            stopRecording(true); // true = отменить
+        });
+
+        recordingSendBtn.addEventListener('click', () => {
+            stopRecording(false);
+        });
+        
+        async function startRecording() {
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (e) {
+                alert('Нет доступа к микрофону');
+                return;
+            }
+
+            // Выбираем поддерживаемый формат
+            const mimeType = getSupportedAudioMime();
+            const options = mimeType ? { mimeType } : {};
+
+            mediaRecorder = new MediaRecorder(stream, options);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                stream.getTracks().forEach(t => t.stop());
+            };
+
+            mediaRecorder.start(250); // чанки каждые 250мс
+            isRecording = true;
+            recordingSeconds = 0;
+
+            // Показываем recording bar, скрываем строку ввода
+            recordingBar.style.display = 'flex';
+            document.getElementById('input-area').style.display = 'none';
+            micBtn.classList.add('recording');
+            updateRecordingTimer();
+            recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+        }
+
+        function stopRecording(cancel) {
+            if (!mediaRecorder || !isRecording) return;
+            isRecording = false;
+
+            clearInterval(recordingTimerInterval);
+            recordingTimerInterval = null;
+
+            const duration = recordingSeconds;
+
+            mediaRecorder.onstop = () => {
+                mediaRecorder.stream.getTracks().forEach(t => t.stop());
+                if (!cancel && audioChunks.length > 0) {
+                    const mimeType = mediaRecorder.mimeType || getSupportedAudioMime() || 'audio/webm';
+                    const blob = new Blob(audioChunks, { type: mimeType });
+                    uploadAudio(blob, mimeType, duration);
+                }
+                audioChunks = [];
+            };
+
+            mediaRecorder.stop();
+
+            // Прячем recording bar, показываем ввод обратно
+            recordingBar.style.display = 'none';
+            document.getElementById('input-area').style.display = 'flex';
+            micBtn.classList.remove('recording');
+        }
+
+        function updateRecordingTimer() {
+            const m = Math.floor(recordingSeconds / 60);
+            const s = recordingSeconds % 60;
+            recordingTimer.textContent = m + ':' + String(s).padStart(2, '0');
+            recordingSeconds++;
+        }
+
+        function getSupportedAudioMime() {
+            const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg', 'audio/mp4'];
+            for (const c of candidates) {
+                if (MediaRecorder.isTypeSupported(c)) return c;
+            }
+            return '';
+        }
+
+        function formatAudioDuration(sec) {
+            if (!sec || sec <= 0) return '0:00';
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        function uploadAudio(blob, mimeType, duration) {
+            if (!currentUser) return;
+
+            // Нормализуем MIME (убираем codecs=...)
+            const cleanMime = mimeType.split(';')[0].trim();
+
+            const formData = new FormData();
+            const ext = cleanMime.includes('ogg') ? 'ogg' : cleanMime.includes('mp4') ? 'mp4' : 'webm';
+            formData.append('file', blob, 'voice.' + ext);
+            formData.append('to', currentUser);
+            formData.append('duration', String(duration));
+
+            const xhr = new XMLHttpRequest();
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    let resp = {};
+                    try { resp = JSON.parse(xhr.responseText); } catch (e) {}
+                    addPendingAudioMessage(currentUser, blob, cleanMime, duration, resp);
+                } else {
+                    alert('Ошибка отправки голосового сообщения');
+                }
+            });
+            xhr.addEventListener('error', () => alert('Ошибка соединения'));
+            xhr.open('POST', '/upload-audio');
+            xhr.send(formData);
+        }
+
+        function addPendingAudioMessage(user, blob, mimeType, duration, resp) {
+            const state = historyState[user];
+            if (!state) return;
+
+            const tmpId = -(Date.now());
+            const localUrl = URL.createObjectURL(blob);
+
+            const msgEntry = {
+                id: tmpId,
+                from: currentLogin,
+                own: true,
+                isAudio: true,
+                local_audio_url: localUrl,
+                audio_duration: duration,
+                created_at: resp.created_at || new Date().toISOString()
+            };
+
+            if (resp.audio_id) {
+                msgEntry.audio_id = resp.audio_id;
+                // Через 5 сек освобождаем blob, переключаемся на серверный URL
+                setTimeout(() => {
+                    if (msgEntry.local_audio_url) {
+                        URL.revokeObjectURL(msgEntry.local_audio_url);
+                        delete msgEntry.local_audio_url;
+                        if (currentUser === user) renderMessages(state.messages);
+                    }
+                }, 5000);
+            } else {
+                msgEntry.pending = true;
+            }
+
+            state.messages.push(msgEntry);
+            if (currentUser === user) {
+                renderMessages(state.messages);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
         }
 
