@@ -59,6 +59,29 @@
             font-weight: 600;
         }
 
+        #topbar-title {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #call-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border-radius: 8px;
+        }
+
+        #call-btn:hover { background: rgba(255,255,255,0.1); }
+        #call-btn:active { background: rgba(255,255,255,0.18); }
+
         #overlay {
             display: none;
             position: fixed;
@@ -769,6 +792,104 @@
             }
         }
 
+        /* ── Оверлей звонка ──────────────────────────────────────────────── */
+
+        #call-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #1c1c1c;
+            z-index: 60;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #call-overlay.open {
+            display: flex;
+        }
+
+        #call-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            max-width: 360px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        #call-peer-name {
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+        }
+
+        #call-status {
+            font-size: 16px;
+            color: #aaa;
+            min-height: 22px;
+        }
+
+        #call-timer {
+            font-size: 15px;
+            color: #4a90e2;
+            font-variant-numeric: tabular-nums;
+            min-height: 20px;
+            margin-bottom: 24px;
+        }
+
+        #call-actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 28px;
+            margin-top: 16px;
+        }
+
+        .call-action-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            transition: background 0.15s, transform 0.1s;
+        }
+
+        .call-action-btn:active {
+            transform: scale(0.94);
+        }
+
+        .call-action-reject {
+            background: #e74c3c;
+        }
+
+        .call-action-reject:hover { background: #c0392b; }
+
+        .call-action-accept {
+            background: #2ecc71;
+        }
+
+        .call-action-accept:hover { background: #27ae60; }
+
+        .call-action-mute {
+            background: #444;
+        }
+
+        .call-action-mute:hover { background: #555; }
+
+        .call-action-mute.muted {
+            background: #4a90e2;
+        }
+
         /* Desktop стили */
         @media (min-width: 768px) {
             #topbar {
@@ -953,7 +1074,12 @@
 <body>
     <div id="topbar">
         <button id="menu-btn">☰</button>
-        <span>Oshino</span>
+        <span id="topbar-title">Oshino</span>
+        <button id="call-btn" title="Позвонить" style="display: none;">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
+            </svg>
+        </button>
     </div>
 
     <div id="overlay"></div>
@@ -1030,6 +1156,35 @@
         </div>
     </div>
 
+    <div id="call-overlay">
+        <div id="call-screen">
+            <div id="call-peer-name"></div>
+            <div id="call-status"></div>
+            <div id="call-timer"></div>
+            <div id="call-actions">
+                <button id="call-reject-btn" class="call-action-btn call-action-reject" title="Отклонить">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                </button>
+                <button id="call-mute-btn" class="call-action-btn call-action-mute" title="Микрофон" style="display: none;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+                        <path d="M5 10a7 7 0 0 0 14 0"></path>
+                        <line x1="12" y1="19" x2="12" y2="22"></line>
+                        <line x1="8" y1="22" x2="16" y2="22"></line>
+                    </svg>
+                </button>
+                <button id="call-accept-btn" class="call-action-btn call-action-accept" title="Принять" style="display: none;">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <audio id="call-remote-audio" autoplay playsinline></audio>
+    </div>
+
     <script>
         let currentLogin = null;
         let currentUser = null;
@@ -1068,6 +1223,16 @@
         const welcomeGreeting = document.getElementById('welcome-greeting');
         const welcomeDialogsList = document.getElementById('welcome-dialogs');
         const welcomeEmptyHint = document.getElementById('welcome-empty-hint');
+        const topbarTitle = document.getElementById('topbar-title');
+        const callBtn = document.getElementById('call-btn');
+        const callOverlay = document.getElementById('call-overlay');
+        const callPeerName = document.getElementById('call-peer-name');
+        const callStatus = document.getElementById('call-status');
+        const callTimerEl = document.getElementById('call-timer');
+        const callAcceptBtn = document.getElementById('call-accept-btn');
+        const callRejectBtn = document.getElementById('call-reject-btn');
+        const callMuteBtn = document.getElementById('call-mute-btn');
+        const callRemoteAudio = document.getElementById('call-remote-audio');
 
         // ── WebSocket ───────────────────────────────────────────────────────────
 
@@ -1104,6 +1269,16 @@
                 } else if (message.startsWith('msg:')) {
                     const msg = JSON.parse(message.substring(4));
                     receiveMessage(msg);
+                } else if (message.startsWith('call-offer:')) {
+                    onCallOffer(JSON.parse(message.substring(11)));
+                } else if (message.startsWith('call-answer:')) {
+                    onCallAnswer(JSON.parse(message.substring(12)));
+                } else if (message.startsWith('call-ice:')) {
+                    onCallIce(JSON.parse(message.substring(9)));
+                } else if (message.startsWith('call-reject:')) {
+                    onCallReject(JSON.parse(message.substring(12)));
+                } else if (message.startsWith('call-end:')) {
+                    onCallEnd(JSON.parse(message.substring(9)));
                 }
             };
 
@@ -2085,6 +2260,8 @@
                 welcomeScreen.style.display = 'flex';
                 messagesDiv.style.display = 'none';
                 offlineNotice.style.display = 'none';
+                topbarTitle.textContent = 'Oshino';
+                callBtn.style.display = 'none';
                 return;
             }
 
@@ -2093,6 +2270,10 @@
             welcomeScreen.style.display = 'none';
             messagesDiv.style.display = 'flex';
             offlineNotice.style.display = 'none';
+            topbarTitle.textContent = currentUser;
+            // Звонить можно, только если собеседник сейчас онлайн (хотя бы одно устройство) —
+            // звонок на офлайн-получателя всё равно никто не примет, и call-offer уйдёт в никуда.
+            callBtn.style.display = onlineUsers.includes(currentUser) ? 'flex' : 'none';
         }
 
         async function loadUnreadCounts() {
@@ -2106,6 +2287,331 @@
                 console.error(e);
             }
         }
+
+        // ── Звонки (WebRTC) ──────────────────────────────────────────────────────
+
+        // Состояния: 'idle' | 'calling' (исходящий, ждём answer) | 'incoming' (входящий, ждём решения)
+        // | 'connected' (разговор идёт)
+        let callState = 'idle';
+        let callPeerLogin = null;   // логин собеседника текущего звонка
+        let callId = null;          // привязывает все сигналы одного звонка друг к другу
+        let pc = null;              // RTCPeerConnection
+        let localStream = null;
+        let pendingRemoteCandidates = []; // ICE-кандидаты, пришедшие до setRemoteDescription
+        let callStartedAt = null;
+        let callTimerInterval = null;
+        let isMuted = false;
+        let incomingOfferSig = null; // сохранённый offer-сигнал, пока пользователь не ответил
+
+        function genCallId() {
+            if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+            return 'call-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+        }
+
+        async function fetchTurnCredentials() {
+            const resp = await fetch('/turn-credentials');
+            if (!resp.ok) throw new Error('Не удалось получить TURN credentials');
+            return resp.json();
+        }
+
+        function sendCallSignal(type, payload) {
+            if (!wsReady) return;
+            ws.send(type + ':' + JSON.stringify(payload));
+        }
+
+        // createPeerConnection создаёт RTCPeerConnection с ICE-конфигом (STUN + TURN
+        // с time-limited credentials) и навешивает обработчики ontrack/onicecandidate.
+        // ICE сначала пробует P2P напрямую (быстрее), и только если не вышло —
+        // автоматически переключается на relay через наш TURN (это встроенное
+        // поведение браузера при наличии и STUN, и TURN среди iceServers).
+        async function createPeerConnection() {
+            const creds = await fetchTurnCredentials();
+
+            const iceServers = [
+                { urls: creds.urls.filter(u => u.startsWith('stun:')) },
+                {
+                    urls: creds.urls.filter(u => u.startsWith('turn:')),
+                    username: creds.username,
+                    credential: creds.password
+                }
+            ];
+
+            const peer = new RTCPeerConnection({ iceServers });
+
+            peer.onicecandidate = (e) => {
+                if (e.candidate && callPeerLogin && callId) {
+                    sendCallSignal('call-ice', {
+                        to: callPeerLogin,
+                        call_id: callId,
+                        candidate: JSON.stringify(e.candidate)
+                    });
+                }
+            };
+
+            peer.ontrack = (e) => {
+                callRemoteAudio.srcObject = e.streams[0];
+            };
+
+            peer.onconnectionstatechange = () => {
+                if (peer.connectionState === 'failed' || peer.connectionState === 'closed') {
+                    if (callState === 'connected') {
+                        endCall('connection-lost', false);
+                    }
+                }
+            };
+
+            return peer;
+        }
+
+        function setCallUI(state) {
+            callState = state;
+            callAcceptBtn.style.display = state === 'incoming' ? 'flex' : 'none';
+            callMuteBtn.style.display = state === 'connected' ? 'flex' : 'none';
+            callRejectBtn.title = state === 'incoming' ? 'Отклонить' : 'Завершить';
+
+            if (state === 'idle') {
+                callOverlay.classList.remove('open');
+                callPeerName.textContent = '';
+                callStatus.textContent = '';
+                callTimerEl.textContent = '';
+                return;
+            }
+
+            callOverlay.classList.add('open');
+            callPeerName.textContent = callPeerLogin || '';
+
+            if (state === 'calling') {
+                callStatus.textContent = 'Вызов...';
+            } else if (state === 'incoming') {
+                callStatus.textContent = 'Входящий звонок';
+            } else if (state === 'connected') {
+                callStatus.textContent = 'На связи';
+            }
+        }
+
+        function startCallTimer() {
+            callStartedAt = Date.now();
+            updateCallTimer();
+            callTimerInterval = setInterval(updateCallTimer, 1000);
+        }
+
+        function updateCallTimer() {
+            const sec = Math.floor((Date.now() - callStartedAt) / 1000);
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            callTimerEl.textContent = m + ':' + String(s).padStart(2, '0');
+        }
+
+        function stopCallTimer() {
+            clearInterval(callTimerInterval);
+            callTimerInterval = null;
+            callStartedAt = null;
+        }
+
+        function cleanupCallResources() {
+            if (pc) {
+                pc.onicecandidate = null;
+                pc.ontrack = null;
+                pc.onconnectionstatechange = null;
+                pc.close();
+                pc = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+                localStream = null;
+            }
+            callRemoteAudio.srcObject = null;
+            pendingRemoteCandidates = [];
+            isMuted = false;
+            callMuteBtn.classList.remove('muted');
+            stopCallTimer();
+        }
+
+        // ── Исходящий звонок ────────────────────────────────────────────────────
+
+        callBtn.addEventListener('click', async () => {
+            if (!currentUser || callState !== 'idle') return;
+            await startCall(currentUser);
+        });
+
+        async function startCall(toLogin) {
+            callPeerLogin = toLogin;
+            callId = genCallId();
+            setCallUI('calling');
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (e) {
+                alert('Нет доступа к микрофону');
+                setCallUI('idle');
+                callPeerLogin = null;
+                callId = null;
+                return;
+            }
+
+            try {
+                pc = await createPeerConnection();
+            } catch (e) {
+                alert('Не удалось установить соединение (TURN недоступен)');
+                cleanupCallResources();
+                setCallUI('idle');
+                callPeerLogin = null;
+                callId = null;
+                return;
+            }
+
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            sendCallSignal('call-offer', {
+                to: toLogin,
+                call_id: callId,
+                sdp: offer.sdp,
+                sdp_type: 'offer'
+            });
+        }
+
+        // ── Входящий звонок ─────────────────────────────────────────────────────
+
+        function onCallOffer(sig) {
+            // Уже в звонке (с кем угодно) — сразу заняты, не показываем второй входящий поверх.
+            if (callState !== 'idle') {
+                sendCallSignal('call-reject', { to: sig.from, call_id: sig.call_id, reason: 'busy' });
+                return;
+            }
+
+            callPeerLogin = sig.from;
+            callId = sig.call_id;
+            incomingOfferSig = sig;
+            setCallUI('incoming');
+        }
+
+        callAcceptBtn.addEventListener('click', async () => {
+            if (callState !== 'incoming' || !incomingOfferSig) return;
+            const sig = incomingOfferSig;
+            incomingOfferSig = null;
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (e) {
+                alert('Нет доступа к микрофону');
+                sendCallSignal('call-reject', { to: sig.from, call_id: sig.call_id, reason: 'no-mic' });
+                setCallUI('idle');
+                callPeerLogin = null;
+                callId = null;
+                return;
+            }
+
+            try {
+                pc = await createPeerConnection();
+            } catch (e) {
+                alert('Не удалось установить соединение (TURN недоступен)');
+                sendCallSignal('call-reject', { to: sig.from, call_id: sig.call_id, reason: 'error' });
+                cleanupCallResources();
+                setCallUI('idle');
+                callPeerLogin = null;
+                callId = null;
+                return;
+            }
+
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            await pc.setRemoteDescription({ type: 'offer', sdp: sig.sdp });
+            for (const c of pendingRemoteCandidates) {
+                try { await pc.addIceCandidate(JSON.parse(c)); } catch (e) {}
+            }
+            pendingRemoteCandidates = [];
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            sendCallSignal('call-answer', {
+                to: sig.from,
+                call_id: callId,
+                sdp: answer.sdp,
+                sdp_type: 'answer'
+            });
+
+            setCallUI('connected');
+            startCallTimer();
+        });
+
+        // ── Общие сигналы (answer/ice/reject/end) ──────────────────────────────
+
+        async function onCallAnswer(sig) {
+            if (callState !== 'calling' || sig.call_id !== callId || !pc) return;
+            await pc.setRemoteDescription({ type: 'answer', sdp: sig.sdp });
+            for (const c of pendingRemoteCandidates) {
+                try { await pc.addIceCandidate(JSON.parse(c)); } catch (e) {}
+            }
+            pendingRemoteCandidates = [];
+            setCallUI('connected');
+            startCallTimer();
+        }
+
+        async function onCallIce(sig) {
+            if (sig.call_id !== callId) return;
+            if (!pc || !pc.remoteDescription) {
+                // Кандидат может прийти раньше offer/answer на принимающей стороне — копим.
+                pendingRemoteCandidates.push(sig.candidate);
+                return;
+            }
+            try { await pc.addIceCandidate(JSON.parse(sig.candidate)); } catch (e) {}
+        }
+
+        function onCallReject(sig) {
+            if (sig.call_id !== callId) return;
+            const reasons = {
+                busy: 'Собеседник занят',
+                'no-mic': 'У собеседника нет доступа к микрофону',
+                'answered-elsewhere': 'Принято на другом устройстве',
+                error: 'Ошибка соединения у собеседника'
+            };
+            callStatus.textContent = reasons[sig.reason] || 'Звонок отклонён';
+            cleanupCallResources();
+            setTimeout(() => {
+                setCallUI('idle');
+                callPeerLogin = null;
+                callId = null;
+            }, 1500);
+        }
+
+        function onCallEnd(sig) {
+            if (sig.call_id !== callId) return;
+            if (sig.reason === 'answered-elsewhere') {
+                cleanupCallResources();
+                setCallUI('idle');
+                callPeerLogin = null;
+                callId = null;
+                return;
+            }
+            endCall(null, false);
+        }
+
+        // endCall завершает звонок локально и, если notify=true, уведомляет собеседника.
+        function endCall(reason, notify) {
+            if (callState === 'idle') return;
+            if (notify !== false && callPeerLogin && callId) {
+                const type = callState === 'incoming' ? 'call-reject' : 'call-end';
+                sendCallSignal(type, { to: callPeerLogin, call_id: callId, reason: reason || 'hangup' });
+            }
+            cleanupCallResources();
+            setCallUI('idle');
+            callPeerLogin = null;
+            callId = null;
+            incomingOfferSig = null;
+        }
+
+        callRejectBtn.addEventListener('click', () => endCall('hangup', true));
+
+        callMuteBtn.addEventListener('click', () => {
+            if (!localStream) return;
+            isMuted = !isMuted;
+            localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
+            callMuteBtn.classList.toggle('muted', isMuted);
+        });
 
         // ── Logout ───────────────────────────────────────────────────────────────
 
