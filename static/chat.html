@@ -213,6 +213,26 @@
             font-weight: 600;
         }
 
+        .dialog-name {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .dialog-status {
+            font-size: 12px;
+            font-weight: 400;
+            color: #999;
+            flex-shrink: 0;
+        }
+
+        .dialog-status.online {
+            color: #2ecc71;
+        }
+
         .unread-badge {
             background: #e74c3c;
             color: white;
@@ -1263,6 +1283,7 @@
                 } else if (message.startsWith('online:')) {
                     onlineUsers = JSON.parse(message.substring(7));
                     updateFormState();
+                    renderDialogList();
                 } else if (message.startsWith('msgack:')) {
                     const msg = JSON.parse(message.substring(7));
                     applyMessageAck(msg);
@@ -1480,6 +1501,8 @@
 
             logins.forEach(user => {
                 const count = unreadCount[user] || 0;
+                const isOnline = onlineUsers.includes(user);
+                const statusText = isOnline ? '(в сети)' : '(не в сети)';
 
                 // Пункт в боковом меню
                 const li = document.createElement('li');
@@ -1487,7 +1510,12 @@
                 if (user === currentUser) li.classList.add('active');
 
                 const nameSpan = document.createElement('span');
+                nameSpan.className = 'dialog-name';
                 nameSpan.textContent = user;
+                const statusSpan = document.createElement('span');
+                statusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
+                statusSpan.textContent = statusText;
+                nameSpan.appendChild(statusSpan);
                 li.appendChild(nameSpan);
 
                 if (count > 0) {
@@ -1504,7 +1532,12 @@
                 welcomeLi.setAttribute('data-user', user);
 
                 const welcomeNameSpan = document.createElement('span');
+                welcomeNameSpan.className = 'dialog-name';
                 welcomeNameSpan.textContent = user;
+                const welcomeStatusSpan = document.createElement('span');
+                welcomeStatusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
+                welcomeStatusSpan.textContent = statusText;
+                welcomeNameSpan.appendChild(welcomeStatusSpan);
                 welcomeLi.appendChild(welcomeNameSpan);
 
                 if (count > 0) {
@@ -2270,10 +2303,11 @@
             welcomeScreen.style.display = 'none';
             messagesDiv.style.display = 'flex';
             offlineNotice.style.display = 'none';
-            topbarTitle.textContent = currentUser;
+            const isOnline = onlineUsers.includes(currentUser);
+            topbarTitle.textContent = currentUser + ' — ' + (isOnline ? 'в сети' : 'не в сети');
             // Звонить можно, только если собеседник сейчас онлайн (хотя бы одно устройство) —
             // звонок на офлайн-получателя всё равно никто не примет, и call-offer уйдёт в никуда.
-            callBtn.style.display = onlineUsers.includes(currentUser) ? 'flex' : 'none';
+            callBtn.style.display = isOnline ? 'flex' : 'none';
         }
 
         async function loadUnreadCounts() {
