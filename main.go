@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -34,6 +37,11 @@ type App struct {
 	// defaultContact — логин пользователя с id=1, добавляется всем как контакт по умолчанию.
 	// Читается один раз при старте, чтобы не дёргать БД на каждую отправку списка диалогов.
 	defaultContact string
+
+	// turnSecret — общий секрет для генерации time-limited TURN credentials
+	// (TURN REST API, см. coturn use-auth-secret/static-auth-secret).
+	// Никогда не покидает сервер: фронтенду отдаём только готовые username/password.
+	turnSecret string
 }
 
 type Session struct {
@@ -136,9 +144,14 @@ func main() {
 	fmt.Println("Подключение к PostgreSQL успешно!")
 
 	app := &App{
-		db:       db,
-		sessions: make(map[string]Session),
-		clients:  make(map[string]map[*Client]bool),
+		db:         db,
+		sessions:   make(map[string]Session),
+		clients:    make(map[string]map[*Client]bool),
+		turnSecret: os.Getenv("TURN_SECRET"),
+	}
+
+	if app.turnSecret == "" {
+		log.Println("ВНИМАНИЕ: TURN_SECRET не задан в my_cfg — звонки работать не будут (TURN credentials не сгенерировать)")
 	}
 
 	if err := app.db.QueryRow("SELECT login FROM messenger.users WHERE id = 1").Scan(&app.defaultContact); err != nil {
@@ -160,6 +173,7 @@ func main() {
 	http.HandleFunc("/image/", app.handleGetImage)
 	http.HandleFunc("/upload-audio", app.handleUploadAudio)
 	http.HandleFunc("/audio/", app.handleGetAudio)
+	http.HandleFunc("/turn-credentials", app.handleTurnCredentials)
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -948,6 +962,57 @@ func (a *App) handleGetAudio(w http.ResponseWriter, r *http.Request) {
 	// http.ServeContent сам выставит Accept-Ranges и корректно ответит 206 Partial Content
 	// на Range-запросы — Safari/iOS их шлёт всегда и без этого может не воспроизводить аудио вовсе.
 	http.ServeContent(w, r, "audio", time.Now(), bytes.NewReader(audioData))
+}
+
+// turnCredentialsTTL — срок жизни сгенерированных TURN credentials.
+// Час с запасом перекрывает любой разумный голосовой звонок; даже если он
+// затянется, ICE-сессия, однажды установленная, не обрывается по истечении
+// TTL — credentials проверяются только в момент TURN allocate.
+const turnCredentialsTTL = 1 * time.Hour
+
+// generateTurnCredentials генерирует time-limited username/password по схеме
+// TURN REST API (см. coturn use-auth-secret): username = "<unix_ts>:<login>",
+// password = base64(HMAC-SHA1(secret, username)). Алгоритм должен совпадать
+// побитово с тем, что использует coturn (static-auth-secret в turnserver.conf).
+func generateTurnCredentials(secret, login string) (username, password string, ttl int64) {
+	expiry := time.Now().Add(turnCredentialsTTL).Unix()
+	username = fmt.Sprintf("%d:%s", expiry, login)
+
+	mac := hmac.New(sha1.New, []byte(secret))
+	mac.Write([]byte(username))
+	password = base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	return username, password, expiry
+}
+
+// handleTurnCredentials — GET /turn-credentials
+// Отдаёт залогиненному пользователю свежие TURN-credentials и адреса STUN/TURN.
+// Секрет (turnSecret) на клиент не уходит никогда — только производный HMAC.
+func (a *App) handleTurnCredentials(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if a.turnSecret == "" {
+		http.Error(w, "TURN не настроен на сервере", http.StatusServiceUnavailable)
+		return
+	}
+
+	username, password, expiry := generateTurnCredentials(a.turnSecret, login)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"username": username,
+		"password": password,
+		"ttl":      expiry,
+		"urls": []string{
+			"stun:oshino.space:3478",
+			"turn:oshino.space:3478?transport=udp",
+			"turn:oshino.space:3478?transport=tcp",
+		},
+	})
 }
 
 func (c *Client) readPump(a *App) {
