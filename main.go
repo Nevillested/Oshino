@@ -67,6 +67,20 @@ type HistoryMessage struct {
 	Own  bool   `json:"own"`
 }
 
+// CallSignal — конверт сигналинга звонков (offer/answer/ice/end/reject).
+// Сервер не интерпретирует SDP/ICE содержимое, только маршрутизирует между
+// устройствами from/to — ровно так же, как Message, но без сохранения в БД.
+type CallSignal struct {
+	Type     string `json:"type"`               // call-offer | call-answer | call-ice | call-end | call-reject
+	From     string `json:"from"`
+	To       string `json:"to"`
+	CallID   string `json:"call_id"`             // генерируется звонящим, привязывает все сообщения одного звонка
+	SDP      string `json:"sdp,omitempty"`       // для offer/answer
+	SDPType  string `json:"sdp_type,omitempty"`  // "offer" | "answer"
+	Candidate string `json:"candidate,omitempty"` // ICE-кандидат (как JSON-строка от RTCIceCandidate)
+	Reason   string `json:"reason,omitempty"`     // причина для end/reject (busy, hangup, timeout, answered-elsewhere)
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
@@ -972,6 +986,15 @@ func (c *Client) readPump(a *App) {
 			}
 			msg.CreatedAt = createdAt
 			a.routeMessage(msg)
+		} else if prefix, rest, ok := cutCallPrefix(msgStr); ok {
+			var sig CallSignal
+			if err := json.Unmarshal([]byte(rest), &sig); err != nil {
+				log.Println("Ошибка разбора call-сигнала:", err)
+				continue
+			}
+			sig.Type = prefix
+			sig.From = c.login // не доверяем from от клиента, берём из сессии
+			a.routeCallSignal(sig, c)
 		}
 	}
 }
@@ -1063,6 +1086,63 @@ func (a *App) routeMessage(msg Message) {
 	for _, c := range senders {
 		c.trySend(ackPayload)
 		a.sendDialogsTo(c)
+	}
+}
+
+// callPrefixes — допустимые префиксы WS-сообщений сигналинга звонков.
+// Порядок не важен, но "call-" префикс у всех общий — сверяем целиком, чтобы
+// не путать с "call-answer:" внутри "call-answer-foo:" и т.п.
+var callPrefixes = []string{"call-offer:", "call-answer:", "call-ice:", "call-end:", "call-reject:"}
+
+// cutCallPrefix проверяет, начинается ли сообщение с одного из call-префиксов,
+// и если да — возвращает префикс без двоеточия и остаток (JSON-тело).
+func cutCallPrefix(msgStr string) (prefix string, rest string, ok bool) {
+	for _, p := range callPrefixes {
+		if strings.HasPrefix(msgStr, p) {
+			return strings.TrimSuffix(p, ":"), msgStr[len(p):], true
+		}
+	}
+	return "", "", false
+}
+
+// routeCallSignal пересылает сигнал звонка на все устройства получателя.
+// Дополнительно: call-answer/call-reject рассылаются и на ОСТАЛЬНЫЕ устройства
+// отправителя (кроме того, с которого пришёл сигнал) с пометкой "answered-elsewhere",
+// чтобы при мультидевайсе входящий звонок погас на всех экранах, кроме ответившего.
+func (a *App) routeCallSignal(sig CallSignal, from *Client) {
+	toLogin := strings.ToLower(sig.To)
+
+	data, _ := json.Marshal(sig)
+	payload := append([]byte(sig.Type+":"), data...)
+
+	a.mu.Lock()
+	recipients := make([]*Client, 0, len(a.clients[toLogin]))
+	for c := range a.clients[toLogin] {
+		recipients = append(recipients, c)
+	}
+	var siblings []*Client
+	if conns, ok := a.clients[from.login]; ok {
+		siblings = make([]*Client, 0, len(conns))
+		for c := range conns {
+			if c != from {
+				siblings = append(siblings, c)
+			}
+		}
+	}
+	a.mu.Unlock()
+
+	for _, c := range recipients {
+		c.trySend(payload)
+	}
+
+	if sig.Type == "call-answer" || sig.Type == "call-reject" || sig.Type == "call-end" {
+		elsewhere := sig
+		elsewhere.Reason = "answered-elsewhere"
+		elsewhereData, _ := json.Marshal(elsewhere)
+		elsewherePayload := append([]byte("call-end:"), elsewhereData...)
+		for _, c := range siblings {
+			c.trySend(elsewherePayload)
+		}
 	}
 }
 
