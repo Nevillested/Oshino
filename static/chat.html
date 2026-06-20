@@ -16,6 +16,10 @@
             height: 100%;
             width: 100%;
             overflow: hidden;
+            /* Разрешаем нативный вертикальный скролл, но забираем горизонтальные жесты под свой JS —
+               иначе Chrome на Android (свайп-навигация назад) или Safari могут перехватить
+               горизонтальное движение раньше, чем мы успеем его распознать как свайп меню. */
+            touch-action: pan-y pinch-zoom;
         }
 
         body {
@@ -1154,6 +1158,61 @@
             sidebar.classList.remove('open');
             overlay.classList.remove('open');
         });
+
+        // ── Свайп для открытия/закрытия меню ────────────────────────────────────────
+        // Закрытое меню + свайп вправо → открыть. Открытое меню + свайп влево → закрыть.
+        // Не привязываемся к самому краю экрана намеренно: в Safari/iOS жест от левого
+        // края — это системная "навигация назад", не хотим с ней конфликтовать.
+        // Срабатываем по touchmove (а не дожидаясь touchend) — так отклик чувствуется отзывчивее.
+        (function setupSidebarSwipe() {
+            const MIN_DISTANCE = 60;       // минимальная горизонтальная дистанция свайпа, px
+            const MAX_VERTICAL_RATIO = 0.7; // вертикальное отклонение не больше 70% от горизонтального — у реального пальца свайп редко идеально прямой
+
+            let startX = 0;
+            let startY = 0;
+            let tracking = false;
+            let wasOpenAtStart = false;
+
+            function shouldIgnoreStart() {
+                // Поверх показан просмотр картинки, или идёт запись голосового —
+                // свайп в этих состояниях ничего не должен делать.
+                return imageModalOverlay.classList.contains('open')
+                    || recordingBar.style.display === 'flex';
+            }
+
+            document.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1 || shouldIgnoreStart()) {
+                    tracking = false;
+                    return;
+                }
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                wasOpenAtStart = sidebar.classList.contains('open');
+                tracking = true;
+            }, { passive: true });
+
+            document.addEventListener('touchmove', (e) => {
+                if (!tracking) return;
+                const touch = e.touches[0];
+                if (!touch) return;
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+                const horizontalEnough = Math.abs(dy) < Math.abs(dx) * MAX_VERTICAL_RATIO;
+
+                if (!wasOpenAtStart && dx > MIN_DISTANCE && horizontalEnough) {
+                    sidebar.classList.add('open');
+                    overlay.classList.add('open');
+                    tracking = false;
+                } else if (wasOpenAtStart && dx < -MIN_DISTANCE && horizontalEnough) {
+                    sidebar.classList.remove('open');
+                    overlay.classList.remove('open');
+                    tracking = false;
+                }
+            }, { passive: true });
+
+            document.addEventListener('touchend', () => { tracking = false; }, { passive: true });
+            document.addEventListener('touchcancel', () => { tracking = false; }, { passive: true });
+        })();
 
         // ── Поиск ───────────────────────────────────────────────────────────────
 
