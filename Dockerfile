@@ -6,7 +6,7 @@ RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -o oshino .
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates ffmpeg
 WORKDIR /root/
 COPY --from=builder /app/oshino .
 COPY static/ static/

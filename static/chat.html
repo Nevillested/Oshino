@@ -294,15 +294,69 @@
             background: white;
         }
 
-        #placeholder {
-            color: #999;
+        #welcome-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             text-align: center;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        #welcome-greeting {
+            font-size: 22px;
+            font-weight: 700;
+            color: #2c2c2c;
+            margin-bottom: 6px;
+        }
+
+        #welcome-subtitle {
+            font-size: 15px;
+            color: #999;
+            margin-bottom: 24px;
+        }
+
+        #welcome-empty-hint {
+            display: none;
+            font-size: 14px;
+            color: #aaa;
+            margin-top: 4px;
+        }
+
+        #welcome-dialogs {
+            list-style: none;
+            width: 100%;
+            max-width: 320px;
+        }
+
+        #welcome-dialogs li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
             font-size: 16px;
-            padding: 20px;
+            font-weight: 600;
+            color: #2c2c2c;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            transition: background 0.15s;
+        }
+
+        #welcome-dialogs li:hover {
+            background: #f0f0f0;
+        }
+
+        #welcome-dialogs li:active {
+            background: #e8e8e8;
         }
 
         #input-area {
-            display: flex;
+            display: none;
             padding: 10px;
             background: white;
             border-top: 1px solid #ddd;
@@ -313,6 +367,7 @@
 
         #form-area {
             display: flex;
+            align-items: center;
             width: 100%;
             gap: 10px;
         }
@@ -332,27 +387,28 @@
             cursor: not-allowed;
         }
 
-        #form-area button {
-            padding: 12px 16px;
+        #send-btn {
+            padding: 9px 18px;
             background: #4a90e2;
             color: white;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
             white-space: nowrap;
+            flex-shrink: 0;
         }
 
-        #form-area button:active {
+        #send-btn:active {
             background: #357abd;
         }
 
-        #form-area button:hover {
+        #send-btn:hover {
             background: #357abd;
         }
 
-        #form-area button:disabled {
+        #send-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
@@ -360,12 +416,14 @@
         #attach-btn {
             background: none;
             color: #4a90e2;
-            padding: 8px;
+            padding: 9px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            border-radius: 6px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
         }
 
         #attach-btn:hover {
@@ -385,12 +443,12 @@
         #mic-btn {
             background: none;
             color: #4a90e2;
-            padding: 8px;
+            padding: 9px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            border-radius: 6px;
+            border-radius: 8px;
             border: none;
             cursor: pointer;
         }
@@ -751,16 +809,6 @@
                 font-size: 15px;
                 padding: 10px 16px;
             }
-            
-            #form-area textarea {
-                font-size: 15px;
-                padding: 10px;
-            }
-            
-            #form-area button {
-                font-size: 15px;
-                padding: 10px 20px;
-            }
 
             #search-input {
                 font-size: 15px;
@@ -854,20 +902,42 @@
                 gap: 12px;
             }
             
-            #form-area textarea {
-                font-size: 20px;
-                padding: 16px;
-            }
-            
-            #form-area button {
-                font-size: 20px;
-                padding: 16px 22px;
-                min-width: 100px;
+            #form-area {
+                gap: 8px;
             }
 
-            #placeholder {
-                font-size: 20px;
-                padding: 30px 20px;
+            #form-area textarea {
+                font-size: 16px;
+                padding: 12px;
+            }
+
+            #send-btn {
+                font-size: 15px;
+                padding: 11px 16px;
+            }
+
+            #attach-btn,
+            #mic-btn {
+                padding: 11px;
+            }
+
+            #attach-btn svg,
+            #mic-btn svg {
+                width: 22px;
+                height: 22px;
+            }
+
+            #welcome-greeting {
+                font-size: 24px;
+            }
+
+            #welcome-subtitle {
+                font-size: 18px;
+            }
+
+            #welcome-dialogs li {
+                font-size: 18px;
+                padding: 16px;
             }
 
             #offline-notice {
@@ -898,8 +968,14 @@
     </div>
 
     <div id="chat">
+        <div id="welcome-screen">
+            <div id="welcome-greeting"></div>
+            <div id="welcome-subtitle">Выберите пользователя для начала диалога</div>
+            <ul id="welcome-dialogs"></ul>
+            <div id="welcome-empty-hint">Пока нет ни одного диалога — найдите собеседника через поиск в меню</div>
+        </div>
         <div id="offline-notice">Пользователь не в сети</div>
-        <div id="messages">
+        <div id="messages" style="display: none;">
             <div id="load-more-indicator">загрузка...</div>
         </div>
         <div id="upload-progress-bar" style="display: none;">
@@ -920,18 +996,17 @@
             <button id="recording-send-btn" type="button">Отправить</button>
         </div>
         <div id="input-area">
-            <div id="placeholder">Выберите пользователя для начала диалога</div>
             <div id="form-area" style="display: none;">
                 <input type="file" id="image-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
                 <button id="attach-btn" type="button" title="Прикрепить картинку">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2"></rect>
                         <circle cx="8.5" cy="8.5" r="1.5"></circle>
                         <path d="M21 15l-5-5L5 21"></path>
                     </svg>
                 </button>
                 <button id="mic-btn" type="button" title="Голосовое сообщение">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="9" y="2" width="6" height="12" rx="3"></rect>
                         <path d="M5 10a7 7 0 0 0 14 0"></path>
                         <line x1="12" y1="19" x2="12" y2="22"></line>
@@ -982,9 +1057,13 @@
         const searchInput = document.getElementById('search-input');
         const searchResults = document.getElementById('search-results');
         const offlineNotice = document.getElementById('offline-notice');
-        const placeholder = document.getElementById('placeholder');
         const formArea = document.getElementById('form-area');
+        const inputArea = document.getElementById('input-area');
         const loadMoreIndicator = document.getElementById('load-more-indicator');
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const welcomeGreeting = document.getElementById('welcome-greeting');
+        const welcomeDialogsList = document.getElementById('welcome-dialogs');
+        const welcomeEmptyHint = document.getElementById('welcome-empty-hint');
 
         // ── WebSocket ───────────────────────────────────────────────────────────
 
@@ -1008,6 +1087,7 @@
 
                 if (message.startsWith('user:')) {
                     currentLogin = message.substring(5);
+                    updateWelcomeGreeting();
                 } else if (message.startsWith('dialogs:')) {
                     const dialogs = JSON.parse(message.substring(8));
                     mergeDialogs(dialogs);
@@ -1112,6 +1192,10 @@
 
         // ── Список диалогов ──────────────────────────────────────────────────────
 
+        function updateWelcomeGreeting() {
+            welcomeGreeting.textContent = currentLogin ? `С возвращением, ${currentLogin}.` : '';
+        }
+
         usersList.addEventListener('click', (e) => {
             const li = e.target.closest('li');
             if (!li) return;
@@ -1121,6 +1205,13 @@
             sidebar.classList.remove('open');
             overlay.classList.remove('open');
             openDialog(currentUser);
+        });
+
+        welcomeDialogsList.addEventListener('click', (e) => {
+            const li = e.target.closest('li');
+            if (!li) return;
+            const user = li.getAttribute('data-user');
+            openDialog(user);
         });
 
         function addDialog(user) {
@@ -1148,9 +1239,15 @@
         }
 
         function renderDialogList() {
-            // Сохраняем активный элемент
             usersList.innerHTML = '';
-            Object.keys(historyState).forEach(user => {
+            welcomeDialogsList.innerHTML = '';
+
+            const logins = Object.keys(historyState);
+
+            logins.forEach(user => {
+                const count = unreadCount[user] || 0;
+
+                // Пункт в боковом меню
                 const li = document.createElement('li');
                 li.setAttribute('data-user', user);
                 if (user === currentUser) li.classList.add('active');
@@ -1159,7 +1256,6 @@
                 nameSpan.textContent = user;
                 li.appendChild(nameSpan);
 
-                const count = unreadCount[user] || 0;
                 if (count > 0) {
                     const badge = document.createElement('span');
                     badge.className = 'unread-badge';
@@ -1168,7 +1264,26 @@
                 }
 
                 usersList.appendChild(li);
+
+                // Тот же диалог в центральном приветственном экране
+                const welcomeLi = document.createElement('li');
+                welcomeLi.setAttribute('data-user', user);
+
+                const welcomeNameSpan = document.createElement('span');
+                welcomeNameSpan.textContent = user;
+                welcomeLi.appendChild(welcomeNameSpan);
+
+                if (count > 0) {
+                    const welcomeBadge = document.createElement('span');
+                    welcomeBadge.className = 'unread-badge';
+                    welcomeBadge.textContent = count;
+                    welcomeLi.appendChild(welcomeBadge);
+                }
+
+                welcomeDialogsList.appendChild(welcomeLi);
             });
+
+            welcomeEmptyHint.style.display = logins.length === 0 ? 'block' : 'none';
         }
 
         // ── История сообщений ────────────────────────────────────────────────────
@@ -1233,7 +1348,9 @@
         }
 
         function formatAudioSec(sec) {
-            if (!sec || sec < 0) return '0:00';
+            // isFinite отсекает и Infinity (WebM от MediaRecorder отдаёт audio.duration = Infinity
+            // до полного проигрывания — отсюда был "Infinity:NaN"), и NaN, и обычный 0/falsy случай.
+            if (!isFinite(sec) || sec < 0) return '0:00';
             const m = Math.floor(sec / 60);
             const s = Math.floor(sec) % 60;
             return m + ':' + String(s).padStart(2, '0');
@@ -1298,10 +1415,13 @@
             });
 
             audio.addEventListener('timeupdate', () => {
-                const dur = audio.duration || durationSec || 1;
-                const pct = (audio.currentTime / dur) * 100;
+                // audio.duration может быть Infinity (особенно у старых WebM-сообщений) —
+                // в этом случае используем длительность, пришедшую с сервера при записи.
+                const knownDuration = isFinite(audio.duration) && audio.duration > 0 ? audio.duration : durationSec;
+                const dur = knownDuration || 1;
+                const pct = Math.min((audio.currentTime / dur) * 100, 100);
                 progressFill.style.width = pct + '%';
-                const remaining = (audio.duration || durationSec) - audio.currentTime;
+                const remaining = dur - audio.currentTime;
                 durationLabel.textContent = formatAudioSec(remaining > 0 ? remaining : 0);
             });
 
@@ -1309,7 +1429,7 @@
             progressBar.addEventListener('click', (e) => {
                 const rect = progressBar.getBoundingClientRect();
                 const pct = (e.clientX - rect.left) / rect.width;
-                if (audio.duration) {
+                if (isFinite(audio.duration) && audio.duration > 0) {
                     audio.currentTime = pct * audio.duration;
                 } else if (durationSec) {
                     audio.currentTime = pct * durationSec;
@@ -1902,19 +2022,18 @@
 
         function updateFormState() {
             if (!currentUser) {
-                placeholder.style.display = 'block';
-                formArea.style.display = 'none';
+                inputArea.style.display = 'none';
+                welcomeScreen.style.display = 'flex';
+                messagesDiv.style.display = 'none';
                 offlineNotice.style.display = 'none';
-                messagesDiv.style.display = 'flex';
                 return;
             }
 
-            const isOnline = onlineUsers.includes(currentUser);
-
-            placeholder.style.display = 'none';
+            inputArea.style.display = 'flex';
             formArea.style.display = 'flex';
-            offlineNotice.style.display = 'none';
+            welcomeScreen.style.display = 'none';
             messagesDiv.style.display = 'flex';
+            offlineNotice.style.display = 'none';
         }
 
         async function loadUnreadCounts() {

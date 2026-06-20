@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -10,6 +12,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,7 +29,11 @@ type App struct {
 	db       *sql.DB
 	sessions map[string]Session
 	mu       sync.Mutex
-	clients  map[string]*Client
+	clients  map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
+
+	// defaultContact — логин пользователя с id=1, добавляется всем как контакт по умолчанию.
+	// Читается один раз при старте, чтобы не дёргать БД на каждую отправку списка диалогов.
+	defaultContact string
 }
 
 type Session struct {
@@ -34,10 +42,10 @@ type Session struct {
 }
 
 type Client struct {
-	login   string
-	conn    *websocket.Conn
-	send    chan []byte
-	dialogs map[string]bool
+	login string
+	conn  *websocket.Conn
+	send  chan []byte
+	done  chan struct{} // закрывается один раз в readPump при отключении
 }
 
 type Message struct {
@@ -73,14 +81,9 @@ var allowedImageMimes = map[string]bool{
 	"image/gif":  true,
 }
 
-var allowedAudioMimes = map[string]bool{
-	"audio/webm":  true,
-	"audio/ogg":   true,
-	"audio/mpeg":  true,
-	"audio/mp4":   true,
-	"audio/wav":   true,
-	"audio/x-wav": true,
-}
+// allowedAudioMimes больше не используется для проверки: любой входящий формат
+// (webm/ogg/mp4 и т.д.) пропускается через ffmpeg и приводится к единому audio/mp4 (AAC),
+// который гарантированно воспроизводится во всех браузерах, включая iOS Safari/WebKit.
 
 func generateToken() string {
 	bytes := make([]byte, 16)
@@ -121,7 +124,11 @@ func main() {
 	app := &App{
 		db:       db,
 		sessions: make(map[string]Session),
-		clients:  make(map[string]*Client),
+		clients:  make(map[string]map[*Client]bool),
+	}
+
+	if err := app.db.QueryRow("SELECT login FROM messenger.users WHERE id = 1").Scan(&app.defaultContact); err != nil {
+		log.Printf("Не удалось получить дефолтный контакт (id=1): %v", err)
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -229,41 +236,21 @@ func (a *App) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		login:   login,
-		conn:    conn,
-		send:    make(chan []byte, 256),
-		dialogs: make(map[string]bool),
-	}
-
-	// Загружаем диалоги из БД
-	dialogs, err := a.loadDialogsFromDB(login)
-	if err != nil {
-		log.Println("Ошибка загрузки диалогов:", err)
-	}
-	for _, d := range dialogs {
-		client.dialogs[d] = true
-	}
-
-	// Контакт по умолчанию (пользователь с id=1)
-	var defaultContactLogin string
-	a.db.QueryRow("SELECT login FROM messenger.users WHERE id = 1").Scan(&defaultContactLogin)
-
-	var currentUserID int
-	a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login).Scan(&currentUserID)
-
-	if currentUserID != 1 && defaultContactLogin != "" {
-		client.dialogs[defaultContactLogin] = true
+		login: login,
+		conn:  conn,
+		send:  make(chan []byte, 256),
+		done:  make(chan struct{}),
 	}
 
 	a.mu.Lock()
-	// Если уже есть старое соединение — закрываем его
-	if old, ok := a.clients[login]; ok {
-		close(old.send)
+	if a.clients[login] == nil {
+		a.clients[login] = make(map[*Client]bool)
 	}
-	a.clients[login] = client
+	a.clients[login][client] = true
+	deviceCount := len(a.clients[login])
 	a.mu.Unlock()
 
-	fmt.Printf("%s подключился\n", login)
+	fmt.Printf("%s подключился (устройств онлайн: %d)\n", login, deviceCount)
 
 	client.send <- []byte("user:" + login)
 	a.broadcastOnlineUsers()
@@ -507,11 +494,19 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) broadcastOnlineUsers() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	logins := make([]string, 0, len(a.clients))
+	var allClients []*Client
+	for login, conns := range a.clients {
+		logins = append(logins, login)
+		for c := range conns {
+			allClients = append(allClients, c)
+		}
+	}
+	a.mu.Unlock()
 
 	onlineList := "["
 	first := true
-	for login := range a.clients {
+	for _, login := range logins {
 		if !first {
 			onlineList += ","
 		}
@@ -520,8 +515,9 @@ func (a *App) broadcastOnlineUsers() {
 	}
 	onlineList += "]"
 
-	for _, client := range a.clients {
-		client.send <- []byte("online:" + onlineList)
+	payload := []byte("online:" + onlineList)
+	for _, c := range allClients {
+		c.trySend(payload)
 	}
 }
 
@@ -659,12 +655,6 @@ func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 		ImageMime: detectedMime,
 	}
 
-	a.mu.Lock()
-	if client, ok := a.clients[login]; ok {
-		client.dialogs[to] = true
-	}
-	a.mu.Unlock()
-
 	a.routeMessage(msg)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -747,6 +737,62 @@ func (a *App) saveAudioMessage(from, to string, audioData []byte, mime string, d
 }
 
 // handleUploadAudio — POST /upload-audio (multipart: file, to, duration)
+// outputAudioMime — единый формат, в который приводятся все голосовые сообщения.
+// AAC в MP4-контейнере воспроизводится нативно во всех браузерах и ОС, включая iOS Safari/WebKit,
+// который вообще не умеет декодировать WebM (а именно его пишут по умолчанию Chrome/Firefox/Android).
+const outputAudioMime = "audio/mp4"
+
+// transcodeAudioTimeout — на случай битого/огромного входного файла, чтобы ffmpeg не повис навечно.
+const transcodeAudioTimeout = 30 * time.Second
+
+// transcodeToAAC прогоняет входящие аудиоданные (любой формат, который сумел записать браузер —
+// webm/opus, ogg/opus, mp4/aac и т.д.) через ffmpeg и возвращает AAC в MP4-контейнере.
+// Пишем во временный файл, а не в stdout-pipe: MP4 требует seek для записи moov-атома,
+// а pipe не seekable — через файл получаем нормальный (нефрагментированный, +faststart) MP4,
+// который без сюрпризов проигрывается и сразу отдаёт корректную длительность в метаданных.
+func transcodeToAAC(input []byte) ([]byte, error) {
+	tmpDir, err := os.MkdirTemp("", "oshino-audio-*")
+	if err != nil {
+		return nil, fmt.Errorf("создание временной директории: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	inPath := filepath.Join(tmpDir, "in")
+	outPath := filepath.Join(tmpDir, "out.m4a")
+
+	if err := os.WriteFile(inPath, input, 0o600); err != nil {
+		return nil, fmt.Errorf("запись входного файла: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), transcodeAudioTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-y",
+		"-hide_banner", "-loglevel", "error",
+		"-i", inPath,
+		"-vn", // на случай если в контейнере вдруг есть видеодорожка/обложка — нам нужен только звук
+		"-c:a", "aac",
+		"-b:a", "64k",
+		"-ac", "1", // голосовые — моно, экономит место без потери разборчивости речи
+		"-movflags", "+faststart",
+		outPath,
+	)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	out, err := os.ReadFile(outPath)
+	if err != nil {
+		return nil, fmt.Errorf("чтение результата транскодирования: %w", err)
+	}
+	return out, nil
+}
+
 func (a *App) handleUploadAudio(w http.ResponseWriter, r *http.Request) {
 	login := a.getSessionLogin(r)
 	if login == "" {
@@ -808,23 +854,18 @@ func (a *App) handleUploadAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Определяем MIME по заголовку Content-Type файла (у аудио http.DetectContentType ненадёжен)
-	mimeType := header.Header.Get("Content-Type")
-	if mimeType == "" {
-		mimeType = "audio/webm"
-	}
-	// Нормализуем — убираем параметры вроде codecs=...
-	if idx := strings.Index(mimeType, ";"); idx != -1 {
-		mimeType = strings.TrimSpace(mimeType[:idx])
-	}
-	if !allowedAudioMimes[mimeType] {
+	// Приводим к единому формату независимо от того, что записал браузер отправителя —
+	// это снимает проблему совместимости при воспроизведении на стороне получателя.
+	transcoded, err := transcodeToAAC(audioData)
+	if err != nil {
+		log.Println("Ошибка транскодирования аудио:", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Недопустимый формат аудио"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось обработать аудиофайл"})
 		return
 	}
 
-	msgID, createdAt, err := a.saveAudioMessage(login, to, audioData, mimeType, durationSec)
+	msgID, createdAt, err := a.saveAudioMessage(login, to, transcoded, outputAudioMime, durationSec)
 	if err != nil {
 		log.Println("Ошибка сохранения голосового:", err)
 		http.Error(w, "Error", http.StatusInternalServerError)
@@ -838,12 +879,6 @@ func (a *App) handleUploadAudio(w http.ResponseWriter, r *http.Request) {
 		AudioID:       msgID,
 		AudioDuration: durationSec,
 	}
-
-	a.mu.Lock()
-	if client, ok := a.clients[login]; ok {
-		client.dialogs[to] = true
-	}
-	a.mu.Unlock()
 
 	a.routeMessage(msg)
 
@@ -896,18 +931,22 @@ func (a *App) handleGetAudio(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Cache-Control", "private, max-age=86400")
-	w.Header().Set("Accept-Ranges", "bytes")
-	w.Write(audioData)
+	// http.ServeContent сам выставит Accept-Ranges и корректно ответит 206 Partial Content
+	// на Range-запросы — Safari/iOS их шлёт всегда и без этого может не воспроизводить аудио вовсе.
+	http.ServeContent(w, r, "audio", time.Now(), bytes.NewReader(audioData))
 }
 
 func (c *Client) readPump(a *App) {
 	defer func() {
 		a.mu.Lock()
-		// Удаляем только если это именно наш клиент
-		if a.clients[c.login] == c {
-			delete(a.clients, c.login)
+		if conns, ok := a.clients[c.login]; ok {
+			delete(conns, c)
+			if len(conns) == 0 {
+				delete(a.clients, c.login)
+			}
 		}
 		a.mu.Unlock()
+		close(c.done)
 		c.conn.Close()
 		fmt.Printf("%s отключился\n", c.login)
 		a.broadcastOnlineUsers()
@@ -922,7 +961,7 @@ func (c *Client) readPump(a *App) {
 		msgStr := string(message)
 
 		if msgStr == "getdialogs" {
-			c.sendDialogs()
+			a.sendDialogsTo(c)
 		} else if len(msgStr) > 4 && msgStr[:4] == "msg:" {
 			var msg Message
 			json.Unmarshal([]byte(msgStr[4:]), &msg)
@@ -932,63 +971,98 @@ func (c *Client) readPump(a *App) {
 				log.Println("Ошибка сохранения сообщения:", err)
 			}
 			msg.CreatedAt = createdAt
-			// Добавляем диалог отправителю
-			c.dialogs[msg.To] = true
 			a.routeMessage(msg)
 		}
 	}
 }
 
 func (c *Client) writePump() {
-	defer func() {
-		// канал может быть уже закрыт при переподключении
-		recover()
-	}()
-	for msg := range c.send {
-		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-			break
+	for {
+		select {
+		case msg, ok := <-c.send:
+			if !ok {
+				return
+			}
+			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+		case <-c.done:
+			return
 		}
 	}
 }
 
-func (c *Client) sendDialogs() {
+// trySend — неблокирующая отправка. Если канал устройства переполнен (клиент завис/отвалился),
+// сообщение не доставляется именно этому устройству, но не блокирует рассылку остальным.
+func (c *Client) trySend(payload []byte) {
+	select {
+	case c.send <- payload:
+	default:
+		log.Printf("очередь отправки переполнена для %s, сообщение пропущено", c.login)
+	}
+}
+
+// sendDialogsTo отправляет клиенту актуальный список диалогов, прочитанный из БД
+// (источник истины один на все устройства логина, рассинхрон между девайсами исключён).
+func (a *App) sendDialogsTo(c *Client) {
+	dialogs, err := a.loadDialogsFromDB(c.login)
+	if err != nil {
+		log.Println("Ошибка загрузки диалогов:", err)
+	}
+
+	set := make(map[string]bool, len(dialogs)+1)
+	for _, d := range dialogs {
+		set[d] = true
+	}
+
+	if a.defaultContact != "" && !strings.EqualFold(a.defaultContact, c.login) {
+		set[a.defaultContact] = true
+	}
+
 	userList := "["
 	first := true
-	for user := range c.dialogs {
-		if first {
-			userList += "\""
-		} else {
-			userList += ",\""
+	for user := range set {
+		if !first {
+			userList += ","
 		}
-		userList += user + "\""
+		userList += "\"" + user + "\""
 		first = false
 	}
 	userList += "]"
 
-	c.send <- []byte("dialogs:" + userList)
+	c.trySend([]byte("dialogs:" + userList))
 }
 
+// routeMessage рассылает сообщение/ack на ВСЕ активные устройства логина-получателя
+// и логина-отправителя (мультидевайс), плюс обновляет список диалогов на затронутых устройствах.
 func (a *App) routeMessage(msg Message) {
-	// Отправляем получателю (если онлайн)
-	a.mu.Lock()
-	recipient, recipientOnline := a.clients[msg.To]
-	sender, senderOnline := a.clients[msg.From]
-	a.mu.Unlock()
+	toLogin := strings.ToLower(msg.To)
+	fromLogin := strings.ToLower(msg.From)
 
 	data, _ := json.Marshal(msg)
 	payload := append([]byte("msg:"), data...)
 	ackPayload := append([]byte("msgack:"), data...)
 
-	if recipientOnline {
-		// Добавляем диалог получателю в памяти
-		recipient.dialogs[msg.From] = true
-		recipient.send <- payload
-		recipient.sendDialogs()
+	a.mu.Lock()
+	recipients := make([]*Client, 0, len(a.clients[toLogin]))
+	for c := range a.clients[toLogin] {
+		recipients = append(recipients, c)
 	}
-	// Подтверждение отправителю с реальным временем из БД
-	if senderOnline {
-		sender.send <- ackPayload
-		sender.sendDialogs()
+	senders := make([]*Client, 0, len(a.clients[fromLogin]))
+	for c := range a.clients[fromLogin] {
+		senders = append(senders, c)
+	}
+	a.mu.Unlock()
+
+	// Получателю — само сообщение на все его устройства
+	for _, c := range recipients {
+		c.trySend(payload)
+		a.sendDialogsTo(c)
+	}
+	// Отправителю — подтверждение с реальным временем из БД на все его устройства
+	for _, c := range senders {
+		c.trySend(ackPayload)
+		a.sendDialogsTo(c)
 	}
 }
 
