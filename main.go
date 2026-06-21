@@ -1199,6 +1199,15 @@ func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 			log.Println("Ошибка отправки push:", err)
 			continue
 		}
+
+		// Любой статус вне диапазона 2xx логируем с телом ответа — раньше мы тихо
+		// игнорировали, например, 400/403 (некорректный VAPID, отозванная подписка
+		// и т.п.), и причина отказа просто терялась без следа в логах.
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, _ := io.ReadAll(resp.Body)
+			log.Printf("Push не доставлен (subscription id=%d, endpoint=%s): статус %d, ответ: %s",
+				s.id, s.endpoint, resp.StatusCode, strings.TrimSpace(string(body)))
+		}
 		resp.Body.Close()
 
 		if resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusNotFound {
