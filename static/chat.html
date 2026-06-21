@@ -912,42 +912,18 @@
             background: #5a3d3d;
         }
 
-        .call-mute-wrap {
-            position: relative;
-            display: inline-flex;
-        }
-
-        .call-action-speaker {
-            width: 52px;
-            height: 52px;
-            background: #444;
-        }
-
-        .call-action-speaker:hover { background: #555; }
-
-        .call-action-speaker.active {
-            background: #4a90e2;
-        }
-
+        /* Постоянная строка статуса под кнопками звонка — видна ровно то время,
+           пока микрофон действительно выключен, без таймера и автоскрытия. */
         #call-mute-label {
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            margin-bottom: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            font-size: 13px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s;
+            margin-top: 16px;
+            color: #e0a0a0;
+            font-size: 14px;
+            text-align: center;
+            display: none;
         }
 
         #call-mute-label.show {
-            opacity: 1;
+            display: block;
         }
 
         /* Desktop стили */
@@ -1227,21 +1203,12 @@
                         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
                     </svg>
                 </button>
-                <div class="call-mute-wrap">
-                    <button id="call-mute-btn" class="call-action-btn call-action-mute" title="Выключить микрофон" style="display: none;">
-                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="9" y="2" width="6" height="12" rx="3"></rect>
-                            <path d="M5 10a7 7 0 0 0 14 0"></path>
-                            <line x1="12" y1="19" x2="12" y2="22"></line>
-                            <line x1="8" y1="22" x2="16" y2="22"></line>
-                        </svg>
-                    </button>
-                    <div id="call-mute-label">Микрофон выключен</div>
-                </div>
-                <button id="call-speaker-btn" class="call-action-btn call-action-speaker" title="Включить громкую связь" style="display: none;">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
-                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <button id="call-mute-btn" class="call-action-btn call-action-mute" title="Выключить микрофон" style="display: none;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+                        <path d="M5 10a7 7 0 0 0 14 0"></path>
+                        <line x1="12" y1="19" x2="12" y2="22"></line>
+                        <line x1="8" y1="22" x2="16" y2="22"></line>
                     </svg>
                 </button>
                 <button id="call-accept-btn" class="call-action-btn call-action-accept" title="Принять" style="display: none;">
@@ -1250,6 +1217,7 @@
                     </svg>
                 </button>
             </div>
+            <div id="call-mute-label">Микрофон выключен</div>
         </div>
         <audio id="call-remote-audio" autoplay playsinline></audio>
     </div>
@@ -1302,7 +1270,6 @@
         const callRejectBtn = document.getElementById('call-reject-btn');
         const callMuteBtn = document.getElementById('call-mute-btn');
         const callMuteLabel = document.getElementById('call-mute-label');
-        const callSpeakerBtn = document.getElementById('call-speaker-btn');
         const callRemoteAudio = document.getElementById('call-remote-audio');
 
         // ── WebSocket ───────────────────────────────────────────────────────────
@@ -2458,11 +2425,8 @@
         let callStartedAt = null;
         let callTimerInterval = null;
         let isMuted = false;
-        let muteLabelTimeout = null;
         let incomingOfferSig = null; // сохранённый offer-сигнал, пока пользователь не ответил
-        let isSpeakerOn = false; // false = ушной динамик (по умолчанию), true = громкая связь
         let earpieceDeviceId = null;  // найденный sinkId ушного динамика (Android, если браузер его предоставляет)
-        let speakerDeviceId = null;   // найденный sinkId громкого динамика
 
         function genCallId() {
             if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -2528,7 +2492,6 @@
             callState = state;
             callAcceptBtn.style.display = state === 'incoming' ? 'flex' : 'none';
             callMuteBtn.style.display = state === 'connected' ? 'flex' : 'none';
-            callSpeakerBtn.style.display = state === 'connected' ? 'flex' : 'none';
             callRejectBtn.title = state === 'incoming' ? 'Отклонить' : 'Завершить';
 
             if (state === 'idle') {
@@ -2585,13 +2548,9 @@
             callRemoteAudio.srcObject = null;
             pendingRemoteCandidates = [];
             isMuted = false;
-            clearTimeout(muteLabelTimeout);
             callMuteLabel.classList.remove('show');
             setMuteButtonState(false);
-            isSpeakerOn = false;
             earpieceDeviceId = null;
-            speakerDeviceId = null;
-            callSpeakerBtn.classList.remove('active');
             try {
                 if ('audioSession' in navigator) navigator.audioSession.type = 'auto';
             } catch (e) {}
@@ -2824,30 +2783,24 @@
             isMuted = !isMuted;
             localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
             setMuteButtonState(isMuted);
-
-            clearTimeout(muteLabelTimeout);
-            if (isMuted) {
-                callMuteLabel.classList.add('show');
-                muteLabelTimeout = setTimeout(() => callMuteLabel.classList.remove('show'), 1800);
-            } else {
-                callMuteLabel.classList.remove('show');
-            }
+            // Метка показывается постоянно, пока микрофон выключен, и пропадает
+            // сразу, как только его снова включили — без таймера и автоскрытия.
+            callMuteLabel.classList.toggle('show', isMuted);
         });
 
-        // ── Маршрутизация звука звонка (ушной/громкий динамик) ──────────────────
+        // ── Маршрутизация звука звонка (динамик у уха по умолчанию) ─────────────
         //
         // У веб-страниц нет надёжного кроссбраузерного способа явно выбрать ушной
-        // или громкий динамик — платформы такого не дают. Делаем лучшее доступное:
-        //  - iOS Safari: Audio Session API (navigator.audioSession) — тип
-        //    'play-and-record' включает поведение "как настоящий звонок", по
-        //    умолчанию звук идёт в трубку у уха. Программно переключить обратно
-        //    на громкую связь через JS на iOS нельзя — это ограничение платформы,
-        //    пользователь может сделать это сам через системный пункт управления
-        //    звуком (значок маршрутизации в Пункте управления).
+        // или громкий динамик — платформы такого не дают. Делаем лучшее доступное
+        // для того, чтобы звонок по умолчанию шёл в трубку у уха, а не в громкую связь:
+        //  - iOS (Safari и любой другой браузер — на iOS все используют WebKit):
+        //    Audio Session API (navigator.audioSession) — тип 'play-and-record'
+        //    включает поведение "как настоящий звонок", по умолчанию звук идёт
+        //    в трубку у уха.
         //  - Android Chrome: HTMLMediaElement.setSinkId() + enumerateDevices() —
-        //    работает только если конкретное устройство и версия Chrome отдают
-        //    раздельные "earpiece"/"speaker" аудио-выходы. Если нет — переключение
-        //    тихо не сработает, звук останется на том канале, что был.
+        //    если конкретное устройство и версия Chrome отдают отдельный
+        //    "earpiece"-выход, используем его явно. Если нет — тихо остаёмся
+        //    на том канале, что есть по умолчанию.
         async function setupAudioRouting() {
             try {
                 if ('audioSession' in navigator) {
@@ -2856,47 +2809,22 @@
             } catch (e) {}
 
             earpieceDeviceId = null;
-            speakerDeviceId = null;
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 for (const d of devices) {
                     if (d.kind !== 'audiooutput') continue;
                     const label = d.label.toLowerCase();
-                    if (!earpieceDeviceId && (label.includes('earpiece') || label.includes('receiver'))) {
+                    if (label.includes('earpiece') || label.includes('receiver')) {
                         earpieceDeviceId = d.deviceId;
-                    }
-                    if (!speakerDeviceId && label.includes('speaker') && !label.includes('headset')) {
-                        speakerDeviceId = d.deviceId;
+                        break;
                     }
                 }
             } catch (e) {}
-
-            isSpeakerOn = false;
-            callSpeakerBtn.classList.remove('active');
-            callSpeakerBtn.title = 'Включить громкую связь';
 
             if (earpieceDeviceId && typeof callRemoteAudio.setSinkId === 'function') {
                 try { await callRemoteAudio.setSinkId(earpieceDeviceId); } catch (e) {}
             }
         }
-
-        async function toggleSpeaker() {
-            isSpeakerOn = !isSpeakerOn;
-            callSpeakerBtn.classList.toggle('active', isSpeakerOn);
-            callSpeakerBtn.title = isSpeakerOn ? 'Переключить на динамик у уха' : 'Включить громкую связь';
-
-            if (typeof callRemoteAudio.setSinkId !== 'function') return;
-
-            try {
-                if (isSpeakerOn) {
-                    await callRemoteAudio.setSinkId(speakerDeviceId || '');
-                } else if (earpieceDeviceId) {
-                    await callRemoteAudio.setSinkId(earpieceDeviceId);
-                }
-            } catch (e) {}
-        }
-
-        callSpeakerBtn.addEventListener('click', toggleSpeaker);
 
         // ── Logout ───────────────────────────────────────────────────────────────
 
