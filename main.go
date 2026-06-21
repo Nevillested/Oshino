@@ -102,14 +102,15 @@ type HistoryMessage struct {
 // Сервер не интерпретирует SDP/ICE содержимое, только маршрутизирует между
 // устройствами from/to — ровно так же, как Message, но без сохранения в БД.
 type CallSignal struct {
-	Type     string `json:"type"`               // call-offer | call-answer | call-ice | call-end | call-reject
-	From     string `json:"from"`
-	To       string `json:"to"`
-	CallID   string `json:"call_id"`             // генерируется звонящим, привязывает все сообщения одного звонка
-	SDP      string `json:"sdp,omitempty"`       // для offer/answer
-	SDPType  string `json:"sdp_type,omitempty"`  // "offer" | "answer"
+	Type      string `json:"type"`                // call-offer | call-answer | call-ice | call-end | call-reject | call-video-on | call-video-on-answer
+	From      string `json:"from"`
+	To        string `json:"to"`
+	CallID    string `json:"call_id"`             // генерируется звонящим, привязывает все сообщения одного звонка
+	SDP       string `json:"sdp,omitempty"`       // для offer/answer
+	SDPType   string `json:"sdp_type,omitempty"`  // "offer" | "answer"
 	Candidate string `json:"candidate,omitempty"` // ICE-кандидат (как JSON-строка от RTCIceCandidate)
-	Reason   string `json:"reason,omitempty"`     // причина для end/reject (busy, hangup, timeout, answered-elsewhere)
+	Reason    string `json:"reason,omitempty"`    // причина для end/reject (busy, hangup, timeout, answered-elsewhere)
+	Video     bool   `json:"video,omitempty"`     // true — звонок инициирован/идёт с видео (для call-offer: запрошено видео с самого начала)
 }
 
 var upgrader = websocket.Upgrader{
@@ -1154,44 +1155,6 @@ type pushNotificationPayload struct {
 //
 // Мёртвые подписки (410 Gone / 404 Not Found от push-службы — браузер отписался или
 // подписка истекла) удаляются из БД сразу же, чтобы не пытаться слать в пустоту вечно.
-// loggingHTTPClient — временная диагностическая обёртка вокруг http.Client,
-// которая печатает в лог заголовки и тело запроса перед отправкой в Apple Web
-// Push. Нужна, чтобы увидеть РЕАЛЬНЫЙ запрос, который собирает webpush-go,
-// а не гадать по фрагментам исходников — после того, как баг найден и
-// починен, этот код и его использование ниже стоит убрать.
-type loggingHTTPClient struct {
-	inner *http.Client
-}
-
-func (l *loggingHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	var bodyBytes []byte
-	if req.Body != nil {
-		bodyBytes, _ = io.ReadAll(req.Body)
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-	}
-	log.Printf("DEBUG[apple-push] %s %s", req.Method, req.URL.String())
-	for k, v := range req.Header {
-		log.Printf("DEBUG[apple-push] header %s: %v", k, v)
-	}
-	log.Printf("DEBUG[apple-push] body length: %d bytes", len(bodyBytes))
-	// Authorization обычно имеет вид "<scheme> t=<JWT>, k=<key>" либо просто
-	// "<scheme> <JWT>" — выводим JWT-claims отдельно, чтобы не вглядываться
-	// в base64 вручную.
-	if auth := req.Header.Get("Authorization"); auth != "" {
-		parts := strings.FieldsFunc(auth, func(r rune) bool { return r == ' ' || r == ',' })
-		for _, p := range parts {
-			jwtCandidate := strings.TrimPrefix(p, "t=")
-			segs := strings.Split(jwtCandidate, ".")
-			if len(segs) == 3 {
-				if claims, err := base64.RawURLEncoding.DecodeString(segs[1]); err == nil {
-					log.Printf("DEBUG[apple-push] JWT claims: %s", string(claims))
-				}
-			}
-		}
-	}
-	return l.inner.Do(req)
-}
-
 func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 	if a.vapidPublicKey == "" || a.vapidPrivateKey == "" {
 		return
@@ -1239,9 +1202,10 @@ func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 			VAPIDPrivateKey: a.vapidPrivateKey,
 			TTL:             60,
 		}
+		// Apple Web Push (web.push.apple.com) принимает только VAPID auth scheme
+		// "WebPush" — дефолтная "vapid" у этой библиотеки Apple не устраивает.
 		if strings.Contains(s.endpoint, "web.push.apple.com") {
 			opts.AuthScheme = webpush.WebPush
-			opts.HTTPClient = &loggingHTTPClient{inner: http.DefaultClient}
 		}
 
 		resp, err := webpush.SendNotification(data, &webpush.Subscription{
@@ -1490,7 +1454,7 @@ func (a *App) routeMessage(msg Message) {
 // callPrefixes — допустимые префиксы WS-сообщений сигналинга звонков.
 // Порядок не важен, но "call-" префикс у всех общий — сверяем целиком, чтобы
 // не путать с "call-answer:" внутри "call-answer-foo:" и т.п.
-var callPrefixes = []string{"call-offer:", "call-answer:", "call-ice:", "call-end:", "call-reject:"}
+var callPrefixes = []string{"call-offer:", "call-answer:", "call-ice:", "call-end:", "call-reject:", "call-video-on:", "call-video-on-answer:"}
 
 // cutCallPrefix проверяет, начинается ли сообщение с одного из call-префиксов,
 // и если да — возвращает префикс без двоеточия и остаток (JSON-тело).
@@ -1637,11 +1601,15 @@ func (a *App) routeCallSignal(sig CallSignal, from *Client) {
 	// не нужен: они имеют смысл только в рамках уже идущего разговора.
 	if sig.Type == "call-offer" && len(recipients) == 0 {
 		a.storePendingCall(toLogin, sig)
+		callBody := "Входящий звонок"
+		if sig.Video {
+			callBody = "Видеозвонок"
+		}
 		go a.sendPushToLogin(sig.To, pushNotificationPayload{
 			Type:   "call",
 			From:   sig.From,
 			Title:  sig.From,
-			Body:   "Входящий звонок",
+			Body:   callBody,
 			CallID: sig.CallID,
 		})
 	}
