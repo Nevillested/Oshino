@@ -1186,15 +1186,25 @@ func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 	data, _ := json.Marshal(payload)
 
 	for _, s := range subs {
-		resp, err := webpush.SendNotification(data, &webpush.Subscription{
-			Endpoint: s.endpoint,
-			Keys:     webpush.Keys{P256dh: s.p256, Auth: s.au},
-		}, &webpush.Options{
+		opts := &webpush.Options{
 			Subscriber:      a.vapidContact,
 			VAPIDPublicKey:  a.vapidPublicKey,
 			VAPIDPrivateKey: a.vapidPrivateKey,
 			TTL:             60,
-		})
+		}
+		// Apple Web Push (web.push.apple.com) принимает только современную VAPID
+		// auth scheme "WebPush" (актуальное по RFC8292 имя схемы) и отвечает
+		// 403 BadJwtToken на устаревшую схему "vapid" (дефолт библиотеки,
+		// используемый Firefox и до сих пор принимаемый FCM/Android) — отсюда и
+		// расхождение: на FCM всё работало, на Apple — нет, при идентичном коде.
+		if strings.Contains(s.endpoint, "web.push.apple.com") {
+			opts.AuthScheme = webpush.WebPush
+		}
+
+		resp, err := webpush.SendNotification(data, &webpush.Subscription{
+			Endpoint: s.endpoint,
+			Keys:     webpush.Keys{P256dh: s.p256, Auth: s.au},
+		}, opts)
 		if err != nil {
 			log.Println("Ошибка отправки push:", err)
 			continue
