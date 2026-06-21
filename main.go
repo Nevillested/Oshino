@@ -221,6 +221,14 @@ func main() {
 		w.Header().Set("Service-Worker-Allowed", "/")
 		http.ServeFile(w, r, "static/sw.js")
 	})
+	// icons/ — лежит на верхнем уровне проекта (не внутри static/), раздаём отдельной
+	// директорией: иконка вкладки, главного экрана iOS/Android и push-уведомлений — один
+	// и тот же файл, используемый сразу в нескольких местах разметки и в sw.js.
+	http.Handle("/icons/", http.StripPrefix("/icons/", http.FileServer(http.Dir("icons"))))
+	http.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		http.ServeFile(w, r, "static/manifest.json")
+	})
 	http.HandleFunc("/login", app.handleLogin)
 	http.HandleFunc("/chat", app.handleChat)
 	http.HandleFunc("/ws", app.handleWS)

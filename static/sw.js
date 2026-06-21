@@ -33,8 +33,8 @@ self.addEventListener('push', (event) => {
 
     const options = {
         body: payload.body || '',
-        icon: '/static/icon-192.png',
-        badge: '/static/icon-192.png',
+        icon: '/icons/icon_192.png',
+        badge: '/icons/icon_192.png',
         tag: isCall ? 'oshino-call-' + (payload.call_id || payload.from) : 'oshino-message-' + payload.from,
         // renotify — даже если уведомление с тем же tag уже показано (например,
         // предыдущее сообщение от этого же собеседника), новое всё равно
