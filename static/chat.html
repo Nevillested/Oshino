@@ -3010,14 +3010,18 @@
             if (callState !== 'incoming' || !incomingOfferSig) return;
             const sig = incomingOfferSig;
             incomingOfferSig = null;
-            const wantVideo = !!sig.video;
 
+            // Звонок принимается ВСЕГДА с выключенной камерой, даже если это
+            // видеозвонок — собеседник увидит "Видеозвонок" в статусе и решит сам,
+            // включать ли своё видео отдельным тапом. Так камера физически не
+            // включается без явного действия человека, даже на долю секунды.
+            // Если звонящий передаёт видео, наш ответ (createAnswer) и так корректно
+            // согласует видео-m-line как recvonly: мы получаем его картинку, не
+            // отправляя свою — отдельной логики для этого не нужно.
             try {
-                const constraints = { audio: true };
-                if (wantVideo) constraints.video = { facingMode: currentFacingMode };
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             } catch (e) {
-                alert(wantVideo ? 'Нет доступа к камере или микрофону' : 'Нет доступа к микрофону');
+                alert('Нет доступа к микрофону');
                 sendCallSignal('call-reject', { to: sig.from, call_id: sig.call_id, reason: 'no-mic' });
                 setCallUI('idle');
                 callPeerLogin = null;
@@ -3037,16 +3041,7 @@
                 return;
             }
 
-            localStream.getTracks().forEach(track => {
-                const sender = pc.addTrack(track, localStream);
-                if (track.kind === 'video') videoSender = sender;
-            });
-
-            if (wantVideo) {
-                videoEnabled = true;
-                callLocalVideo.srcObject = localStream;
-                await detectMultipleCameras();
-            }
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
             updateVideoUIState();
 
             await pc.setRemoteDescription({ type: 'offer', sdp: sig.sdp });
@@ -3165,6 +3160,17 @@
             <path d="M17 16.95A7 7 0 0 1 5 10v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
             <line x1="12" y1="19" x2="12" y2="22"></line>
             <line x1="8" y1="22" x2="16" y2="22"></line>
+        </svg>`;
+
+        const cameraOnIcon = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+        </svg>`;
+        const cameraOffIcon = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="1" y1="1" x2="23" y2="23"></line>
+            <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"></path>
+            <path d="M9 5h5a2 2 0 0 1 2 2v5"></path>
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
         </svg>`;
 
         function setMuteButtonState(muted) {
@@ -3300,6 +3306,7 @@
         // с текущим состоянием (своё видео вкл/выкл, видео собеседника активно/нет).
         function updateVideoUIState() {
             callLocalVideo.classList.toggle('show', videoEnabled);
+            callVideoBtn.innerHTML = videoEnabled ? cameraOnIcon : cameraOffIcon;
             callVideoBtn.classList.toggle('active', videoEnabled);
             callVideoBtn.title = videoEnabled ? 'Выключить камеру' : 'Включить камеру';
             callFlipCameraBtn.style.display = (videoEnabled && hasMultipleCameras) ? 'flex' : 'none';
