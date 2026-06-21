@@ -1337,6 +1337,77 @@
         });
 
         connectWS();
+        initPushNotifications();
+
+        // ── Push-уведомления ─────────────────────────────────────────────────────
+
+        // base64UrlToUint8Array конвертирует VAPID public key (base64url-строка)
+        // в формат, который требует PushManager.subscribe() (Uint8Array).
+        function base64UrlToUint8Array(base64Url) {
+            const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
+            const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const raw = atob(base64);
+            const arr = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+            return arr;
+        }
+
+        // initPushNotifications регистрирует Service Worker и оформляет push-подписку.
+        // Делается тихо в фоне при загрузке чата: если браузер/устройство не поддерживает
+        // Push API (или пользователь уже отказал в разрешении ранее), просто ничего не происходит —
+        // это не блокирует и не ломает остальной функционал приложения.
+        async function initPushNotifications() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                console.log('Push-уведомления не поддерживаются этим браузером');
+                return;
+            }
+
+            try {
+                const registration = await navigator.serviceWorker.register('/sw.js');
+
+                // Уже есть активная подписка из прошлого визита — переотправим её на сервер
+                // на случай, если запись в БД устарела (например, после переустановки БД),
+                // но самого пользователя заново спрашивать разрешение не нужно.
+                let subscription = await registration.pushManager.getSubscription();
+                if (subscription) {
+                    await sendSubscriptionToServer(subscription);
+                    return;
+                }
+
+                // Разрешение запрашиваем не сразу при заходе в чат, а только если пользователь
+                // ранее не отвечал (default) — если уже отказал (denied), не дёргаем повторно
+                // на каждой загрузке страницы, это раздражает.
+                if (Notification.permission === 'denied') return;
+
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') return;
+
+                const keyResp = await fetch('/push-public-key');
+                if (!keyResp.ok) return;
+                const { publicKey } = await keyResp.json();
+
+                subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: base64UrlToUint8Array(publicKey)
+                });
+
+                await sendSubscriptionToServer(subscription);
+            } catch (e) {
+                console.log('Не удалось настроить push-уведомления:', e);
+            }
+        }
+
+        async function sendSubscriptionToServer(subscription) {
+            try {
+                await fetch('/push-subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription.toJSON())
+                });
+            } catch (e) {
+                console.log('Не удалось отправить push-подписку на сервер:', e);
+            }
+        }
 
         // ── Sidebar ─────────────────────────────────────────────────────────────
 

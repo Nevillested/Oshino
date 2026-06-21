@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -42,6 +44,13 @@ type App struct {
 	// (TURN REST API, см. coturn use-auth-secret/static-auth-secret).
 	// Никогда не покидает сервер: фронтенду отдаём только готовые username/password.
 	turnSecret string
+
+	// VAPID-ключи для Web Push (см. https://datatracker.ietf.org/doc/html/rfc8292).
+	// Публичный ключ отдаётся фронтенду для PushManager.subscribe(),
+	// приватный используется только сервером для подписи push-сообщений.
+	vapidPublicKey  string
+	vapidPrivateKey string
+	vapidContact    string // mailto: или https:-адрес для VAPID claim (sub)
 }
 
 type Session struct {
@@ -116,6 +125,23 @@ func generateToken() string {
 func main() {
 	fmt.Println("Oshino запускается...")
 
+	// Однократная утилита: `./oshino -gen-vapid` печатает новую пару VAPID-ключей
+	// и сразу выходит, не трогая БД/сеть. Ключи нужно вручную один раз вписать
+	// в my_cfg (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY) — после этого флаг больше не нужен.
+	genVapid := flag.Bool("gen-vapid", false, "сгенерировать новую пару VAPID-ключей и выйти")
+	flag.Parse()
+
+	if *genVapid {
+		priv, pub, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			log.Fatalf("Не удалось сгенерировать VAPID-ключи: %v", err)
+		}
+		fmt.Println("Сгенерированы новые VAPID-ключи. Добавьте в my_cfg:")
+		fmt.Println("VAPID_PUBLIC_KEY=" + pub)
+		fmt.Println("VAPID_PRIVATE_KEY=" + priv)
+		return
+	}
+
 	err := godotenv.Load("my_cfg")
 	if err != nil {
 		log.Fatalf("Ошибка чтения my_cfg: %v", err)
@@ -144,14 +170,24 @@ func main() {
 	fmt.Println("Подключение к PostgreSQL успешно!")
 
 	app := &App{
-		db:         db,
-		sessions:   make(map[string]Session),
-		clients:    make(map[string]map[*Client]bool),
-		turnSecret: os.Getenv("TURN_SECRET"),
+		db:              db,
+		sessions:        make(map[string]Session),
+		clients:         make(map[string]map[*Client]bool),
+		turnSecret:      os.Getenv("TURN_SECRET"),
+		vapidPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
+		vapidPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
+		vapidContact:    os.Getenv("VAPID_CONTACT"), // например, mailto:admin@oshino.space
 	}
 
 	if app.turnSecret == "" {
 		log.Println("ВНИМАНИЕ: TURN_SECRET не задан в my_cfg — звонки работать не будут (TURN credentials не сгенерировать)")
+	}
+
+	if app.vapidPublicKey == "" || app.vapidPrivateKey == "" {
+		log.Println("ВНИМАНИЕ: VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY не заданы в my_cfg — push-уведомления работать не будут. Сгенерировать: ./oshino -gen-vapid")
+	}
+	if app.vapidContact == "" {
+		app.vapidContact = "mailto:admin@oshino.space"
 	}
 
 	if err := app.db.QueryRow("SELECT login FROM messenger.users WHERE id = 1").Scan(&app.defaultContact); err != nil {
@@ -160,6 +196,15 @@ func main() {
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/index.html")
+	})
+	http.HandleFunc("/sw.js", func(w http.ResponseWriter, r *http.Request) {
+		// Service Worker обязательно должен отдаваться с корневого пути (не из /static/),
+		// иначе его scope ограничится только /static/* и push не будет работать для /chat.
+		w.Header().Set("Content-Type", "application/javascript")
+		// Service-Worker-Allowed на всякий случай — явное расширение scope, хотя при
+		// раздаче с корня браузер и так выберет scope "/" по умолчанию.
+		w.Header().Set("Service-Worker-Allowed", "/")
+		http.ServeFile(w, r, "static/sw.js")
 	})
 	http.HandleFunc("/login", app.handleLogin)
 	http.HandleFunc("/chat", app.handleChat)
@@ -174,6 +219,9 @@ func main() {
 	http.HandleFunc("/upload-audio", app.handleUploadAudio)
 	http.HandleFunc("/audio/", app.handleGetAudio)
 	http.HandleFunc("/turn-credentials", app.handleTurnCredentials)
+	http.HandleFunc("/push-public-key", app.handlePushPublicKey)
+	http.HandleFunc("/push-subscribe", app.handlePushSubscribe)
+	http.HandleFunc("/push-unsubscribe", app.handlePushUnsubscribe)
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -964,6 +1012,185 @@ func (a *App) handleGetAudio(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "audio", time.Now(), bytes.NewReader(audioData))
 }
 
+// ── Push-уведомления (Web Push API) ─────────────────────────────────────────
+
+// PushSubscriptionPayload — то, что присылает PushManager.subscribe() на фронте
+// (стандартная форма PushSubscription.toJSON()).
+type PushSubscriptionPayload struct {
+	Endpoint string `json:"endpoint"`
+	Keys     struct {
+		P256dh string `json:"p256dh"`
+		Auth   string `json:"auth"`
+	} `json:"keys"`
+}
+
+// handlePushPublicKey — GET /push-public-key
+// Отдаёт публичный VAPID-ключ, нужен фронтенду для PushManager.subscribe()
+// (applicationServerKey). Не требует авторизации — это публичный ключ по определению.
+func (a *App) handlePushPublicKey(w http.ResponseWriter, r *http.Request) {
+	if a.vapidPublicKey == "" {
+		http.Error(w, "Push не настроен на сервере", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"publicKey": a.vapidPublicKey})
+}
+
+// handlePushSubscribe — POST /push-subscribe
+// Сохраняет (или обновляет, если endpoint уже существует) push-подписку текущего
+// пользователя. Один логин может иметь несколько подписок одновременно (разные
+// устройства/браузеры) — ограничения на endpoint нет, кроме UNIQUE в БД.
+func (a *App) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var sub PushSubscriptionPayload
+	if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
+		http.Error(w, "Некорректное тело запроса", http.StatusBadRequest)
+		return
+	}
+	if sub.Endpoint == "" || sub.Keys.P256dh == "" || sub.Keys.Auth == "" {
+		http.Error(w, "Неполная подписка", http.StatusBadRequest)
+		return
+	}
+
+	var userID int
+	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&userID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	_, err := a.db.Exec(`
+		INSERT INTO messenger.push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (endpoint) DO UPDATE
+		SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth
+	`, userID, sub.Endpoint, sub.Keys.P256dh, sub.Keys.Auth)
+	if err != nil {
+		log.Println("Ошибка сохранения push-подписки:", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// handlePushUnsubscribe — POST /push-unsubscribe
+// Удаляет подписку по endpoint (вызывается при PushManager.unsubscribe() на фронте,
+// например когда пользователь явно выключает уведомления в браузере).
+func (a *App) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Endpoint == "" {
+		http.Error(w, "Некорректное тело запроса", http.StatusBadRequest)
+		return
+	}
+
+	_, err := a.db.Exec("DELETE FROM messenger.push_subscriptions WHERE endpoint = $1", body.Endpoint)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// pushNotificationPayload — JSON, который попадёт в event.data внутри Service Worker
+// (sw.js его парсит и решает, какой заголовок/текст/действие показать).
+type pushNotificationPayload struct {
+	Type  string `json:"type"`            // "call" | "message"
+	From  string `json:"from"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	CallID string `json:"call_id,omitempty"`
+}
+
+// sendPushToLogin отправляет push-уведомление на ВСЕ сохранённые подписки логина.
+// Используется только когда получатель полностью оффлайн (ни одного активного WS) —
+// если есть хоть одно живое соединение, доставка идёт через routeMessage/routeCallSignal,
+// и дублирующий push был бы просто шумом поверх уже работающего realtime-уведомления.
+//
+// Мёртвые подписки (410 Gone / 404 Not Found от push-службы — браузер отписался или
+// подписка истекла) удаляются из БД сразу же, чтобы не пытаться слать в пустоту вечно.
+func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
+	if a.vapidPublicKey == "" || a.vapidPrivateKey == "" {
+		return
+	}
+
+	var userID int
+	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&userID); err != nil {
+		return
+	}
+
+	rows, err := a.db.Query("SELECT id, endpoint, p256dh, auth FROM messenger.push_subscriptions WHERE user_id = $1", userID)
+	if err != nil {
+		log.Println("Ошибка чтения push-подписок:", err)
+		return
+	}
+	defer rows.Close()
+
+	type subRow struct {
+		id                 int
+		endpoint, p256, au string
+	}
+	var subs []subRow
+	for rows.Next() {
+		var s subRow
+		if err := rows.Scan(&s.id, &s.endpoint, &s.p256, &s.au); err == nil {
+			subs = append(subs, s)
+		}
+	}
+
+	data, _ := json.Marshal(payload)
+
+	for _, s := range subs {
+		resp, err := webpush.SendNotification(data, &webpush.Subscription{
+			Endpoint: s.endpoint,
+			Keys:     webpush.Keys{P256dh: s.p256, Auth: s.au},
+		}, &webpush.Options{
+			Subscriber:      a.vapidContact,
+			VAPIDPublicKey:  a.vapidPublicKey,
+			VAPIDPrivateKey: a.vapidPrivateKey,
+			TTL:             60,
+		})
+		if err != nil {
+			log.Println("Ошибка отправки push:", err)
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusNotFound {
+			a.db.Exec("DELETE FROM messenger.push_subscriptions WHERE id = $1", s.id)
+		}
+	}
+}
+
+// isLoginOnline — true, если у логина сейчас есть хотя бы одно активное WS-соединение.
+func (a *App) isLoginOnline(login string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	conns, ok := a.clients[strings.ToLower(login)]
+	return ok && len(conns) > 0
+}
+
 // turnCredentialsTTL — срок жизни сгенерированных TURN credentials.
 // Час с запасом перекрывает любой разумный голосовой звонок; даже если он
 // затянется, ICE-сессия, однажды установленная, не обрывается по истечении
@@ -1152,6 +1379,26 @@ func (a *App) routeMessage(msg Message) {
 		c.trySend(ackPayload)
 		a.sendDialogsTo(c)
 	}
+
+	// Получатель оффлайн (ни одного активного WS) — шлём push вместо realtime-доставки.
+	// Если получатель онлайн, recipients уже не пуст и push был бы дублирующим шумом.
+	if len(recipients) == 0 {
+		body := msg.Text
+		switch {
+		case msg.ImageID != 0:
+			body = "📷 Фото"
+		case msg.AudioID != 0:
+			body = "🎤 Голосовое сообщение"
+		case body == "":
+			body = "Новое сообщение"
+		}
+		go a.sendPushToLogin(msg.To, pushNotificationPayload{
+			Type:  "message",
+			From:  msg.From,
+			Title: msg.From,
+			Body:  body,
+		})
+	}
 }
 
 // callPrefixes — допустимые префиксы WS-сообщений сигналинга звонков.
@@ -1198,6 +1445,20 @@ func (a *App) routeCallSignal(sig CallSignal, from *Client) {
 
 	for _, c := range recipients {
 		c.trySend(payload)
+	}
+
+	// Получатель оффлайн — на входящий звонок шлём push, иначе человек просто не узнает
+	// о звонке, пока сам не откроет вкладку. Для остальных типов сигналов (answer/ice/
+	// end/reject) push не нужен: они имеют смысл только в рамках уже идущего разговора,
+	// который немыслим без открытой вкладки с активным WS на обеих сторонах.
+	if sig.Type == "call-offer" && len(recipients) == 0 {
+		go a.sendPushToLogin(sig.To, pushNotificationPayload{
+			Type:   "call",
+			From:   sig.From,
+			Title:  sig.From,
+			Body:   "Входящий звонок",
+			CallID: sig.CallID,
+		})
 	}
 
 	if sig.Type == "call-answer" || sig.Type == "call-reject" || sig.Type == "call-end" {
