@@ -139,6 +139,14 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
     (user_id ASC NULLS LAST)
     TABLESPACE pg_default;
 
+-- ── Звонки как записи в чате (как в Telegram) ───────────────────────────────
+-- Звонок логируется как обычное сообщение (content = '', без текста), но с
+-- этими тремя полями — отображается в чате отдельной системной отметкой,
+-- а не обычным пузырём с текстом.
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS call_type character varying(10);
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS call_status character varying(20);
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS call_duration integer;
+
 -- ============================================================================
 -- Конец файла. Новые изменения схемы дописывать ниже этой черты.
 -- ============================================================================

@@ -59,6 +59,24 @@ type App struct {
 	// Отдельный мьютекс — не a.mu, чтобы не пересекаться с блокировками карты клиентов.
 	pendingCalls map[string]*PendingCall
 	callMu       sync.Mutex
+
+	// activeCalls отслеживает исход КАЖДОГО звонка (онлайн или нет) от call-offer
+	// до его разрешения (answer/reject/end/таймаут), чтобы по завершении сохранить
+	// в БД и доставить системную запись о звонке — отвечен/отклонён/пропущен,
+	// и если отвечен, то сколько длился. Тот же callMu, что и у pendingCalls —
+	// оба про жизненный цикл звонка, а не про карту клиентских соединений.
+	activeCalls map[string]*activeCallInfo
+}
+
+// activeCallInfo — состояние звонка для последующего логирования. from/to —
+// исходные участники из call-offer (направление не меняется, кто бы потом ни
+// положил трубку). answeredAt проставляется при call-answer; если к моменту
+// разрешения звонка она так и осталась nil — звонок был отклонён или пропущен.
+type activeCallInfo struct {
+	from       string
+	to         string
+	video      bool
+	answeredAt *time.Time
 }
 
 // PendingCall хранит исходный call-offer и таймер автоматического "не отвечает".
@@ -89,6 +107,13 @@ type Message struct {
 	ImageMime     string `json:"image_mime,omitempty"`
 	AudioID       int    `json:"audio_id,omitempty"`
 	AudioDuration int    `json:"audio_duration,omitempty"`
+	// Поля системной записи о звонке (см. saveCallMessage) — звонок логируется как
+	// сообщение без текста, с этими полями, и отображается в чате отдельной
+	// "системной" отметкой, как в Telegram, а не обычным пузырём.
+	CallMsgID    int    `json:"call_msg_id,omitempty"`
+	CallType     string `json:"call_type,omitempty"`   // "audio" | "video"
+	CallStatus   string `json:"call_status,omitempty"` // "answered" | "missed" | "declined"
+	CallDuration *int   `json:"call_duration,omitempty"` // секунды; nil — звонок не был отвечен
 }
 
 type HistoryMessage struct {
@@ -193,6 +218,7 @@ func main() {
 		vapidPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
 		vapidContact:    os.Getenv("VAPID_CONTACT"), // например, mailto:admin@oshino.space
 		pendingCalls:    make(map[string]*PendingCall),
+		activeCalls:     make(map[string]*activeCallInfo),
 	}
 
 	if app.turnSecret == "" {
@@ -513,10 +539,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		rows, err = a.db.Query(`
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
 			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
-			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration
+			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
+			       m.call_type, m.call_status, m.call_duration
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
-				       audio_data, audio_duration
+				       audio_data, audio_duration, call_type, call_status, call_duration
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				ORDER BY id DESC
@@ -529,10 +556,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		rows, err = a.db.Query(`
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
 			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
-			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration
+			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
+			       m.call_type, m.call_status, m.call_duration
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
-				       audio_data, audio_duration
+				       audio_data, audio_duration, call_type, call_status, call_duration
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				ORDER BY id DESC
@@ -560,6 +588,9 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		ImageMime     string `json:"image_mime,omitempty"`
 		AudioID       int    `json:"audio_id,omitempty"`
 		AudioDuration int    `json:"audio_duration,omitempty"`
+		CallType      string `json:"call_type,omitempty"`
+		CallStatus    string `json:"call_status,omitempty"`
+		CallDuration  *int   `json:"call_duration,omitempty"`
 	}
 
 	var messages []HistMsg
@@ -569,9 +600,12 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var imageMime, imageFilename sql.NullString
 		var hasImage, hasAudio bool
 		var audioDuration sql.NullInt64
+		var callType, callStatus sql.NullString
+		var callDuration sql.NullInt64
 		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
 			&imageMime, &imageFilename, &hasImage,
-			&hasAudio, &audioDuration)
+			&hasAudio, &audioDuration,
+			&callType, &callStatus, &callDuration)
 		m.Own = strings.EqualFold(m.From, login)
 		m.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		if hasImage {
@@ -582,6 +616,14 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		if hasAudio {
 			m.AudioID = m.ID
 			m.AudioDuration = int(audioDuration.Int64)
+		}
+		if callType.Valid {
+			m.CallType = callType.String
+			m.CallStatus = callStatus.String
+			if callDuration.Valid {
+				d := int(callDuration.Int64)
+				m.CallDuration = &d
+			}
 		}
 		messages = append(messages, m)
 	}
@@ -830,6 +872,42 @@ func (a *App) saveAudioMessage(from, to string, audioData []byte, mime string, d
 		VALUES ($1, $2, '', $3, $4, $5)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
 	`, convID, senderID, audioData, mime, duration).Scan(&msgID, &createdAt)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return msgID, createdAt.UTC().Format(time.RFC3339), nil
+}
+
+// saveCallMessage сохраняет в БД системную запись о завершённом звонке — как
+// сообщение без текста, с call_type/call_status/call_duration. from — тот, кто
+// ЗВОНИЛ (инициатор оригинального call-offer), не тот, кто сейчас кладёт трубку.
+// duration — nil, если звонок не был отвечен (declined/missed).
+func (a *App) saveCallMessage(from, to, callType, callStatus string, duration *int) (int, string, error) {
+	convID, err := a.getOrCreateConversation(from, to)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var senderID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	// Отвеченный звонок не должен накручивать счётчик непрочитанных — обе
+	// стороны и так только что были на связи. Непрочитанной остаётся только
+	// запись о пропущенном/отклонённом звонке — ровно так это и выглядит в
+	// привычных мессенджерах.
+	isRead := callStatus == "answered"
+
+	var msgID int
+	var createdAt time.Time
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, call_type, call_status, call_duration, is_read)
+		VALUES ($1, $2, '', $3, $4, $5, $6)
+		RETURNING id, created_at AT TIME ZONE 'UTC'
+	`, convID, senderID, callType, callStatus, duration, isRead).Scan(&msgID, &createdAt)
 	if err != nil {
 		return 0, "", err
 	}
@@ -1398,9 +1476,13 @@ func (a *App) sendDialogsTo(c *Client) {
 	c.trySend([]byte("dialogs:" + userList))
 }
 
-// routeMessage рассылает сообщение/ack на ВСЕ активные устройства логина-получателя
-// и логина-отправителя (мультидевайс), плюс обновляет список диалогов на затронутых устройствах.
-func (a *App) routeMessage(msg Message) {
+// deliverRealtime — общая часть доставки: рассылает payload на все активные
+// устройства логина-получателя и логина-отправителя (мультидевайс), обновляет
+// список диалогов на затронутых устройствах. Возвращает true, если у
+// получателя не было ни одного активного устройства — вызывающий код сам
+// решает, нужен ли в этом случае push (для звонков он, как правило, уже был
+// отправлен раньше через сигналинг, и слать его второй раз тут не нужно).
+func (a *App) deliverRealtime(msg Message) (recipientOffline bool) {
 	toLogin := strings.ToLower(msg.To)
 	fromLogin := strings.ToLower(msg.From)
 
@@ -1430,9 +1512,13 @@ func (a *App) routeMessage(msg Message) {
 		a.sendDialogsTo(c)
 	}
 
-	// Получатель оффлайн (ни одного активного WS) — шлём push вместо realtime-доставки.
-	// Если получатель онлайн, recipients уже не пуст и push был бы дублирующим шумом.
-	if len(recipients) == 0 {
+	return len(recipients) == 0
+}
+
+// routeMessage рассылает обычное сообщение (текст/картинка/голосовое) и, если
+// получатель полностью оффлайн, отправляет push вместо realtime-доставки.
+func (a *App) routeMessage(msg Message) {
+	if a.deliverRealtime(msg) {
 		body := msg.Text
 		switch {
 		case msg.ImageID != 0:
@@ -1449,6 +1535,15 @@ func (a *App) routeMessage(msg Message) {
 			Body:  body,
 		})
 	}
+}
+
+// deliverCallLogMessage доставляет системную запись о звонке в реальном
+// времени — без push: звонок уже либо состоялся при том, что обе стороны были
+// на связи, либо push по нему уже отправлен через сигналинг звонка
+// (storePendingCall на call-offer / expirePendingCall по таймауту) — повторный
+// push здесь был бы просто дублирующим шумом поверх уже доставленного.
+func (a *App) deliverCallLogMessage(msg Message) {
+	a.deliverRealtime(msg)
 }
 
 // callPrefixes — допустимые префиксы WS-сообщений сигналинга звонков.
@@ -1543,6 +1638,62 @@ func (a *App) expirePendingCall(recipientLogin, callID string) {
 	for _, c := range callerClients {
 		c.trySend(payload)
 	}
+
+	a.finishCallLog(callID, "timeout")
+}
+
+// finishCallLog читает и удаляет состояние звонка из activeCalls и, если оно
+// найдено, сохраняет и доставляет системную запись о его исходе (отвечен —
+// с длительностью, отклонён или пропущен). Безопасно вызывать с одним и тем же
+// callID повторно — вторая попытка просто не найдёт запись и ничего не сделает,
+// благодаря этому не нужно отдельно следить, кто из путей завершения звонка
+// сработал первым.
+func (a *App) finishCallLog(callID, outcomeReason string) {
+	a.callMu.Lock()
+	ac, ok := a.activeCalls[callID]
+	if ok {
+		delete(a.activeCalls, callID)
+	}
+	a.callMu.Unlock()
+	if !ok {
+		return
+	}
+
+	callType := "audio"
+	if ac.video {
+		callType = "video"
+	}
+
+	var status string
+	var duration *int
+	if ac.answeredAt != nil {
+		status = "answered"
+		d := int(time.Since(*ac.answeredAt).Seconds())
+		if d < 0 {
+			d = 0
+		}
+		duration = &d
+	} else if outcomeReason == "reject" {
+		status = "declined"
+	} else {
+		status = "missed"
+	}
+
+	msgID, createdAt, err := a.saveCallMessage(ac.from, ac.to, callType, status, duration)
+	if err != nil {
+		log.Println("Ошибка сохранения записи о звонке:", err)
+		return
+	}
+
+	a.deliverCallLogMessage(Message{
+		From:         ac.from,
+		To:           ac.to,
+		CreatedAt:    createdAt,
+		CallMsgID:    msgID,
+		CallType:     callType,
+		CallStatus:   status,
+		CallDuration: duration,
+	})
 }
 
 // deliverPendingCallIfAny проверяет, нет ли для только что подключившегося
@@ -1594,6 +1745,28 @@ func (a *App) routeCallSignal(sig CallSignal, from *Client) {
 		c.trySend(payload)
 	}
 
+	// Заводим/обновляем состояние звонка для последующего логирования (см.
+	// activeCallInfo и finishCallLog) — независимо от того, онлайн получатель
+	// или нет, в отличие от pendingCalls/push ниже, которые касаются только
+	// доставки самого сигнала оффлайн-получателю.
+	switch sig.Type {
+	case "call-offer":
+		a.callMu.Lock()
+		a.activeCalls[sig.CallID] = &activeCallInfo{
+			from:  strings.ToLower(sig.From),
+			to:    toLogin,
+			video: sig.Video,
+		}
+		a.callMu.Unlock()
+	case "call-answer":
+		a.callMu.Lock()
+		if ac, ok := a.activeCalls[sig.CallID]; ok {
+			now := time.Now()
+			ac.answeredAt = &now
+		}
+		a.callMu.Unlock()
+	}
+
 	// Получатель оффлайн — на входящий звонок шлём push и буферизуем сам сигнал
 	// (pendingCalls), чтобы доставить его, как только получатель откроет приложение
 	// по уведомлению — иначе offer будет потерян безвозвратно, а push без содержимого
@@ -1624,6 +1797,17 @@ func (a *App) routeCallSignal(sig CallSignal, from *Client) {
 	case "call-end":
 		a.clearPendingCall(toLogin, sig.CallID)
 		a.clearPendingCall(strings.ToLower(sig.From), sig.CallID)
+	}
+
+	// Звонок разрешился окончательно (отклонён или завершён) — пишем системную
+	// запись в чат. call-answer сюда не попадает: ответ ещё не конец звонка,
+	// запись делается по его фактическому завершению (call-end), чтобы знать
+	// длительность.
+	switch sig.Type {
+	case "call-reject":
+		a.finishCallLog(sig.CallID, "reject")
+	case "call-end":
+		a.finishCallLog(sig.CallID, "end")
 	}
 
 	if sig.Type == "call-answer" || sig.Type == "call-reject" || sig.Type == "call-end" {
