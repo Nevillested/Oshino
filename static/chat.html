@@ -1504,6 +1504,10 @@
                     onCallVideoOnAnswer(JSON.parse(message.substring(21)));
                 } else if (message.startsWith('call-video-on:')) {
                     onCallVideoOn(JSON.parse(message.substring(14)));
+                } else if (message.startsWith('call-video-disabled:')) {
+                    onCallVideoDisabled(JSON.parse(message.substring(20)));
+                } else if (message.startsWith('call-video-enabled:')) {
+                    onCallVideoEnabled(JSON.parse(message.substring(19)));
                 }
             };
 
@@ -2736,8 +2740,97 @@
             return peer;
         }
 
+        // ── Звуки звонка (гудки у звонящего, мелодия у принимающего) ────────────
+        //
+        // Генерируем тоны на лету через Web Audio API вместо аудиофайлов — не нужно
+        // ничего хранить и хостить, и со звуком нет вопросов авторских прав.
+        let ringAudioCtx = null;
+        let ringbackTimer = null; // таймер цикла гудков у звонящего
+        let ringtoneTimer = null; // таймер цикла мелодии у принимающего
+
+        function getRingAudioCtx() {
+            if (!ringAudioCtx) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return null;
+                try { ringAudioCtx = new AC(); } catch (e) { return null; }
+            }
+            if (ringAudioCtx.state === 'suspended') {
+                // Может не сработать без недавнего жеста пользователя (политика
+                // автовоспроизведения браузеров) — это особенно вероятно для входящего
+                // звонка, который приходит не по клику, а по WS/push. Если открыть
+                // приложение свежо (например, прямо по тапу на push-уведомление) и
+                // тут же придёт звонок без единого предыдущего взаимодействия со
+                // страницей — мелодия может беззвучно не запуститься до первого тапа
+                // пользователя где угодно на странице. Деградация некритичная: сам
+                // звонок и его приём работают независимо от звука.
+                ringAudioCtx.resume().catch(() => {});
+            }
+            return ringAudioCtx;
+        }
+
+        // playTone — один простой синусоидальный тон заданной частоты/длительности,
+        // запланированный через startDelayMs от текущего момента.
+        function playTone(freq, durationMs, startDelayMs, volume) {
+            const ctx = getRingAudioCtx();
+            if (!ctx) return;
+            try {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.value = volume != null ? volume : 0.15;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                const startAt = ctx.currentTime + (startDelayMs || 0) / 1000;
+                osc.start(startAt);
+                osc.stop(startAt + durationMs / 1000);
+            } catch (e) {}
+        }
+
+        // startRingback/stopRingback — "длинные гудки" у звонящего, пока ждём ответа.
+        // Стандартный российский каданс: 1 сек тон 425 Гц, 4 сек тишина, по кругу.
+        function startRingback() {
+            stopRingback();
+            const cycle = () => {
+                playTone(425, 1000, 0, 0.12);
+                ringbackTimer = setTimeout(cycle, 5000);
+            };
+            cycle();
+        }
+
+        function stopRingback() {
+            if (ringbackTimer) { clearTimeout(ringbackTimer); ringbackTimer = null; }
+        }
+
+        // startRingtone/stopRingtone — мелодия у принимающего звонок. Простой
+        // восходящий аккорд до-ми-соль, специально звучит совсем иначе, чем гудки
+        // у звонящего, чтобы их нельзя было перепутать на слух.
+        function startRingtone() {
+            stopRingtone();
+            const cycle = () => {
+                playTone(523.25, 180, 0, 0.13);   // C5
+                playTone(659.25, 180, 200, 0.13); // E5
+                playTone(783.99, 350, 400, 0.13); // G5
+                ringtoneTimer = setTimeout(cycle, 2200);
+            };
+            cycle();
+        }
+
+        function stopRingtone() {
+            if (ringtoneTimer) { clearTimeout(ringtoneTimer); ringtoneTimer = null; }
+        }
+
         function setCallUI(state) {
             callState = state;
+            // Любая смена состояния звонка сначала глушит оба звука — дальше ниже
+            // включаем нужный заново, если состояние того требует. Так гарантированно
+            // нет ситуации, когда гудки/мелодия продолжают играть после того, как
+            // звонок уже принят, отклонён или завершён.
+            stopRingback();
+            stopRingtone();
+            if (state === 'calling') startRingback();
+            else if (state === 'incoming') startRingtone();
+
             callAcceptBtn.style.display = state === 'incoming' ? 'flex' : 'none';
             callMuteBtn.style.display = state === 'connected' ? 'flex' : 'none';
             // Кнопка камеры доступна весь connected-период — это и есть переключение
@@ -3115,8 +3208,21 @@
                 }
                 videoEnabled = false;
                 updateVideoUIState();
+                // Явно сообщаем собеседнику, что видео выключено — полагаться на
+                // нативные track.onmute/onunmute на принимающей стороне ненадёжно
+                // (поведение по спеке нечёткое и реализовано по-разному в разных
+                // браузерах), без этого сигнала там оставался бы зависший
+                // последний кадр вместо того, чтобы видео пропадало.
+                sendCallSignal('call-video-disabled', { to: callPeerLogin, call_id: callId });
                 return;
             }
+
+            // isFirstTime — видео добавляется в этот RTCPeerConnection впервые за
+            // звонок (sender ещё не существовал) — отличаем от повторного
+            // включения уже существовавшего трека, чтобы знать, нужна ли
+            // renegotiation и нужно ли вообще слать дополнительный сигнал ниже
+            // (при renegotiation собеседник и так узнает о видео через ontrack).
+            const isFirstTime = !videoSender;
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode } });
@@ -3125,7 +3231,7 @@
                 if (!localStream) localStream = stream;
                 else localStream.addTrack(track);
 
-                if (videoSender) {
+                if (!isFirstTime) {
                     // Видео уже было частью этого звонка раньше — просто возвращаем трек.
                     await videoSender.replaceTrack(track);
                 } else {
@@ -3145,6 +3251,14 @@
                 callLocalVideo.srcObject = localStream;
                 await detectMultipleCameras();
                 updateVideoUIState();
+
+                if (!isFirstTime) {
+                    // При renegotiation собеседник узнает о видео через ontrack
+                    // автоматически — а вот для повторного включения уже
+                    // согласованного трека (без renegotiation) явный сигнал нужен
+                    // по той же причине, что и при выключении выше.
+                    sendCallSignal('call-video-enabled', { to: callPeerLogin, call_id: callId });
+                }
             } catch (e) {
                 alert('Нет доступа к камере');
             }
@@ -3190,8 +3304,14 @@
             callVideoBtn.title = videoEnabled ? 'Выключить камеру' : 'Включить камеру';
             callFlipCameraBtn.style.display = (videoEnabled && hasMultipleCameras) ? 'flex' : 'none';
 
-            const videoMode = videoEnabled || remoteVideoActive;
-            callOverlay.classList.toggle('video-mode', videoMode);
+            // video-mode (полноэкранное видео + инфо/кнопки на подложках по краям)
+            // зависит ИМЕННО от видео собеседника, а не от своего — если своя камера
+            // включена, а у собеседника видео нет, экран остаётся обычным
+            // "аудиозвонок"-layout с маленьким своим превью поверх в углу. Так же,
+            // если у обоих было видео и собеседник его выключил, video-mode корректно
+            // снимается даже если своя камера всё ещё активна — иначе показывался бы
+            // тот самый зависший последний кадр в полноэкранном виде.
+            callOverlay.classList.toggle('video-mode', remoteVideoActive);
         }
 
         // ── Renegotiation видео от собеседника ───────────────────────────────────
@@ -3223,6 +3343,23 @@
             } catch (e) {
                 console.log('Ошибка применения ответа на видео-renegotiation:', e);
             }
+        }
+
+        // call-video-disabled/call-video-enabled — явные лёгкие сигналы (без SDP)
+        // для случаев, когда собеседник вкл/выкл уже ранее согласованный видеотрек
+        // (повторно, не в первый раз за звонок). Без них на этой стороне видео
+        // зависало бы на последнем полученном кадре вместо того, чтобы пропадать —
+        // полагаться на нативные track.onmute/onunmute тут ненадёжно.
+        function onCallVideoDisabled(sig) {
+            if (sig.call_id !== callId) return;
+            remoteVideoActive = false;
+            updateVideoUIState();
+        }
+
+        function onCallVideoEnabled(sig) {
+            if (sig.call_id !== callId) return;
+            remoteVideoActive = true;
+            updateVideoUIState();
         }
 
         // ── Маршрутизация звука звонка (динамик у уха по умолчанию) ─────────────

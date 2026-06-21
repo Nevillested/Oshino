@@ -1454,7 +1454,7 @@ func (a *App) routeMessage(msg Message) {
 // callPrefixes — допустимые префиксы WS-сообщений сигналинга звонков.
 // Порядок не важен, но "call-" префикс у всех общий — сверяем целиком, чтобы
 // не путать с "call-answer:" внутри "call-answer-foo:" и т.п.
-var callPrefixes = []string{"call-offer:", "call-answer:", "call-ice:", "call-end:", "call-reject:", "call-video-on:", "call-video-on-answer:"}
+var callPrefixes = []string{"call-offer:", "call-answer:", "call-ice:", "call-end:", "call-reject:", "call-video-on:", "call-video-on-answer:", "call-video-disabled:", "call-video-enabled:"}
 
 // cutCallPrefix проверяет, начинается ли сообщение с одного из call-префиксов,
 // и если да — возвращает префикс без двоеточия и остаток (JSON-тело).
