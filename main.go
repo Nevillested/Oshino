@@ -1154,6 +1154,44 @@ type pushNotificationPayload struct {
 //
 // Мёртвые подписки (410 Gone / 404 Not Found от push-службы — браузер отписался или
 // подписка истекла) удаляются из БД сразу же, чтобы не пытаться слать в пустоту вечно.
+// loggingHTTPClient — временная диагностическая обёртка вокруг http.Client,
+// которая печатает в лог заголовки и тело запроса перед отправкой в Apple Web
+// Push. Нужна, чтобы увидеть РЕАЛЬНЫЙ запрос, который собирает webpush-go,
+// а не гадать по фрагментам исходников — после того, как баг найден и
+// починен, этот код и его использование ниже стоит убрать.
+type loggingHTTPClient struct {
+	inner *http.Client
+}
+
+func (l *loggingHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	var bodyBytes []byte
+	if req.Body != nil {
+		bodyBytes, _ = io.ReadAll(req.Body)
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	}
+	log.Printf("DEBUG[apple-push] %s %s", req.Method, req.URL.String())
+	for k, v := range req.Header {
+		log.Printf("DEBUG[apple-push] header %s: %v", k, v)
+	}
+	log.Printf("DEBUG[apple-push] body length: %d bytes", len(bodyBytes))
+	// Authorization обычно имеет вид "<scheme> t=<JWT>, k=<key>" либо просто
+	// "<scheme> <JWT>" — выводим JWT-claims отдельно, чтобы не вглядываться
+	// в base64 вручную.
+	if auth := req.Header.Get("Authorization"); auth != "" {
+		parts := strings.FieldsFunc(auth, func(r rune) bool { return r == ' ' || r == ',' })
+		for _, p := range parts {
+			jwtCandidate := strings.TrimPrefix(p, "t=")
+			segs := strings.Split(jwtCandidate, ".")
+			if len(segs) == 3 {
+				if claims, err := base64.RawURLEncoding.DecodeString(segs[1]); err == nil {
+					log.Printf("DEBUG[apple-push] JWT claims: %s", string(claims))
+				}
+			}
+		}
+	}
+	return l.inner.Do(req)
+}
+
 func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 	if a.vapidPublicKey == "" || a.vapidPrivateKey == "" {
 		return
@@ -1192,13 +1230,17 @@ func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 			VAPIDPrivateKey: a.vapidPrivateKey,
 			TTL:             60,
 		}
-		// Apple Web Push (web.push.apple.com) принимает только современную VAPID
-		// auth scheme "WebPush" (актуальное по RFC8292 имя схемы) и отвечает
-		// 403 BadJwtToken на устаревшую схему "vapid" (дефолт библиотеки,
-		// используемый Firefox и до сих пор принимаемый FCM/Android) — отсюда и
-		// расхождение: на FCM всё работало, на Apple — нет, при идентичном коде.
+		// Apple Web Push (web.push.apple.com) отвечает 403 BadJwtToken, хотя те
+		// же ключи и та же подписка успешно сработали через эталонную
+		// node-библиотеку web-push — значит, проблема в том, как именно
+		// webpush-go собирает запрос. AuthScheme=WebPush пока не помог (поле
+		// есть в структуре, но, похоже, ещё не подключено к реальной сборке
+		// заголовка в этой версии библиотеки) — оставляем на случай, если это
+		// всё же часть решения, и добавляем временное логирование реального
+		// запроса для диагностики.
 		if strings.Contains(s.endpoint, "web.push.apple.com") {
 			opts.AuthScheme = webpush.WebPush
+			opts.HTTPClient = &loggingHTTPClient{inner: http.DefaultClient}
 		}
 
 		resp, err := webpush.SendNotification(data, &webpush.Subscription{
