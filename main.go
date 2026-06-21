@@ -1223,21 +1223,22 @@ func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 
 	data, _ := json.Marshal(payload)
 
+	// webpush-go сам добавляет префикс "mailto:" к Subscriber, если значение не
+	// похоже на URL (https://...) — то есть передавать его нужно БЕЗ префикса.
+	// a.vapidContact хранится в формате "mailto:admin@oshino.space" (так удобнее
+	// в конфиге/логах), поэтому здесь его убираем. Раньше из-за этого в JWT
+	// получался двойной префикс "mailto:mailto:admin@oshino.space" — именно это
+	// и было причиной 403 BadJwtToken от Apple (FCM на такой невалидный sub-claim
+	// просто не обращал внимания, а строгий валидатор Apple — отклонял).
+	subscriber := strings.TrimPrefix(a.vapidContact, "mailto:")
+
 	for _, s := range subs {
 		opts := &webpush.Options{
-			Subscriber:      a.vapidContact,
+			Subscriber:      subscriber,
 			VAPIDPublicKey:  a.vapidPublicKey,
 			VAPIDPrivateKey: a.vapidPrivateKey,
 			TTL:             60,
 		}
-		// Apple Web Push (web.push.apple.com) отвечает 403 BadJwtToken, хотя те
-		// же ключи и та же подписка успешно сработали через эталонную
-		// node-библиотеку web-push — значит, проблема в том, как именно
-		// webpush-go собирает запрос. AuthScheme=WebPush пока не помог (поле
-		// есть в структуре, но, похоже, ещё не подключено к реальной сборке
-		// заголовка в этой версии библиотеки) — оставляем на случай, если это
-		// всё же часть решения, и добавляем временное логирование реального
-		// запроса для диагностики.
 		if strings.Contains(s.endpoint, "web.push.apple.com") {
 			opts.AuthScheme = webpush.WebPush
 			opts.HTTPClient = &loggingHTTPClient{inner: http.DefaultClient}
