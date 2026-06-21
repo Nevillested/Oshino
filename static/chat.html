@@ -92,6 +92,44 @@
         #call-btn:hover { background: rgba(255,255,255,0.1); }
         #call-btn:active { background: rgba(255,255,255,0.18); }
 
+        #ios-push-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: #4a90e2;
+            color: white;
+            font-size: 14px;
+            z-index: 4;
+        }
+
+        #ios-push-banner span {
+            flex: 1;
+        }
+
+        #ios-push-enable-btn {
+            background: white;
+            color: #4a90e2;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        #ios-push-dismiss-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px 6px;
+            flex-shrink: 0;
+            opacity: 0.85;
+        }
+
         #overlay {
             display: none;
             position: fixed;
@@ -1128,6 +1166,15 @@
         </button>
     </div>
 
+    <!-- Показывается только на iOS в установленном на главный экран приложении —
+         там автоматический запрос разрешения на уведомления Apple игнорирует,
+         нужен явный тап пользователя по кнопке. -->
+    <div id="ios-push-banner" style="display: none;">
+        <span>Включить уведомления о звонках и сообщениях?</span>
+        <button id="ios-push-enable-btn">Включить</button>
+        <button id="ios-push-dismiss-btn" title="Закрыть">✕</button>
+    </div>
+
     <div id="overlay"></div>
 
     <div id="sidebar">
@@ -1281,6 +1328,9 @@
         const callMuteBtn = document.getElementById('call-mute-btn');
         const callMuteLabel = document.getElementById('call-mute-label');
         const callRemoteAudio = document.getElementById('call-remote-audio');
+        const iosPushBanner = document.getElementById('ios-push-banner');
+        const iosPushEnableBtn = document.getElementById('ios-push-enable-btn');
+        const iosPushDismissBtn = document.getElementById('ios-push-dismiss-btn');
 
         // ── WebSocket ───────────────────────────────────────────────────────────
 
@@ -1380,13 +1430,32 @@
             return arr;
         }
 
+        // isIOSDevice — определяем iPhone/iPad/iPod. iPadOS с 13-й версии маскируется
+        // под Mac в navigator.platform по умолчанию, поэтому одного userAgent мало —
+        // довешиваем проверку на множественный тач-ввод (у настоящих Mac его нет).
+        function isIOSDevice() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+
         // initPushNotifications регистрирует Service Worker и оформляет push-подписку.
-        // Делается тихо в фоне при загрузке чата: если браузер/устройство не поддерживает
-        // Push API (или пользователь уже отказал в разрешении ранее), просто ничего не происходит —
-        // это не блокирует и не ломает остальной функционал приложения.
+        // На Android/десктопе — тихо в фоне при загрузке чата. На iOS Apple требует,
+        // чтобы запрос разрешения происходил строго в ответ на прямое действие
+        // пользователя — автоматический запрос при загрузке страницы там просто
+        // игнорируется без вопросов. Поэтому на iOS вместо авто-запроса показываем
+        // отдельную кнопку (см. ios-push-banner), и запрос идёт по факту клика на неё.
         async function initPushNotifications() {
             if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
                 console.log('Push-уведомления не поддерживаются этим браузером');
+                return;
+            }
+
+            // На iOS push в принципе недоступен в обычной вкладке Safari/Chrome —
+            // работает только для приложения, установленного на главный экран
+            // (navigator.standalone === true). Это ограничение платформы, не наше —
+            // если условие не выполнено, дальше пытаться нет смысла.
+            if (isIOSDevice() && !window.navigator.standalone) {
+                console.log('iOS: push доступен только из приложения на главном экране');
                 return;
             }
 
@@ -1402,28 +1471,50 @@
                     return;
                 }
 
-                // Разрешение запрашиваем не сразу при заходе в чат, а только если пользователь
-                // ранее не отвечал (default) — если уже отказал (denied), не дёргаем повторно
-                // на каждой загрузке страницы, это раздражает.
                 if (Notification.permission === 'denied') return;
 
-                const permission = await Notification.requestPermission();
-                if (permission !== 'granted') return;
+                if (isIOSDevice() && Notification.permission === 'default') {
+                    // Не дёргаем requestPermission() сами — на iOS это без явного тапа
+                    // пользователя просто ничего не покажет. Ждём клика по баннеру.
+                    iosPushBanner.style.display = 'flex';
+                    return;
+                }
 
-                const keyResp = await fetch('/push-public-key');
-                if (!keyResp.ok) return;
-                const { publicKey } = await keyResp.json();
-
-                subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: base64UrlToUint8Array(publicKey)
-                });
-
-                await sendSubscriptionToServer(subscription);
+                await requestPushPermissionAndSubscribe(registration);
             } catch (e) {
                 console.log('Не удалось настроить push-уведомления:', e);
             }
         }
+
+        async function requestPushPermissionAndSubscribe(registration) {
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return;
+
+            const keyResp = await fetch('/push-public-key');
+            if (!keyResp.ok) return;
+            const { publicKey } = await keyResp.json();
+
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: base64UrlToUint8Array(publicKey)
+            });
+
+            await sendSubscriptionToServer(subscription);
+        }
+
+        iosPushEnableBtn.addEventListener('click', async () => {
+            iosPushBanner.style.display = 'none';
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                await requestPushPermissionAndSubscribe(registration);
+            } catch (e) {
+                console.log('Не удалось включить push на iOS:', e);
+            }
+        });
+
+        iosPushDismissBtn.addEventListener('click', () => {
+            iosPushBanner.style.display = 'none';
+        });
 
         async function sendSubscriptionToServer(subscription) {
             try {
