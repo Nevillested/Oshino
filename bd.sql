@@ -1,6 +1,50 @@
--- Table: messenger.conversations
+-- ============================================================================
+-- Oshino — полная схема базы данных (messenger schema)
+-- ============================================================================
+-- Это единственный источник правды по структуре БД. Файл полностью
+-- идемпотентен (CREATE ... IF NOT EXISTS повсюду) — его можно безопасно
+-- прогонять целиком в любой момент, в том числе на уже существующей БД
+-- с данными: ничего не пересоздастся и не потеряется, добавится только то,
+-- чего ещё не было.
+--
+-- Порядок применения изменений в будущем:
+--   1. Дописать новый блок в конец файла (CREATE TABLE IF NOT EXISTS,
+--      ALTER TABLE ... ADD COLUMN IF NOT EXISTS, CREATE INDEX IF NOT EXISTS
+--      и т.д. — никогда голый CREATE/ALTER без IF NOT EXISTS/IF EXISTS).
+--   2. Прогнать весь файл целиком:
+--        psql -U <DB_USER> -d <DB_NAME> -h localhost -f bd.sql
+--
+-- Порядок таблиц ниже важен: таблицы с внешними ключами должны идти
+-- после тех, на кого они ссылаются (users -> conversations -> messages).
+--
+-- ALTER TABLE ... OWNER to ... намеренно не используется: требует роль
+-- postgres (SET ROLE), которой обычно нет у рабочего пользователя БД,
+-- и не нужен при каждом прогоне — владелец назначается один раз вручную,
+-- если вообще требуется.
+-- ============================================================================
 
--- DROP TABLE IF EXISTS messenger.conversations;
+CREATE SCHEMA IF NOT EXISTS messenger;
+
+-- ── Последовательности ──────────────────────────────────────────────────────
+
+CREATE SEQUENCE IF NOT EXISTS messenger.users_id_seq;
+CREATE SEQUENCE IF NOT EXISTS messenger.conversations_id_seq;
+CREATE SEQUENCE IF NOT EXISTS messenger.messages_id_seq;
+CREATE SEQUENCE IF NOT EXISTS messenger.push_subscriptions_id_seq;
+
+-- ── Table: messenger.users ──────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS messenger.users
+(
+    id integer NOT NULL DEFAULT nextval('messenger.users_id_seq'::regclass),
+    login character varying COLLATE pg_catalog."default" NOT NULL,
+    password character varying COLLATE pg_catalog."default" NOT NULL,
+    CONSTRAINT users_pkey1 PRIMARY KEY (id),
+    CONSTRAINT users_login_key UNIQUE (login)
+)
+TABLESPACE pg_default;
+
+-- ── Table: messenger.conversations ──────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS messenger.conversations
 (
@@ -19,33 +63,19 @@ CREATE TABLE IF NOT EXISTS messenger.conversations
         ON UPDATE NO ACTION
         ON DELETE NO ACTION
 )
-
 TABLESPACE pg_default;
-
-ALTER TABLE IF EXISTS messenger.conversations
-    OWNER to postgres;
--- Index: idx_conversations_user1
-
--- DROP INDEX IF EXISTS messenger.idx_conversations_user1;
 
 CREATE INDEX IF NOT EXISTS idx_conversations_user1
     ON messenger.conversations USING btree
     (user1_id ASC NULLS LAST)
     TABLESPACE pg_default;
--- Index: idx_conversations_user2
-
--- DROP INDEX IF EXISTS messenger.idx_conversations_user2;
 
 CREATE INDEX IF NOT EXISTS idx_conversations_user2
     ON messenger.conversations USING btree
     (user2_id ASC NULLS LAST)
     TABLESPACE pg_default;
 
-
-
--- Table: messenger.messages
-
--- DROP TABLE IF EXISTS messenger.messages;
+-- ── Table: messenger.messages ───────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS messenger.messages
 (
@@ -71,43 +101,44 @@ CREATE TABLE IF NOT EXISTS messenger.messages
         ON UPDATE NO ACTION
         ON DELETE NO ACTION
 )
-
 TABLESPACE pg_default;
-
-ALTER TABLE IF EXISTS messenger.messages
-    OWNER to postgres;
--- Index: idx_messages_conversation
-
--- DROP INDEX IF EXISTS messenger.idx_messages_conversation;
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation
     ON messenger.messages USING btree
     (conversation_id ASC NULLS LAST)
     TABLESPACE pg_default;
--- Index: idx_messages_created
-
--- DROP INDEX IF EXISTS messenger.idx_messages_created;
 
 CREATE INDEX IF NOT EXISTS idx_messages_created
     ON messenger.messages USING btree
     (conversation_id ASC NULLS LAST, created_at DESC NULLS FIRST)
     TABLESPACE pg_default;
 
+-- ── Table: messenger.push_subscriptions ─────────────────────────────────────
+-- Подписки на Web Push (звонки + сообщения, доставляемые при оффлайн-получателе).
+-- Один пользователь может иметь несколько подписок (разные устройства/браузеры).
 
--- Table: messenger.users
-
--- DROP TABLE IF EXISTS messenger.users;
-
-CREATE TABLE IF NOT EXISTS messenger.users
+CREATE TABLE IF NOT EXISTS messenger.push_subscriptions
 (
-    id integer NOT NULL DEFAULT nextval('messenger.users_id_seq'::regclass),
-    login character varying COLLATE pg_catalog."default" NOT NULL,
-    password character varying COLLATE pg_catalog."default" NOT NULL,
-    CONSTRAINT users_pkey1 PRIMARY KEY (id),
-    CONSTRAINT users_login_key UNIQUE (login)
+    id integer NOT NULL DEFAULT nextval('messenger.push_subscriptions_id_seq'::regclass),
+    user_id integer NOT NULL,
+    endpoint text COLLATE pg_catalog."default" NOT NULL,
+    p256dh character varying(255) COLLATE pg_catalog."default" NOT NULL,
+    auth character varying(255) COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id),
+    CONSTRAINT push_subscriptions_endpoint_key UNIQUE (endpoint),
+    CONSTRAINT push_subscriptions_user_id_fkey FOREIGN KEY (user_id)
+        REFERENCES messenger.users (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE
 )
-
 TABLESPACE pg_default;
 
-ALTER TABLE IF EXISTS messenger.users
-    OWNER to postgres;
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+    ON messenger.push_subscriptions USING btree
+    (user_id ASC NULLS LAST)
+    TABLESPACE pg_default;
+
+-- ============================================================================
+-- Конец файла. Новые изменения схемы дописывать ниже этой черты.
+-- ============================================================================
