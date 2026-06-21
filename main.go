@@ -51,6 +51,20 @@ type App struct {
 	vapidPublicKey  string
 	vapidPrivateKey string
 	vapidContact    string // mailto: или https:-адрес для VAPID claim (sub)
+
+	// pendingCalls — звонки, чей call-offer не удалось доставить сразу (получатель
+	// был полностью оффлайн). Буферизуется на время ожидания ответа (callRingTimeout),
+	// чтобы при открытии приложения по push-уведомлению можно было показать входящий
+	// звонок, как будто он только что пришёл. Ключ — логин ПОЛУЧАТЕЛЯ (того, кому звонят).
+	// Отдельный мьютекс — не a.mu, чтобы не пересекаться с блокировками карты клиентов.
+	pendingCalls map[string]*PendingCall
+	callMu       sync.Mutex
+}
+
+// PendingCall хранит исходный call-offer и таймер автоматического "не отвечает".
+type PendingCall struct {
+	Sig   CallSignal
+	Timer *time.Timer
 }
 
 type Session struct {
@@ -177,6 +191,7 @@ func main() {
 		vapidPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
 		vapidPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
 		vapidContact:    os.Getenv("VAPID_CONTACT"), // например, mailto:admin@oshino.space
+		pendingCalls:    make(map[string]*PendingCall),
 	}
 
 	if app.turnSecret == "" {
@@ -330,6 +345,7 @@ func (a *App) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	client.send <- []byte("user:" + login)
 	a.broadcastOnlineUsers()
+	a.deliverPendingCallIfAny(client)
 
 	go client.readPump(a)
 	go client.writePump()
@@ -1417,6 +1433,103 @@ func cutCallPrefix(msgStr string) (prefix string, rest string, ok bool) {
 	return "", "", false
 }
 
+// callRingTimeout — сколько ждать ответа от изначально оффлайн-получателя,
+// прежде чем считать звонок пропущенным и сообщить об этом звонящему.
+// Покрывает время на доставку push + открытие вкладки человеком.
+const callRingTimeout = 45 * time.Second
+
+// storePendingCall буферизует call-offer для оффлайн-получателя и запускает
+// таймер автоматического "не отвечает". Если для этого логина уже была
+// отложенная попытка (едва ли возможно на практике, но на всякий случай —
+// например, повторный звонок до истечения предыдущего таймаута), старый
+// таймер останавливается, чтобы не было утечки и дублирующего авто-отбоя.
+func (a *App) storePendingCall(recipientLogin string, sig CallSignal) {
+	a.callMu.Lock()
+	defer a.callMu.Unlock()
+
+	if old, ok := a.pendingCalls[recipientLogin]; ok && old.Timer != nil {
+		old.Timer.Stop()
+	}
+
+	pc := &PendingCall{Sig: sig}
+	pc.Timer = time.AfterFunc(callRingTimeout, func() {
+		a.expirePendingCall(recipientLogin, sig.CallID)
+	})
+	a.pendingCalls[recipientLogin] = pc
+}
+
+// clearPendingCall убирает отложенный звонок (и останавливает его таймер),
+// если он всё ещё там и относится к тому же call_id — звонок разрешился
+// (ответили/отклонили/положили трубку) раньше, чем сработал таймаут.
+func (a *App) clearPendingCall(recipientLogin, callID string) {
+	a.callMu.Lock()
+	defer a.callMu.Unlock()
+
+	pc, ok := a.pendingCalls[recipientLogin]
+	if !ok || pc.Sig.CallID != callID {
+		return
+	}
+	if pc.Timer != nil {
+		pc.Timer.Stop()
+	}
+	delete(a.pendingCalls, recipientLogin)
+}
+
+// expirePendingCall срабатывает по истечении callRingTimeout: удаляет буфер
+// и сообщает звонящему, что вызов не был принят (reason "no-answer").
+func (a *App) expirePendingCall(recipientLogin, callID string) {
+	a.callMu.Lock()
+	pc, ok := a.pendingCalls[recipientLogin]
+	if !ok || pc.Sig.CallID != callID {
+		a.callMu.Unlock()
+		return
+	}
+	delete(a.pendingCalls, recipientLogin)
+	a.callMu.Unlock()
+
+	noAnswer := CallSignal{
+		Type:   "call-end",
+		From:   recipientLogin,
+		To:     pc.Sig.From,
+		CallID: callID,
+		Reason: "no-answer",
+	}
+	data, _ := json.Marshal(noAnswer)
+	payload := append([]byte("call-end:"), data...)
+
+	callerLogin := strings.ToLower(pc.Sig.From)
+	a.mu.Lock()
+	conns := a.clients[callerLogin]
+	callerClients := make([]*Client, 0, len(conns))
+	for c := range conns {
+		callerClients = append(callerClients, c)
+	}
+	a.mu.Unlock()
+
+	for _, c := range callerClients {
+		c.trySend(payload)
+	}
+}
+
+// deliverPendingCallIfAny проверяет, нет ли для только что подключившегося
+// клиента отложенного входящего звонка (т.е. ему звонили, пока он был
+// полностью оффлайн), и если есть — доставляет его, как будто offer
+// только что пришёл. Буфер НЕ удаляется здесь: если у логина несколько
+// устройств, каждое должно увидеть входящий звонок при подключении;
+// удаление произойдёт по answer/reject/end или по таймауту.
+func (a *App) deliverPendingCallIfAny(c *Client) {
+	a.callMu.Lock()
+	pc, ok := a.pendingCalls[c.login]
+	a.callMu.Unlock()
+	if !ok {
+		return
+	}
+
+	data, _ := json.Marshal(pc.Sig)
+	payload := append([]byte("call-offer:"), data...)
+	c.trySend(payload)
+}
+
 // routeCallSignal пересылает сигнал звонка на все устройства получателя.
 // Дополнительно: call-answer/call-reject рассылаются и на ОСТАЛЬНЫЕ устройства
 // отправителя (кроме того, с которого пришёл сигнал) с пометкой "answered-elsewhere",
@@ -1447,11 +1560,13 @@ func (a *App) routeCallSignal(sig CallSignal, from *Client) {
 		c.trySend(payload)
 	}
 
-	// Получатель оффлайн — на входящий звонок шлём push, иначе человек просто не узнает
-	// о звонке, пока сам не откроет вкладку. Для остальных типов сигналов (answer/ice/
-	// end/reject) push не нужен: они имеют смысл только в рамках уже идущего разговора,
-	// который немыслим без открытой вкладки с активным WS на обеих сторонах.
+	// Получатель оффлайн — на входящий звонок шлём push и буферизуем сам сигнал
+	// (pendingCalls), чтобы доставить его, как только получатель откроет приложение
+	// по уведомлению — иначе offer будет потерян безвозвратно, а push без содержимого
+	// звонка бесполезен. Для остальных типов сигналов (answer/ice/end/reject) push
+	// не нужен: они имеют смысл только в рамках уже идущего разговора.
 	if sig.Type == "call-offer" && len(recipients) == 0 {
+		a.storePendingCall(toLogin, sig)
 		go a.sendPushToLogin(sig.To, pushNotificationPayload{
 			Type:   "call",
 			From:   sig.From,
@@ -1459,6 +1574,18 @@ func (a *App) routeCallSignal(sig CallSignal, from *Client) {
 			Body:   "Входящий звонок",
 			CallID: sig.CallID,
 		})
+	}
+
+	// Звонок разрешился тем или иным образом — буфер больше не нужен.
+	// call-answer/call-reject шлёт ОТВЕЧАЮЩИЙ (sig.From — это получатель звонка,
+	// тот, под чьим логином мог быть сохранён pendingCall). call-end может прийти
+	// от любой из сторон, поэтому чистим по обоим возможным ключам на всякий случай.
+	switch sig.Type {
+	case "call-answer", "call-reject":
+		a.clearPendingCall(strings.ToLower(sig.From), sig.CallID)
+	case "call-end":
+		a.clearPendingCall(toLogin, sig.CallID)
+		a.clearPendingCall(strings.ToLower(sig.From), sig.CallID)
 	}
 
 	if sig.Type == "call-answer" || sig.Type == "call-reject" || sig.Type == "call-end" {

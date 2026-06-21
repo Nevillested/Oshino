@@ -2376,9 +2376,10 @@
             offlineNotice.style.display = 'none';
             const isOnline = onlineUsers.includes(currentUser);
             topbarTitle.textContent = currentUser + ' — ' + (isOnline ? 'в сети' : 'не в сети');
-            // Звонить можно, только если собеседник сейчас онлайн (хотя бы одно устройство) —
-            // звонок на офлайн-получателя всё равно никто не примет, и call-offer уйдёт в никуда.
-            callBtn.style.display = isOnline ? 'flex' : 'none';
+            // Звонить можно всегда: если собеседник оффлайн, сервер буферизует звонок
+            // и отправит push-уведомление — оно разбудит его устройство и доставит звонок,
+            // как только приложение откроется.
+            callBtn.style.display = 'flex';
         }
 
         async function loadUnreadCounts() {
@@ -2544,6 +2545,12 @@
             callId = genCallId();
             setCallUI('calling');
 
+            // Собеседник оффлайн — offer всё равно уйдёт (сервер буферизует его и пошлёт
+            // push), но звонящему стоит понимать, что ответ может прийти не мгновенно.
+            if (!onlineUsers.includes(toLogin)) {
+                callStatus.textContent = 'Вызов... (отправляем уведомление)';
+            }
+
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             } catch (e) {
@@ -2690,6 +2697,18 @@
                 setCallUI('idle');
                 callPeerLogin = null;
                 callId = null;
+                return;
+            }
+            if (sig.reason === 'no-answer') {
+                // Собеседник был оффлайн, push отправлен, но он не открыл приложение
+                // и не ответил за отведённое время (см. callRingTimeout на сервере).
+                callStatus.textContent = 'Не отвечает';
+                cleanupCallResources();
+                setTimeout(() => {
+                    setCallUI('idle');
+                    callPeerLogin = null;
+                    callId = null;
+                }, 1500);
                 return;
             }
             endCall(null, false);
