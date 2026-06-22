@@ -665,6 +665,7 @@
             display: none;
             flex-direction: column;
             flex: 1;
+            overflow-y: auto; /* прокрутка внутри, не наружу */
         }
 
         #settings-panel.open { display: flex; }
@@ -680,34 +681,46 @@
             font-weight: 600;
             cursor: pointer;
             padding: 8px 0;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
+            flex-shrink: 0;
         }
 
         #settings-back-btn:hover { opacity: 0.8; }
 
         #settings-panel h3 {
-            font-size: 12px;
+            font-size: 11px;
             color: #aaa;
             text-transform: uppercase;
+            margin-bottom: 6px;
+            flex-shrink: 0;
+        }
+
+        #settings-panel > p {
+            font-size: 12px;
+            color: #888;
             margin-bottom: 12px;
+            flex-shrink: 0;
         }
 
         #default-reaction-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 8px;
-            margin-bottom: 24px;
+            /* 5 колонок, кнопка не больше 44px — влезает в любой сайдбар */
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 6px;
         }
 
         .reaction-pick-btn {
             background: #3a3a3a;
             border: 2px solid transparent;
-            border-radius: 10px;
-            font-size: 26px;
-            padding: 8px 0;
+            border-radius: 8px;
+            font-size: 22px;
+            padding: 6px 0;
             cursor: pointer;
             text-align: center;
+            line-height: 1.2;
             transition: border-color 0.15s, background 0.15s;
+            width: 100%;
+            min-width: 0;
         }
 
         .reaction-pick-btn:hover { background: #4a4a4a; }
@@ -716,9 +729,19 @@
             background: #1a2a3a;
         }
 
-        #settings-panel #main-dialogs-section { display: none; }
-
         #sidebar-main { display: flex; flex-direction: column; flex: 1; }
+
+        /* Запрещаем выделение текста в пузырях — убирает нативное iOS меню
+           при long-press (оно появлялось раньше чем срабатывал наш таймер) */
+        .message, .message-wrap, .audio-player {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        /* Но в поле ввода выделение разрешаем */
+        #form-area textarea {
+            -webkit-user-select: text;
+            user-select: text;
+        }
 
         #welcome-screen {
             flex: 1;
@@ -1323,217 +1346,7 @@
             background: #e0e4ea;
         }
 
-        #settings-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 55;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #settings-overlay.open {
-            display: flex;
-        }
-
-        #settings-panel {
-            background: white;
-            border-radius: 12px;
-            width: 360px;
-            max-width: 90vw;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        #settings-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            border-bottom: 1px solid #eee;
-            font-weight: 600;
-            font-size: 17px;
-        }
-
-        #settings-close-btn {
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            color: #888;
-        }
-
-        #settings-body {
-            padding: 20px;
-        }
-
-        #settings-label {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 14px;
-        }
-
-        #settings-emoji-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 8px;
-        }
-
-        .settings-emoji-cell {
-            font-size: 26px;
-            border: 2px solid transparent;
-            border-radius: 10px;
-            background: #f5f5f5;
-            cursor: pointer;
-            padding: 8px 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .settings-emoji-cell.selected {
-            border-color: #4a90e2;
-            background: #eaf2fc;
-        }
-
-        /* ── Контекстное меню сообщения ───────────────────────────────────────── */
-        #msg-menu-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.25);
-            z-index: 57;
-        }
-
-        #msg-menu-overlay.open {
-            display: block;
-        }
-
-        #msg-menu {
-            position: absolute;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
-            width: 260px;
-            max-width: 90vw;
-            overflow: hidden;
-        }
-
-        #msg-menu-emoji-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2px;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .msg-menu-emoji-cell {
-            font-size: 22px;
-            border: none;
-            background: none;
-            cursor: pointer;
-            padding: 4px;
-            width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-        }
-
-        .msg-menu-emoji-cell:hover {
-            background: #f0f0f0;
-        }
-
-        #msg-menu-actions {
-            display: flex;
-            flex-direction: column;
-        }
-
-        #msg-menu-actions button {
-            background: none;
-            border: none;
-            text-align: left;
-            padding: 12px 16px;
-            font-size: 15px;
-            cursor: pointer;
-            color: #222;
-        }
-
-        #msg-menu-actions button:hover {
-            background: #f5f5f5;
-        }
-
-        /* ── Пересылка ────────────────────────────────────────────────────────── */
-        #forward-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 56;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #forward-overlay.open {
-            display: flex;
-        }
-
-        #forward-panel {
-            background: white;
-            border-radius: 12px;
-            width: 360px;
-            max-width: 90vw;
-            max-height: 70vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #forward-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            border-bottom: 1px solid #eee;
-            font-weight: 600;
-            font-size: 17px;
-        }
-
-        #forward-close-btn {
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            color: #888;
-        }
-
-        #forward-list {
-            list-style: none;
-            padding: 8px;
-            margin: 0;
-            overflow-y: auto;
-        }
-
-        #forward-list li {
-            padding: 12px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 15px;
-        }
-
-        #forward-list li:hover {
-            background: #f5f5f5;
-        }
+        /* старый CSS для msg-menu-overlay, settings-overlay, forward-overlay удалён */
 
         @media (max-width: 767px) {
             #image-modal-overlay {
@@ -2778,21 +2591,6 @@
                 loadMoreIndicator.style.display = 'none';
                 // Первая загрузка
                 await loadHistory(user, 0, 20);
-            }
-        }
-
-        // loadPinned — подгружает текущее закреплённое сообщение диалога с сервера
-        // (живые обновления потом приходят через WS pin:/unpin:, это только для
-        // начального состояния при открытии чата).
-        async function loadPinned(user) {
-            try {
-                const resp = await fetch(`/pinned?with=${encodeURIComponent(user)}`);
-                if (!resp.ok) return;
-                const data = await resp.json();
-                pinnedByUser[user] = data; // null или {message_id, from, text}
-                if (currentUser === user) renderPinBar();
-            } catch (e) {
-                console.error('Ошибка загрузки закреплённого сообщения:', e);
             }
         }
 
@@ -4540,6 +4338,14 @@
             } catch (e) {}
         }
 
+        // Клик по телу pin-bar (не по кнопке открепить) — скролл к сообщению
+        pinBar.addEventListener('click', (e) => {
+            if (e.target === pinUnpinBtn || pinUnpinBtn.contains(e.target)) return;
+            const pin = pinnedByUser[currentUser];
+            if (!pin) return;
+            scrollToMessage(pin.message_id);
+        });
+
         pinUnpinBtn.addEventListener('click', async () => {
             if (!currentUser) return;
             const fd = new FormData();
@@ -4646,10 +4452,17 @@
                     const my = ctxTargetMsg.reactions.find(r => r.from === currentLogin);
                     if (my && my.emoji === emoji) btn.classList.add('active');
                 }
-                btn.addEventListener('click', () => {
+                // iOS: click на button внутри position:fixed иногда не срабатывает
+                // (300ms tap delay или блокировка после long-press). Используем
+                // touchend + preventDefault чтобы обойти это поведение.
+                const doReact = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     closeCtxMenu();
                     postReact(msgId, emoji);
-                });
+                };
+                btn.addEventListener('click', doReact);
+                btn.addEventListener('touchend', doReact, { passive: false });
                 ctxReactions.appendChild(btn);
             });
         }
@@ -4684,20 +4497,28 @@
         }
 
         ctxBackdrop.addEventListener('click', closeCtxMenu);
+        ctxBackdrop.addEventListener('touchend', (e) => { e.preventDefault(); closeCtxMenu(); }, { passive: false });
 
-        ctxReply.addEventListener('click', () => {
+        // Хелпер: вешает и click и touchend (для iOS) на кнопку меню
+        function ctxItem(el, handler) {
+            const h = (e) => { e.preventDefault(); e.stopPropagation(); handler(e); };
+            el.addEventListener('click', h);
+            el.addEventListener('touchend', h, { passive: false });
+        }
+
+        ctxItem(ctxReply, () => {
             if (!ctxTargetMsg) return;
             closeCtxMenu();
             setReplyingTo({ id: ctxTargetMsg.id, from: ctxTargetMsg.from, text: ctxTargetMsg.previewText });
         });
 
-        ctxCopy.addEventListener('click', () => {
+        ctxItem(ctxCopy, () => {
             if (!ctxTargetMsg) return;
             closeCtxMenu();
             navigator.clipboard.writeText(ctxTargetMsg.text || '').catch(() => {});
         });
 
-        ctxPin.addEventListener('click', async () => {
+        ctxItem(ctxPin, async () => {
             if (!ctxTargetMsg) return;
             const isPinned = pinnedByUser[currentUser] && pinnedByUser[currentUser].message_id === ctxTargetMsg.id;
             closeCtxMenu();
@@ -4711,16 +4532,40 @@
                 const fd = new FormData();
                 fd.append('with', currentUser);
                 fd.append('message_id', String(ctxTargetMsg.id));
-                await fetch('/pin', { method: 'POST', body: fd });
+                const resp = await fetch('/pin', { method: 'POST', body: fd });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    pinnedByUser[currentUser] = { message_id: ctxTargetMsg.id, from: data.from, text: data.text };
+                    renderPinBar();
+                }
             }
         });
 
-        ctxForward.addEventListener('click', () => {
+        ctxItem(ctxForward, () => {
             if (!ctxTargetMsg) return;
             const id = ctxTargetMsg.id;
             closeCtxMenu();
             openForwardModal(id);
         });
+
+        // Скролл к сообщению по id — если оно уже отрендерено в DOM, скроллим
+        // к нему; если нет — догружаем историю вверх пока не найдём или не упрёмся.
+        async function scrollToMessage(msgId) {
+            if (!msgId) return;
+            // Пробуем найти уже отрендеренный элемент
+            const el = messagesDiv.querySelector(`[data-msg-id="${msgId}"]`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Кратко подсвечиваем
+                el.style.transition = 'background 0.3s';
+                el.style.background = 'rgba(74,144,226,0.15)';
+                setTimeout(() => { el.style.background = ''; }, 1200);
+                return;
+            }
+            // Сообщение не найдено в DOM — возможно ещё не подгружено
+            // (не реализуем глубокую прокрутку, просто сообщаем)
+            console.log('Сообщение', msgId, 'не найдено в текущем окне');
+        }
 
         function getMsgPreviewText(msg) {
             if (msg.image_id) return '📷 Фото';
@@ -4818,20 +4663,6 @@
 
         // Загружаем настройки и пин при инициализации
         loadSettings();
-
-        // ── Загрузка пина при открытии диалога ──────────────────────────────────
-
-        // Подписываемся на openDialog — после загрузки истории подтягиваем пин.
-        // Не делаем отдельный openDialog-хук; просто расширяем логику там, где он вызывается.
-        const _origOpenDialog = openDialog;
-
-        // eslint-disable-next-line no-global-assign (переопределяем локальную функцию в том же скоупе)
-        openDialog = async function(user) {
-            await _origOpenDialog(user);
-            loadPinned(user);
-            renderPinBar();
-            cancelReply();
-        };
 
     </script>
 </body>
