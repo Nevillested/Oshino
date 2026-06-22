@@ -4364,19 +4364,24 @@
 
         ctxItem(ctxReply, () => {
             if (!ctxTargetMsg) return;
+            // Сохраняем данные ДО closeCtxMenu — она обнуляет ctxTargetMsg
+            const { id, from, previewText } = ctxTargetMsg;
             closeCtxMenu();
-            setReplyingTo({ id: ctxTargetMsg.id, from: ctxTargetMsg.from, text: ctxTargetMsg.previewText });
+            setReplyingTo({ id, from, text: previewText });
         });
 
         ctxItem(ctxCopy, () => {
             if (!ctxTargetMsg) return;
+            const text = ctxTargetMsg.text || '';
             closeCtxMenu();
-            navigator.clipboard.writeText(ctxTargetMsg.text || '').catch(() => {});
+            navigator.clipboard.writeText(text).catch(() => {});
         });
 
         ctxItem(ctxPin, async () => {
             if (!ctxTargetMsg) return;
-            const isPinned = pinnedByUser[currentUser] && pinnedByUser[currentUser].message_id === ctxTargetMsg.id;
+            // Сохраняем всё нужное до closeCtxMenu
+            const msgId = ctxTargetMsg.id;
+            const isPinned = pinnedByUser[currentUser] && pinnedByUser[currentUser].message_id === msgId;
             closeCtxMenu();
             if (isPinned) {
                 const fd = new FormData();
@@ -4387,11 +4392,11 @@
             } else {
                 const fd = new FormData();
                 fd.append('with', currentUser);
-                fd.append('message_id', String(ctxTargetMsg.id));
+                fd.append('message_id', String(msgId));
                 const resp = await fetch('/pin', { method: 'POST', body: fd });
                 if (resp.ok) {
                     const data = await resp.json();
-                    pinnedByUser[currentUser] = { message_id: ctxTargetMsg.id, from: data.from, text: data.text };
+                    pinnedByUser[currentUser] = { message_id: msgId, from: data.from, text: data.text };
                     renderPinBar();
                 }
             }
