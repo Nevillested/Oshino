@@ -419,6 +419,307 @@
             color: #e74c3c;
         }
 
+        /* ── Контекстное меню (long-press / right-click) ────────────────────── */
+
+        #ctx-menu {
+            position: fixed;
+            z-index: 200;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+            overflow: hidden;
+            min-width: 180px;
+            display: none;
+        }
+
+        #ctx-menu.open { display: block; }
+
+        /* Строка эмодзи-реакций вверху меню */
+        #ctx-reactions {
+            display: flex;
+            gap: 2px;
+            padding: 10px 10px 8px;
+            border-bottom: 1px solid #f0f0f0;
+            flex-wrap: wrap;
+        }
+
+        .ctx-reaction-btn {
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 8px;
+            line-height: 1;
+            transition: background 0.1s;
+        }
+
+        .ctx-reaction-btn:hover { background: #f5f5f5; }
+        .ctx-reaction-btn.active { background: #e8f0fe; }
+
+        /* Пункты меню */
+        .ctx-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            cursor: pointer;
+            font-size: 15px;
+            color: #2c2c2c;
+            background: none;
+            border: none;
+            width: 100%;
+            text-align: left;
+            transition: background 0.1s;
+        }
+
+        .ctx-item:hover { background: #f5f5f5; }
+        .ctx-item:active { background: #eee; }
+        .ctx-item.danger { color: #e74c3c; }
+
+        .ctx-item svg { flex-shrink: 0; color: #666; }
+        .ctx-item.danger svg { color: #e74c3c; }
+
+        #ctx-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 199;
+        }
+        #ctx-backdrop.open { display: block; }
+
+        /* ── Реплай-бар (цитата над полем ввода) ───────────────────────────── */
+
+        #reply-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-top: 1px solid #e5e5e5;
+            flex-shrink: 0;
+        }
+
+        #reply-bar.show { display: flex; }
+
+        #reply-preview {
+            flex: 1;
+            min-width: 0;
+        }
+
+        #reply-preview-from {
+            font-size: 12px;
+            font-weight: 600;
+            color: #4a90e2;
+            margin-bottom: 2px;
+        }
+
+        #reply-preview-text {
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #reply-cancel-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        #reply-cancel-btn:hover { background: #eee; }
+
+        /* Цитата внутри пузыря сообщения */
+        .msg-reply-quote {
+            border-left: 3px solid #4a90e2;
+            padding: 4px 8px;
+            margin-bottom: 6px;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .message.own .msg-reply-quote {
+            border-left-color: rgba(255,255,255,0.6);
+        }
+
+        .msg-reply-quote-from {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 2px;
+            opacity: 0.85;
+        }
+
+        .msg-reply-quote-text {
+            font-size: 12px;
+            opacity: 0.75;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Подпись "Переслано от X" */
+        .msg-forward-label {
+            font-size: 12px;
+            font-style: italic;
+            opacity: 0.75;
+            margin-bottom: 4px;
+        }
+
+        /* ── Закреплённое сообщение (pin-панель под топбаром) ───────────────── */
+
+        #pin-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            background: white;
+            border-bottom: 1px solid #e5e5e5;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        #pin-bar.show { display: flex; }
+
+        #pin-bar-icon { flex-shrink: 0; color: #4a90e2; }
+
+        #pin-bar-content { flex: 1; min-width: 0; }
+
+        #pin-bar-from {
+            font-size: 11px;
+            font-weight: 600;
+            color: #4a90e2;
+            margin-bottom: 1px;
+        }
+
+        #pin-bar-text {
+            font-size: 13px;
+            color: #555;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #pin-unpin-btn {
+            background: none;
+            border: none;
+            color: #bbb;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        #pin-unpin-btn:hover { color: #999; background: #f5f5f5; }
+
+        /* ── Реакции под сообщением ─────────────────────────────────────────── */
+
+        .msg-reactions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        .reaction-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 15px;
+            background: white;
+            border: 1px solid #e5e5e5;
+            cursor: pointer;
+            transition: background 0.1s;
+            user-select: none;
+        }
+
+        .reaction-badge:hover { background: #f5f5f5; }
+
+        /* Своя реакция — подсвечиваем как у Telegram */
+        .reaction-badge.own { background: #e8f0fe; border-color: #4a90e2; }
+
+        .message-wrap.own .reaction-badge {
+            background: rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.4);
+            color: white;
+        }
+
+        .message-wrap.own .reaction-badge.own {
+            background: rgba(255,255,255,0.35);
+        }
+
+        /* ── Панель настроек (в сайдбаре) ──────────────────────────────────── */
+
+        #settings-panel {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        #settings-panel.open { display: flex; }
+
+        #settings-back-btn {
+            background: none;
+            border: none;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 0;
+            margin-bottom: 20px;
+        }
+
+        #settings-back-btn:hover { opacity: 0.8; }
+
+        #settings-panel h3 {
+            font-size: 12px;
+            color: #aaa;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        #default-reaction-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .reaction-pick-btn {
+            background: #3a3a3a;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            font-size: 26px;
+            padding: 8px 0;
+            cursor: pointer;
+            text-align: center;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .reaction-pick-btn:hover { background: #4a4a4a; }
+        .reaction-pick-btn.selected {
+            border-color: #4a90e2;
+            background: #1a2a3a;
+        }
+
+        #settings-panel #main-dialogs-section { display: none; }
+
+        #sidebar-main { display: flex; flex-direction: column; flex: 1; }
+
         #welcome-screen {
             flex: 1;
             display: flex;
@@ -864,6 +1165,374 @@
 
         #image-modal-close:hover {
             background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* ── Закреплённое сообщение ─────────────────────────────────────────── */
+        #pin-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            background: #fff8e1;
+            border-bottom: 1px solid #f0e0a0;
+            color: #7a6a2a;
+            cursor: default;
+        }
+
+        #pin-bar.show {
+            display: flex;
+        }
+
+        #pin-bar svg {
+            flex-shrink: 0;
+            color: #b8960a;
+        }
+
+        #pin-bar-text {
+            flex: 1;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #pin-bar-close {
+            background: none;
+            border: none;
+            color: #7a6a2a;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            flex-shrink: 0;
+        }
+
+        /* ── Цитата ответа (внутри пузыря и в баре над полем ввода) ──────────── */
+        .reply-quote {
+            border-left: 3px solid currentColor;
+            opacity: 0.85;
+            padding: 2px 8px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            border-radius: 2px;
+            cursor: default;
+        }
+
+        .reply-quote-from {
+            font-weight: 600;
+        }
+
+        .reply-quote-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .forwarded-label {
+            font-size: 12px;
+            opacity: 0.75;
+            font-style: italic;
+            margin-bottom: 4px;
+        }
+
+        #reply-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            background: #f0f4fa;
+            border-bottom: 1px solid #dde6f0;
+        }
+
+        #reply-bar.show {
+            display: flex;
+        }
+
+        #reply-bar-content {
+            flex: 1;
+            border-left: 3px solid #4a90e2;
+            padding-left: 8px;
+            min-width: 0;
+        }
+
+        #reply-bar-from {
+            font-size: 13px;
+            font-weight: 600;
+            color: #4a90e2;
+        }
+
+        #reply-bar-text {
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #reply-bar-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            flex-shrink: 0;
+        }
+
+        /* ── Реакции на сообщении ──────────────────────────────────────────── */
+        .message-reactions {
+            display: flex;
+            gap: 4px;
+            margin-top: 2px;
+            flex-wrap: wrap;
+        }
+
+        .reaction-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 1px 7px;
+            font-size: 13px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .reaction-badge.mine {
+            border-color: #4a90e2;
+            background: #eaf2fc;
+        }
+
+        /* ── Настройки (реакция по умолчанию) ─────────────────────────────────── */
+        #settings-btn-sidebar {
+            background: #eef1f5;
+            color: #333;
+            border: none;
+            padding: 14px;
+            border-radius: 6px;
+            font-size: 16px;
+            width: 100%;
+            cursor: pointer;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        #settings-btn-sidebar:hover,
+        #settings-btn-sidebar:active {
+            background: #e0e4ea;
+        }
+
+        #settings-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 55;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #settings-overlay.open {
+            display: flex;
+        }
+
+        #settings-panel {
+            background: white;
+            border-radius: 12px;
+            width: 360px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        #settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            font-size: 17px;
+        }
+
+        #settings-close-btn {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #888;
+        }
+
+        #settings-body {
+            padding: 20px;
+        }
+
+        #settings-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 14px;
+        }
+
+        #settings-emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+        }
+
+        .settings-emoji-cell {
+            font-size: 26px;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            background: #f5f5f5;
+            cursor: pointer;
+            padding: 8px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .settings-emoji-cell.selected {
+            border-color: #4a90e2;
+            background: #eaf2fc;
+        }
+
+        /* ── Контекстное меню сообщения ───────────────────────────────────────── */
+        #msg-menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.25);
+            z-index: 57;
+        }
+
+        #msg-menu-overlay.open {
+            display: block;
+        }
+
+        #msg-menu {
+            position: absolute;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+            width: 260px;
+            max-width: 90vw;
+            overflow: hidden;
+        }
+
+        #msg-menu-emoji-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .msg-menu-emoji-cell {
+            font-size: 22px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            padding: 4px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+        }
+
+        .msg-menu-emoji-cell:hover {
+            background: #f0f0f0;
+        }
+
+        #msg-menu-actions {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #msg-menu-actions button {
+            background: none;
+            border: none;
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 15px;
+            cursor: pointer;
+            color: #222;
+        }
+
+        #msg-menu-actions button:hover {
+            background: #f5f5f5;
+        }
+
+        /* ── Пересылка ────────────────────────────────────────────────────────── */
+        #forward-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 56;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #forward-overlay.open {
+            display: flex;
+        }
+
+        #forward-panel {
+            background: white;
+            border-radius: 12px;
+            width: 360px;
+            max-width: 90vw;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #forward-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            font-size: 17px;
+        }
+
+        #forward-close-btn {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #888;
+        }
+
+        #forward-list {
+            list-style: none;
+            padding: 8px;
+            margin: 0;
+            overflow-y: auto;
+        }
+
+        #forward-list li {
+            padding: 12px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        #forward-list li:hover {
+            background: #f5f5f5;
         }
 
         @media (max-width: 767px) {
@@ -1312,19 +1981,56 @@
     <div id="overlay"></div>
 
     <div id="sidebar">
-        <div id="search-container">
-            <button id="close-menu-btn">☰</button>
-            <input type="text" id="search-input" placeholder="Найти пользователя...">
+        <!-- Главный экран сайдбара -->
+        <div id="sidebar-main">
+            <div id="search-container">
+                <button id="close-menu-btn">☰</button>
+                <input type="text" id="search-input" placeholder="Найти пользователя...">
+            </div>
+            <ul id="search-results"></ul>
+
+            <h3>Диалоги</h3>
+            <ul id="users"></ul>
+
+            <button id="settings-open-btn" style="margin-top: auto; margin-bottom: 10px; background: #3a3a3a; color: #ddd; border: none; padding: 12px; border-radius: 6px; font-size: 15px; width: 100%; cursor: pointer; text-align: left;">⚙ Настройки</button>
+            <button id="logout-btn-sidebar">Выход</button>
         </div>
-        <ul id="search-results"></ul>
 
-        <h3>Диалоги</h3>
-        <ul id="users"></ul>
-
-        <button id="logout-btn-sidebar">Выход</button>
+        <!-- Панель настроек (сменяет главный экран сайдбара) -->
+        <div id="settings-panel">
+            <button id="settings-back-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Настройки
+            </button>
+            <h3>Реакция по умолчанию</h3>
+            <p style="font-size: 13px; color: #aaa; margin-bottom: 14px;">Проставляется двойным тапом по сообщению</p>
+            <div id="default-reaction-grid"></div>
+        </div>
     </div>
 
     <div id="chat">
+        <!-- Pin-bar — закреплённое сообщение -->
+        <div id="pin-bar">
+            <div id="pin-bar-icon">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="17" x2="12" y2="22"></line>
+                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
+                </svg>
+            </div>
+            <div id="pin-bar-content">
+                <div id="pin-bar-from"></div>
+                <div id="pin-bar-text"></div>
+            </div>
+            <button id="pin-unpin-btn" title="Открепить">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+
         <div id="welcome-screen">
             <div id="welcome-greeting"></div>
             <div id="welcome-subtitle">Выберите пользователя для начала диалога</div>
@@ -1332,6 +2038,14 @@
             <div id="welcome-empty-hint">Пока нет ни одного диалога — найдите собеседника через поиск в меню</div>
         </div>
         <div id="offline-notice">Пользователь не в сети</div>
+        <div id="pin-bar" style="display: none;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="17" x2="12" y2="22"></line>
+                <path d="M5 17h14l-1.5-1.5C16.5 14.5 16 13 16 11V7a4 4 0 0 0-8 0v4c0 2-.5 3.5-1.5 4.5L5 17z"></path>
+            </svg>
+            <div id="pin-bar-text"></div>
+            <button id="pin-bar-close" title="Открепить">✕</button>
+        </div>
         <div id="messages" style="display: none;">
             <div id="load-more-indicator">загрузка...</div>
         </div>
@@ -1352,7 +2066,27 @@
             </div>
             <button id="recording-send-btn" type="button">Отправить</button>
         </div>
+        <!-- Reply-bar — цитата выбранного сообщения над полем ввода -->
+        <div id="reply-bar">
+            <div id="reply-preview">
+                <div id="reply-preview-from"></div>
+                <div id="reply-preview-text"></div>
+            </div>
+            <button id="reply-cancel-btn" title="Отмена">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
         <div id="input-area">
+            <div id="reply-bar" style="display: none;">
+                <div id="reply-bar-content">
+                    <div id="reply-bar-from"></div>
+                    <div id="reply-bar-text"></div>
+                </div>
+                <button id="reply-bar-close" title="Отменить">✕</button>
+            </div>
             <div id="form-area" style="display: none;">
                 <input type="file" id="image-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
                 <button id="attach-btn" type="button" title="Прикрепить картинку">
@@ -1376,10 +2110,80 @@
         </div>
     </div>
 
+    <!-- Backdrop + контекстное меню сообщения (long-press / right-click) -->
+    <div id="ctx-backdrop"></div>
+    <div id="ctx-menu">
+        <div id="ctx-reactions"></div>
+        <button class="ctx-item" id="ctx-reply">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 17 4 12 9 7"></polyline>
+                <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+            </svg>
+            Ответить
+        </button>
+        <button class="ctx-item" id="ctx-copy">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Копировать
+        </button>
+        <button class="ctx-item" id="ctx-pin">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="17" x2="12" y2="22"></line>
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
+            </svg>
+            <span id="ctx-pin-label">Закрепить</span>
+        </button>
+        <button class="ctx-item" id="ctx-forward">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 17 20 12 15 7"></polyline>
+                <path d="M4 18v-2a4 4 0 0 1 4-4h12"></path>
+            </svg>
+            Переслать
+        </button>
+    </div>
+
+    <!-- Модалка выбора диалога для forward -->
+    <div id="forward-modal-overlay" style="display:none; position:fixed; inset:0; z-index:300; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:14px; width:300px; max-width:90vw; max-height:70vh; overflow:hidden; display:flex; flex-direction:column;">
+            <div style="padding:16px 16px 12px; border-bottom:1px solid #eee; font-weight:600; font-size:16px; display:flex; justify-content:space-between; align-items:center;">
+                Переслать в...
+                <button id="forward-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;">✕</button>
+            </div>
+            <ul id="forward-dialog-list" style="list-style:none;overflow-y:auto;flex:1;padding:8px 0;margin:0;"></ul>
+        </div>
+    </div>
+
     <div id="image-modal-overlay">
         <div id="image-modal">
             <button id="image-modal-close">✕</button>
             <img id="image-modal-img" src="" alt="">
+        </div>
+    </div>
+
+    <!-- Контекстное меню сообщения — долгий тап на мобиле / правый клик на
+         десктопе. Сверху сетка быстрых реакций, снизу список действий. -->
+    <div id="msg-menu-overlay">
+        <div id="msg-menu">
+            <div id="msg-menu-emoji-grid"></div>
+            <div id="msg-menu-actions">
+                <button id="msg-menu-reply" type="button">↩ Ответить</button>
+                <button id="msg-menu-copy" type="button">⧉ Скопировать</button>
+                <button id="msg-menu-pin" type="button">📌 Закрепить</button>
+                <button id="msg-menu-forward" type="button">➦ Переслать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Выбор диалога для пересылки -->
+    <div id="forward-overlay">
+        <div id="forward-panel">
+            <div id="forward-header">
+                <span>Переслать</span>
+                <button id="forward-close-btn" title="Закрыть">✕</button>
+            </div>
+            <ul id="forward-list"></ul>
         </div>
     </div>
 
@@ -1445,6 +2249,14 @@
         // Состояние пагинации по диалогам: { login: { oldestId, allLoaded } }
         let historyState = {};
 
+        // Состояние нового функционала: на что отвечаем сейчас, что закреплено
+        // в текущем диалоге, реакция по умолчанию для двойного тапа.
+        // pinnedByUser — { login: {message_id, from, text} | null }, отдельно на
+        // каждый диалог, т.к. пользователь может переключаться между чатами.
+        let replyingTo = null; // {id, from, text}
+        let pinnedByUser = {};
+        let defaultReaction = '👍';
+
         const menuBtn = document.getElementById('menu-btn');
         const closeMenuBtn = document.getElementById('close-menu-btn');
         const sidebar = document.getElementById('sidebar');
@@ -1466,10 +2278,40 @@
         const formArea = document.getElementById('form-area');
         const inputArea = document.getElementById('input-area');
         const loadMoreIndicator = document.getElementById('load-more-indicator');
+
         const welcomeScreen = document.getElementById('welcome-screen');
         const welcomeGreeting = document.getElementById('welcome-greeting');
         const welcomeDialogsList = document.getElementById('welcome-dialogs');
         const welcomeEmptyHint = document.getElementById('welcome-empty-hint');
+
+        // Новые элементы: pin, reply, context menu, settings
+        const pinBar = document.getElementById('pin-bar');
+        const pinBarFrom = document.getElementById('pin-bar-from');
+        const pinBarText = document.getElementById('pin-bar-text');
+        const pinUnpinBtn = document.getElementById('pin-unpin-btn');
+        const replyBar = document.getElementById('reply-bar');
+        const replyPreviewFrom = document.getElementById('reply-preview-from');
+        const replyPreviewText = document.getElementById('reply-preview-text');
+        const replyCancelBtn = document.getElementById('reply-cancel-btn');
+        const ctxMenu = document.getElementById('ctx-menu');
+        const ctxBackdrop = document.getElementById('ctx-backdrop');
+        const ctxReactions = document.getElementById('ctx-reactions');
+        const ctxReply = document.getElementById('ctx-reply');
+        const ctxCopy = document.getElementById('ctx-copy');
+        const ctxPin = document.getElementById('ctx-pin');
+        const ctxPinLabel = document.getElementById('ctx-pin-label');
+        const ctxForward = document.getElementById('ctx-forward');
+        const forwardModalOverlay = document.getElementById('forward-modal-overlay');
+        const forwardModalClose = document.getElementById('forward-modal-close');
+        const forwardDialogList = document.getElementById('forward-dialog-list');
+        const sidebarMain = document.getElementById('sidebar-main');
+        const settingsPanel = document.getElementById('settings-panel');
+        const settingsOpenBtn = document.getElementById('settings-open-btn');
+        const settingsBackBtn = document.getElementById('settings-back-btn');
+        const defaultReactionGrid = document.getElementById('default-reaction-grid');
+
+        // Текущее выбранное сообщение для контекстного меню
+        let ctxTargetMsg = null; // {id, text, own, call_type}
         const topbarTitle = document.getElementById('topbar-title');
         const callBtn = document.getElementById('call-btn');
         const videoCallBtn = document.getElementById('video-call-btn');
@@ -1543,6 +2385,12 @@
                     onCallVideoDisabled(JSON.parse(message.substring(20)));
                 } else if (message.startsWith('call-video-enabled:')) {
                     onCallVideoEnabled(JSON.parse(message.substring(19)));
+                } else if (message.startsWith('pin:')) {
+                    onPinUpdate(JSON.parse(message.substring(4)));
+                } else if (message.startsWith('unpin:')) {
+                    onPinUpdate(JSON.parse(message.substring(6)));
+                } else if (message.startsWith('reaction:')) {
+                    onReactionUpdate(JSON.parse(message.substring(9)));
                 }
             };
 
@@ -1916,6 +2764,8 @@
             unreadCount[user] = 0;
             renderDialogList();
             updateFormState();
+            cancelReply();
+            loadPinned(user);
 
             const state = historyState[user];
 
@@ -1928,6 +2778,21 @@
                 loadMoreIndicator.style.display = 'none';
                 // Первая загрузка
                 await loadHistory(user, 0, 20);
+            }
+        }
+
+        // loadPinned — подгружает текущее закреплённое сообщение диалога с сервера
+        // (живые обновления потом приходят через WS pin:/unpin:, это только для
+        // начального состояния при открытии чата).
+        async function loadPinned(user) {
+            try {
+                const resp = await fetch(`/pinned?with=${encodeURIComponent(user)}`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                pinnedByUser[user] = data; // null или {message_id, from, text}
+                if (currentUser === user) renderPinBar();
+            } catch (e) {
+                console.error('Ошибка загрузки закреплённого сообщения:', e);
             }
         }
 
@@ -2155,8 +3020,22 @@
 
                 const wrap = document.createElement('div');
                 wrap.className = 'message-wrap ' + (msg.own ? 'own' : 'other');
+                // data-msg-id нужен контекстному меню чтобы идентифицировать сообщение
+                if (msg.id > 0) wrap.dataset.msgId = msg.id;
 
-                if (msg.image_id) {
+                // Пересылка — подпись "Переслано от X" перед контентом
+                if (msg.forwarded_from) {
+                    const fwd = document.createElement('div');
+                    fwd.className = 'msg-forward-label';
+                    fwd.textContent = '↗ Переслано от ' + msg.forwarded_from;
+                    wrap.appendChild(fwd);
+                }
+
+                if (msg.image_id || msg.local_preview) {
+                    // Цитата перед картинкой если это reply
+                    if (msg.reply_preview) {
+                        wrap.appendChild(buildReplyQuote(msg.reply_preview, msg.own));
+                    }
                     const img = document.createElement('img');
                     img.className = 'message-image';
                     img.src = msg.local_preview || ('/image/' + msg.image_id);
@@ -2167,13 +3046,21 @@
                     }
                     wrap.appendChild(img);
                 } else if (msg.audio_id || msg.local_audio_url) {
+                    if (msg.reply_preview) {
+                        wrap.appendChild(buildReplyQuote(msg.reply_preview, msg.own));
+                    }
                     const audioSrc = msg.local_audio_url || ('/audio/' + msg.audio_id);
                     const player = buildAudioPlayer(audioSrc, msg.audio_duration || 0, msg.own ? 'own' : 'other');
                     wrap.appendChild(player);
                 } else {
                     const bubble = document.createElement('div');
                     bubble.className = 'message ' + (msg.own ? 'own' : 'other');
-                    bubble.textContent = msg.text;
+                    if (msg.reply_preview) {
+                        bubble.appendChild(buildReplyQuote(msg.reply_preview, msg.own));
+                    }
+                    const textNode = document.createElement('span');
+                    textNode.textContent = msg.text;
+                    bubble.appendChild(textNode);
                     wrap.appendChild(bubble);
                 }
 
@@ -2185,6 +3072,17 @@
                     wrap.appendChild(timeDiv);
                 }
 
+                // Реакции
+                if (msg.reactions && msg.reactions.length > 0) {
+                    wrap.appendChild(buildReactionBadges(msg.reactions, msg.id));
+                }
+
+                // Long-press (мобайл) и right-click (десктоп) для контекстного меню.
+                // Звонки и pending-сообщения (ещё не получили id с сервера) пропускаем.
+                if (!msg.call_type && msg.id > 0) {
+                    attachContextMenuHandlers(wrap, msg);
+                }
+
                 messagesDiv.appendChild(wrap);
             });
 
@@ -2193,6 +3091,36 @@
                 const newScrollHeight = messagesDiv.scrollHeight;
                 messagesDiv.scrollTop = newScrollHeight - prevScrollHeight;
             }
+        }
+
+        // ── Вспомогательные функции для сообщений ────────────────────────────────
+
+        function buildReplyQuote(preview, isOwn) {
+            const q = document.createElement('div');
+            q.className = 'msg-reply-quote';
+            const f = document.createElement('div');
+            f.className = 'msg-reply-quote-from';
+            f.textContent = preview.from;
+            const t = document.createElement('div');
+            t.className = 'msg-reply-quote-text';
+            t.textContent = preview.text;
+            q.appendChild(f);
+            q.appendChild(t);
+            return q;
+        }
+
+        function buildReactionBadges(reactions, msgId) {
+            const container = document.createElement('div');
+            container.className = 'msg-reactions';
+            reactions.forEach(r => {
+                const badge = document.createElement('button');
+                badge.className = 'reaction-badge' + (r.from === currentLogin ? ' own' : '');
+                badge.textContent = r.emoji;
+                badge.title = r.from;
+                badge.addEventListener('click', () => postReact(msgId, r.emoji));
+                container.appendChild(badge);
+            });
+            return container;
         }
 
         // ── Просмотр картинки на весь экран ──────────────────────────────────────
@@ -2257,7 +3185,9 @@
                 return;
             }
 
+            const replyToID = replyingTo ? replyingTo.id : 0;
             const msg = { from: currentLogin, to: currentUser, text };
+            if (replyToID) msg.reply_to_id = replyToID;
             ws.send('msg:' + JSON.stringify(msg));
 
             const state = historyState[currentUser];
@@ -2265,17 +3195,26 @@
                 // Временный id (отрицательный) чтобы не путаться с серверными,
                 // и временная метка локального времени до получения подтверждения от сервера
                 const tmpId = -(Date.now());
-                state.messages.push({
+                const placeholder = {
                     id: tmpId,
                     from: currentLogin,
                     text,
                     own: true,
                     created_at: new Date().toISOString(),
                     pending: true
-                });
+                };
+                // Цитату показываем сразу же оптимистично — данные уже есть локально
+                // (это сообщение, по которому только что был долгий тап), не нужно
+                // ждать ответа сервера, чтобы увидеть её в своём же пузыре.
+                if (replyingTo) {
+                    placeholder.reply_to_id = replyingTo.id;
+                    placeholder.reply_preview = { from: replyingTo.from, text: replyingTo.text };
+                }
+                state.messages.push(placeholder);
             }
 
             inputField.value = '';
+            cancelReply();
             renderMessages(historyState[currentUser].messages);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
@@ -2285,14 +3224,34 @@
             const state = historyState[msg.to];
             if (!state) return;
 
-            if (msg.image_id) {
+            if (msg.forwarded_from) {
+                // Пересланное сообщение никогда не рисуется оптимистично заранее —
+                // пересылка идёт отдельным POST-запросом, не через обычный sendMessage,
+                // плейсхолдера для сопоставления просто нет. Добавляем как новое.
+                state.messages.push({
+                    id: msg.msg_id,
+                    from: msg.from,
+                    text: msg.text,
+                    own: true,
+                    created_at: msg.created_at,
+                    image_id: msg.image_id || undefined,
+                    image_name: msg.image_name || undefined,
+                    image_mime: msg.image_mime || undefined,
+                    audio_id: msg.audio_id || undefined,
+                    audio_duration: msg.audio_duration || undefined,
+                    forwarded_from: msg.forwarded_from
+                });
+            } else if (msg.image_id) {
                 // Сопоставляем с самым старым ожидающим подтверждения сообщением-картинкой
                 for (let i = 0; i < state.messages.length; i++) {
                     const m = state.messages[i];
                     if (m.pending && m.own && m.isImage && !m.image_id) {
+                        m.id = msg.msg_id;
                         m.image_id = msg.image_id;
                         m.image_name = msg.image_name;
                         m.created_at = msg.created_at;
+                        m.reply_to_id = msg.reply_to_id;
+                        m.reply_preview = msg.reply_preview;
                         if (m.local_preview) {
                             URL.revokeObjectURL(m.local_preview);
                             delete m.local_preview;
@@ -2306,9 +3265,12 @@
                 for (let i = 0; i < state.messages.length; i++) {
                     const m = state.messages[i];
                     if (m.pending && m.own && m.isAudio && !m.audio_id) {
+                        m.id = msg.msg_id;
                         m.audio_id = msg.audio_id;
                         m.audio_duration = msg.audio_duration;
                         m.created_at = msg.created_at;
+                        m.reply_to_id = msg.reply_to_id;
+                        m.reply_preview = msg.reply_preview;
                         if (m.local_audio_url) {
                             setTimeout(() => {
                                 URL.revokeObjectURL(m.local_audio_url);
@@ -2338,7 +3300,10 @@
                 for (let i = state.messages.length - 1; i >= 0; i--) {
                     const m = state.messages[i];
                     if (m.pending && m.own && !m.isImage && m.text === msg.text) {
+                        m.id = msg.msg_id;
                         m.created_at = msg.created_at;
+                        m.reply_to_id = msg.reply_to_id;
+                        m.reply_preview = msg.reply_preview;
                         delete m.pending;
                         break;
                     }
@@ -2356,29 +3321,35 @@
             }
 
             const state = historyState[msg.from];
-            const tmpId = -(Date.now());
+            const realId = msg.msg_id || -(Date.now());
 
             if (msg.image_id) {
                 state.messages.push({
-                    id: tmpId,
+                    id: realId,
                     from: msg.from,
                     own: false,
                     created_at: msg.created_at,
                     image_id: msg.image_id,
-                    image_name: msg.image_name
+                    image_name: msg.image_name,
+                    reply_to_id: msg.reply_to_id,
+                    reply_preview: msg.reply_preview,
+                    forwarded_from: msg.forwarded_from
                 });
             } else if (msg.audio_id) {
                 state.messages.push({
-                    id: tmpId,
+                    id: realId,
                     from: msg.from,
                     own: false,
                     created_at: msg.created_at,
                     audio_id: msg.audio_id,
-                    audio_duration: msg.audio_duration
+                    audio_duration: msg.audio_duration,
+                    reply_to_id: msg.reply_to_id,
+                    reply_preview: msg.reply_preview,
+                    forwarded_from: msg.forwarded_from
                 });
             } else if (msg.call_type) {
                 state.messages.push({
-                    id: msg.call_msg_id || tmpId,
+                    id: msg.call_msg_id || realId,
                     from: msg.from,
                     own: false,
                     created_at: msg.created_at,
@@ -2388,11 +3359,14 @@
                 });
             } else {
                 state.messages.push({
-                    id: tmpId,
+                    id: realId,
                     from: msg.from,
                     text: msg.text,
                     own: false,
-                    created_at: msg.created_at
+                    created_at: msg.created_at,
+                    reply_to_id: msg.reply_to_id,
+                    reply_preview: msg.reply_preview,
+                    forwarded_from: msg.forwarded_from
                 });
             }
 
@@ -2454,6 +3428,7 @@
             const formData = new FormData();
             formData.append('file', file);
             formData.append('to', currentUser);
+            if (replyingTo) formData.append('reply_to', String(replyingTo.id));
 
             const xhr = new XMLHttpRequest();
 
@@ -2661,6 +3636,7 @@
             formData.append('file', blob, 'voice.' + ext);
             formData.append('to', currentUser);
             formData.append('duration', String(duration));
+            if (replyingTo) formData.append('reply_to', String(replyingTo.id));
 
             const xhr = new XMLHttpRequest();
             xhr.addEventListener('load', () => {
@@ -3522,6 +4498,341 @@
         document.getElementById('logout-btn-sidebar').addEventListener('click', () => {
             window.location.href = '/logout';
         });
+
+        // ── Reply ────────────────────────────────────────────────────────────────
+
+        function setReplyingTo(msg) {
+            // msg = {id, from, text} — текст превью (готовый, как в цитате)
+            replyingTo = msg;
+            replyPreviewFrom.textContent = msg.from;
+            replyPreviewText.textContent = msg.text;
+            replyBar.classList.add('show');
+            inputField.focus();
+        }
+
+        function cancelReply() {
+            replyingTo = null;
+            replyBar.classList.remove('show');
+        }
+
+        replyCancelBtn.addEventListener('click', cancelReply);
+
+        // ── Pin ──────────────────────────────────────────────────────────────────
+
+        function renderPinBar() {
+            const pin = pinnedByUser[currentUser];
+            if (pin) {
+                pinBarFrom.textContent = pin.from;
+                pinBarText.textContent = pin.text;
+                pinBar.classList.add('show');
+            } else {
+                pinBar.classList.remove('show');
+            }
+        }
+
+        async function loadPinned(user) {
+            try {
+                const resp = await fetch(`/pinned?with=${encodeURIComponent(user)}`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                pinnedByUser[user] = data; // null если не закреплено
+                if (currentUser === user) renderPinBar();
+            } catch (e) {}
+        }
+
+        pinUnpinBtn.addEventListener('click', async () => {
+            if (!currentUser) return;
+            const fd = new FormData();
+            fd.append('with', currentUser);
+            await fetch('/unpin', { method: 'POST', body: fd });
+            pinnedByUser[currentUser] = null;
+            renderPinBar();
+        });
+
+        function onPinUpdate(data) {
+            // data = {with, message_id, from?, text?} — with = логин собеседника
+            // с точки зрения ЭТОГО клиента (server подставляет правильную сторону)
+            const user = data.with;
+            if (!user) return;
+            if (data.message_id) {
+                pinnedByUser[user] = { message_id: data.message_id, from: data.from, text: data.text };
+            } else {
+                pinnedByUser[user] = null;
+            }
+            if (currentUser === user) renderPinBar();
+        }
+
+        // ── Forward ──────────────────────────────────────────────────────────────
+
+        function openForwardModal(msgId) {
+            forwardDialogList.innerHTML = '';
+            const logins = Object.keys(historyState).filter(u => u !== currentUser);
+            if (logins.length === 0) {
+                const li = document.createElement('li');
+                li.style.cssText = 'padding:16px;color:#999;font-size:14px;text-align:center;';
+                li.textContent = 'Нет других диалогов';
+                forwardDialogList.appendChild(li);
+            } else {
+                logins.forEach(u => {
+                    const li = document.createElement('li');
+                    li.style.cssText = 'padding:14px 16px;cursor:pointer;font-size:16px;border-bottom:1px solid #f0f0f0;';
+                    li.textContent = u;
+                    li.addEventListener('click', async () => {
+                        forwardModalOverlay.style.display = 'none';
+                        const fd = new FormData();
+                        fd.append('message_id', String(msgId));
+                        fd.append('to', u);
+                        await fetch('/forward', { method: 'POST', body: fd });
+                    });
+                    forwardDialogList.appendChild(li);
+                });
+            }
+            forwardModalOverlay.style.display = 'flex';
+        }
+
+        forwardModalClose.addEventListener('click', () => {
+            forwardModalOverlay.style.display = 'none';
+        });
+        forwardModalOverlay.addEventListener('click', (e) => {
+            if (e.target === forwardModalOverlay) forwardModalOverlay.style.display = 'none';
+        });
+
+        // ── Reactions ────────────────────────────────────────────────────────────
+
+        const EMOJI_SET = ['👍','👎','❤️','😂','😮','😢','😡','🔥','🎉','👏','🙏','💯','✅','❌','🤔','😍','😎','🥳','😱','🙌'];
+
+        async function postReact(msgId, emoji) {
+            const fd = new FormData();
+            fd.append('message_id', String(msgId));
+            fd.append('emoji', emoji);
+            await fetch('/react', { method: 'POST', body: fd });
+        }
+
+        function onReactionUpdate(data) {
+            // data = {message_id, from, emoji} — emoji="" означает снятие реакции
+            if (!currentUser) return;
+            const state = historyState[currentUser] || historyState[data.from];
+            if (!state) return;
+            const msg = state.messages.find(m => m.id === data.message_id);
+            if (!msg) return;
+            if (!msg.reactions) msg.reactions = [];
+            if (data.emoji === '') {
+                msg.reactions = msg.reactions.filter(r => r.from !== data.from);
+            } else {
+                const existing = msg.reactions.find(r => r.from === data.from);
+                if (existing) existing.emoji = data.emoji;
+                else msg.reactions.push({ from: data.from, emoji: data.emoji });
+            }
+            renderMessages(state.messages);
+        }
+
+        // Двойной тап по сообщению = реакция по умолчанию.
+        // Реализуется как два touchstart/touchend в течение 300мс — отдельно от
+        // long-press (один тач ≥500мс): сначала проверяем второй тап, только
+        // потом запускаем таймер long-press, чтобы они не конфликтовали.
+        let lastTapTarget = null;
+        let lastTapTime = 0;
+
+        // ── Контекстное меню ─────────────────────────────────────────────────────
+
+        function buildCtxReactionRow(msgId) {
+            ctxReactions.innerHTML = '';
+            EMOJI_SET.forEach(emoji => {
+                const btn = document.createElement('button');
+                btn.className = 'ctx-reaction-btn';
+                btn.textContent = emoji;
+                // Подсвечиваем уже поставленную реакцию текущего пользователя
+                if (ctxTargetMsg && ctxTargetMsg.reactions) {
+                    const my = ctxTargetMsg.reactions.find(r => r.from === currentLogin);
+                    if (my && my.emoji === emoji) btn.classList.add('active');
+                }
+                btn.addEventListener('click', () => {
+                    closeCtxMenu();
+                    postReact(msgId, emoji);
+                });
+                ctxReactions.appendChild(btn);
+            });
+        }
+
+        function openCtxMenu(msg, x, y) {
+            ctxTargetMsg = msg;
+
+            const isPinned = pinnedByUser[currentUser] && pinnedByUser[currentUser].message_id === msg.id;
+            ctxPinLabel.textContent = isPinned ? 'Открепить' : 'Закрепить';
+
+            // Copy только для текстовых
+            ctxCopy.style.display = msg.text ? 'flex' : 'none';
+
+            buildCtxReactionRow(msg.id);
+
+            ctxMenu.classList.add('open');
+            ctxBackdrop.classList.add('open');
+
+            // Позиционирование — стараемся не выйти за экран
+            const mw = 220, mh = ctxMenu.offsetHeight || 280;
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const left = Math.min(x, vw - mw - 8);
+            const top = y + mh > vh ? Math.max(8, y - mh) : y;
+            ctxMenu.style.left = left + 'px';
+            ctxMenu.style.top = top + 'px';
+        }
+
+        function closeCtxMenu() {
+            ctxMenu.classList.remove('open');
+            ctxBackdrop.classList.remove('open');
+            ctxTargetMsg = null;
+        }
+
+        ctxBackdrop.addEventListener('click', closeCtxMenu);
+
+        ctxReply.addEventListener('click', () => {
+            if (!ctxTargetMsg) return;
+            closeCtxMenu();
+            setReplyingTo({ id: ctxTargetMsg.id, from: ctxTargetMsg.from, text: ctxTargetMsg.previewText });
+        });
+
+        ctxCopy.addEventListener('click', () => {
+            if (!ctxTargetMsg) return;
+            closeCtxMenu();
+            navigator.clipboard.writeText(ctxTargetMsg.text || '').catch(() => {});
+        });
+
+        ctxPin.addEventListener('click', async () => {
+            if (!ctxTargetMsg) return;
+            const isPinned = pinnedByUser[currentUser] && pinnedByUser[currentUser].message_id === ctxTargetMsg.id;
+            closeCtxMenu();
+            if (isPinned) {
+                const fd = new FormData();
+                fd.append('with', currentUser);
+                await fetch('/unpin', { method: 'POST', body: fd });
+                pinnedByUser[currentUser] = null;
+                renderPinBar();
+            } else {
+                const fd = new FormData();
+                fd.append('with', currentUser);
+                fd.append('message_id', String(ctxTargetMsg.id));
+                await fetch('/pin', { method: 'POST', body: fd });
+            }
+        });
+
+        ctxForward.addEventListener('click', () => {
+            if (!ctxTargetMsg) return;
+            const id = ctxTargetMsg.id;
+            closeCtxMenu();
+            openForwardModal(id);
+        });
+
+        function getMsgPreviewText(msg) {
+            if (msg.image_id) return '📷 Фото';
+            if (msg.audio_id) return '🎤 Голосовое сообщение';
+            return msg.text || '';
+        }
+
+        function attachContextMenuHandlers(wrap, msg) {
+            const msgData = {
+                id: msg.id,
+                from: msg.from || currentLogin,
+                text: msg.text || '',
+                own: msg.own,
+                call_type: msg.call_type || null,
+                reactions: msg.reactions || [],
+                previewText: getMsgPreviewText(msg)
+            };
+
+            // Right-click на десктопе
+            wrap.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                openCtxMenu(msgData, e.clientX, e.clientY);
+            });
+
+            // Long-press на мобайле (≥500мс)
+            let lpTimer = null;
+            let lpMoved = false;
+
+            wrap.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) return;
+                lpMoved = false;
+                const touch = e.touches[0];
+
+                // Двойной тап — реакция по умолчанию
+                const now = Date.now();
+                if (lastTapTarget === wrap && now - lastTapTime < 300) {
+                    lastTapTarget = null;
+                    postReact(msgData.id, defaultReaction);
+                    return;
+                }
+                lastTapTarget = wrap;
+                lastTapTime = now;
+
+                lpTimer = setTimeout(() => {
+                    if (!lpMoved) {
+                        openCtxMenu(msgData, touch.clientX, touch.clientY);
+                    }
+                }, 500);
+            }, { passive: true });
+
+            wrap.addEventListener('touchmove', () => { lpMoved = true; clearTimeout(lpTimer); }, { passive: true });
+            wrap.addEventListener('touchend', () => clearTimeout(lpTimer), { passive: true });
+            wrap.addEventListener('touchcancel', () => clearTimeout(lpTimer), { passive: true });
+        }
+
+        // ── Settings ─────────────────────────────────────────────────────────────
+
+        async function loadSettings() {
+            try {
+                const resp = await fetch('/settings');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                defaultReaction = data.default_reaction || '👍';
+                renderDefaultReactionGrid();
+            } catch (e) {}
+        }
+
+        function renderDefaultReactionGrid() {
+            defaultReactionGrid.innerHTML = '';
+            EMOJI_SET.forEach(emoji => {
+                const btn = document.createElement('button');
+                btn.className = 'reaction-pick-btn' + (emoji === defaultReaction ? ' selected' : '');
+                btn.textContent = emoji;
+                btn.addEventListener('click', async () => {
+                    defaultReaction = emoji;
+                    renderDefaultReactionGrid();
+                    const fd = new FormData();
+                    fd.append('default_reaction', emoji);
+                    await fetch('/settings', { method: 'POST', body: fd });
+                });
+                defaultReactionGrid.appendChild(btn);
+            });
+        }
+
+        settingsOpenBtn.addEventListener('click', () => {
+            sidebarMain.style.display = 'none';
+            settingsPanel.classList.add('open');
+            renderDefaultReactionGrid();
+        });
+
+        settingsBackBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('open');
+            sidebarMain.style.display = 'flex';
+        });
+
+        // Загружаем настройки и пин при инициализации
+        loadSettings();
+
+        // ── Загрузка пина при открытии диалога ──────────────────────────────────
+
+        // Подписываемся на openDialog — после загрузки истории подтягиваем пин.
+        // Не делаем отдельный openDialog-хук; просто расширяем логику там, где он вызывается.
+        const _origOpenDialog = openDialog;
+
+        // eslint-disable-next-line no-global-assign (переопределяем локальную функцию в том же скоупе)
+        openDialog = async function(user) {
+            await _origOpenDialog(user);
+            loadPinned(user);
+            renderPinBar();
+            cancelReply();
+        };
+
     </script>
 </body>
 </html>

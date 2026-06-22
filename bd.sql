@@ -147,6 +147,55 @@ ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS call_type character vary
 ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS call_status character varying(20);
 ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS call_duration integer;
 
+-- ── Reply / Pin / Forward / Reactions (как в Telegram) ──────────────────────
+
+-- Reply: ссылка на исходное сообщение, на которое отвечают. ON DELETE SET NULL —
+-- если оригинал когда-нибудь будет удалён (удаление сообщений пока не реализовано,
+-- но колонка не должна стать недействительной, если это появится позже), реплай
+-- останется как обычное сообщение, просто без цитаты.
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS reply_to_id integer
+    REFERENCES messenger.messages (id) ON DELETE SET NULL;
+
+-- Forward: логин ИСХОДНОГO автора сообщения (не того, кто переслал) — чтобы
+-- цепочка пересылок всегда показывала первоисточник, как в Telegram.
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS forwarded_from character varying;
+
+-- Pin: один закреплённый месседж на диалог (не несколько, как в группах) —
+-- хранится на самом диалоге, а не на сообщении, чтобы открепление было
+-- тривиальной операцией (просто обнулить поле, не трогая сообщения).
+ALTER TABLE messenger.conversations ADD COLUMN IF NOT EXISTS pinned_message_id integer
+    REFERENCES messenger.messages (id) ON DELETE SET NULL;
+
+-- Reactions: максимум одна реакция на сообщение от одного пользователя —
+-- обеспечивается UNIQUE(message_id, user_id), повторная реакция апсертится
+-- (UPSERT) поверх предыдущей, а не накапливается.
+CREATE SEQUENCE IF NOT EXISTS messenger.message_reactions_id_seq;
+
+CREATE TABLE IF NOT EXISTS messenger.message_reactions
+(
+    id integer NOT NULL DEFAULT nextval('messenger.message_reactions_id_seq'::regclass),
+    message_id integer NOT NULL,
+    user_id integer NOT NULL,
+    emoji character varying(16) NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT message_reactions_pkey PRIMARY KEY (id),
+    CONSTRAINT message_reactions_message_user_key UNIQUE (message_id, user_id),
+    CONSTRAINT message_reactions_message_id_fkey FOREIGN KEY (message_id)
+        REFERENCES messenger.messages (id) ON DELETE CASCADE,
+    CONSTRAINT message_reactions_user_id_fkey FOREIGN KEY (user_id)
+        REFERENCES messenger.users (id) ON DELETE CASCADE
+)
+TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_message_reactions_message
+    ON messenger.message_reactions USING btree (message_id ASC NULLS LAST)
+    TABLESPACE pg_default;
+
+-- Реакция по умолчанию для двойного тапа — настраивается пользователем,
+-- 👍 как разумное значение из коробки.
+ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS default_reaction character varying(16)
+    NOT NULL DEFAULT '👍';
+
 -- ============================================================================
 -- Конец файла. Новые изменения схемы дописывать ниже этой черты.
 -- ============================================================================

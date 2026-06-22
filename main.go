@@ -26,7 +26,7 @@ import (
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -111,9 +111,32 @@ type Message struct {
 	// сообщение без текста, с этими полями, и отображается в чате отдельной
 	// "системной" отметкой, как в Telegram, а не обычным пузырём.
 	CallMsgID    int    `json:"call_msg_id,omitempty"`
-	CallType     string `json:"call_type,omitempty"`   // "audio" | "video"
-	CallStatus   string `json:"call_status,omitempty"` // "answered" | "missed" | "declined"
+	CallType     string `json:"call_type,omitempty"`     // "audio" | "video"
+	CallStatus   string `json:"call_status,omitempty"`   // "answered" | "missed" | "declined"
 	CallDuration *int   `json:"call_duration,omitempty"` // секунды; nil — звонок не был отвечен
+
+	// MsgID — id только что отправленного/полученного сообщения. Нужен сразу в
+	// реалтайм-доставке (а не только при следующей загрузке истории), чтобы
+	// reply/pin/forward/реакции можно было применить к свежему сообщению, не
+	// дожидаясь перезагрузки страницы.
+	MsgID         int           `json:"msg_id,omitempty"`
+	ReplyToID     int           `json:"reply_to_id,omitempty"`
+	ReplyPreview  *ReplyPreview `json:"reply_preview,omitempty"`
+	ForwardedFrom string        `json:"forwarded_from,omitempty"`
+}
+
+// ReplyPreview — краткое представление сообщения, на которое отвечают
+// (или которое закреплено) — login автора + готовый для показа текст
+// (сам текст обрезанный, либо иконка+подпись для медиа/звонка).
+type ReplyPreview struct {
+	From string `json:"from"`
+	Text string `json:"text"`
+}
+
+// ReactionInfo — одна реакция на сообщение: кто поставил и какой эмодзи.
+type ReactionInfo struct {
+	From  string `json:"from"`
+	Emoji string `json:"emoji"`
 }
 
 type HistoryMessage struct {
@@ -272,6 +295,12 @@ func main() {
 	http.HandleFunc("/push-public-key", app.handlePushPublicKey)
 	http.HandleFunc("/push-subscribe", app.handlePushSubscribe)
 	http.HandleFunc("/push-unsubscribe", app.handlePushUnsubscribe)
+	http.HandleFunc("/pinned", app.handleGetPinned)
+	http.HandleFunc("/pin", app.handlePin)
+	http.HandleFunc("/unpin", app.handleUnpin)
+	http.HandleFunc("/forward", app.handleForward)
+	http.HandleFunc("/react", app.handleReact)
+	http.HandleFunc("/settings", app.handleSettings)
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -447,32 +476,54 @@ func (a *App) getOrCreateConversation(login1, login2 string) (int, error) {
 	return convID, nil
 }
 
-func (a *App) saveMessage(from, to, text string) (string, error) {
-	convID, err := a.getOrCreateConversation(from, to)
-	if err != nil {
-		return "", err
-	}
+// buildPreviewText — готовый для показа текст превью сообщения (для reply/pin):
+// сам текст (обрезанный по рунам, не по байтам — иначе можно разрезать кириллицу
+// посередине символа), либо иконка+подпись для нетекстовых сообщений.
+const maxPreviewRunes = 120
 
-	var senderID int
-	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
-	if err != nil {
-		return "", err
+func buildPreviewText(content string, hasImage, hasAudio bool, callType sql.NullString) string {
+	text := content
+	switch {
+	case hasImage:
+		text = "📷 Фото"
+	case hasAudio:
+		text = "🎤 Голосовое сообщение"
+	case callType.Valid:
+		if callType.String == "video" {
+			text = "📹 Видеозвонок"
+		} else {
+			text = "📞 Звонок"
+		}
 	}
-
-	var createdAt time.Time
-	err = a.db.QueryRow(
-		"INSERT INTO messenger.messages (conversation_id, sender_id, content) VALUES ($1, $2, $3) RETURNING created_at AT TIME ZONE 'UTC'",
-		convID, senderID, text,
-	).Scan(&createdAt)
-	if err != nil {
-		return "", err
+	runes := []rune(text)
+	if len(runes) > maxPreviewRunes {
+		text = string(runes[:maxPreviewRunes]) + "…"
 	}
-
-	return createdAt.UTC().Format(time.RFC3339), nil
+	return text
 }
 
-// saveImageMessage сохраняет сообщение-картинку в БД и возвращает id сообщения и время отправки
-func (a *App) saveImageMessage(from, to string, imageData []byte, mime, filename string) (int, string, error) {
+// getMessagePreview возвращает краткое представление сообщения по id — кто
+// автор и готовый текст превью. Используется для reply (на что отвечают) и
+// pin (что закреплено).
+func (a *App) getMessagePreview(msgID int) (*ReplyPreview, error) {
+	var senderLogin, content string
+	var hasImage, hasAudio bool
+	var callType sql.NullString
+	err := a.db.QueryRow(`
+		SELECT u.login, m.content, (m.image_data IS NOT NULL), (m.audio_data IS NOT NULL), m.call_type
+		FROM messenger.messages m
+		JOIN messenger.users u ON u.id = m.sender_id
+		WHERE m.id = $1
+	`, msgID).Scan(&senderLogin, &content, &hasImage, &hasAudio, &callType)
+	if err != nil {
+		return nil, err
+	}
+	return &ReplyPreview{From: senderLogin, Text: buildPreviewText(content, hasImage, hasAudio, callType)}, nil
+}
+
+// saveMessage сохраняет текстовое сообщение и возвращает его id и время
+// отправки. replyToID — id сообщения, на которое отвечают, 0 если это не reply.
+func (a *App) saveMessage(from, to, text string, replyToID int) (int, string, error) {
 	convID, err := a.getOrCreateConversation(from, to)
 	if err != nil {
 		return 0, "", err
@@ -482,15 +533,52 @@ func (a *App) saveImageMessage(from, to string, imageData []byte, mime, filename
 	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
 	if err != nil {
 		return 0, "", err
+	}
+
+	var replyTo *int
+	if replyToID > 0 {
+		replyTo = &replyToID
 	}
 
 	var msgID int
 	var createdAt time.Time
 	err = a.db.QueryRow(`
-		INSERT INTO messenger.messages (conversation_id, sender_id, content, image_data, image_mime, image_filename)
-		VALUES ($1, $2, '', $3, $4, $5)
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, reply_to_id)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
-	`, convID, senderID, imageData, mime, filename).Scan(&msgID, &createdAt)
+	`, convID, senderID, text, replyTo).Scan(&msgID, &createdAt)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return msgID, createdAt.UTC().Format(time.RFC3339), nil
+}
+
+// saveImageMessage сохраняет сообщение-картинку в БД и возвращает id сообщения и время отправки
+func (a *App) saveImageMessage(from, to string, imageData []byte, mime, filename string, replyToID int) (int, string, error) {
+	convID, err := a.getOrCreateConversation(from, to)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var senderID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var replyTo *int
+	if replyToID > 0 {
+		replyTo = &replyToID
+	}
+
+	var msgID int
+	var createdAt time.Time
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, image_data, image_mime, image_filename, reply_to_id)
+		VALUES ($1, $2, '', $3, $4, $5, $6)
+		RETURNING id, created_at AT TIME ZONE 'UTC'
+	`, convID, senderID, imageData, mime, filename, replyTo).Scan(&msgID, &createdAt)
 	if err != nil {
 		return 0, "", err
 	}
@@ -540,16 +628,22 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
 			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
 			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
-			       m.call_type, m.call_status, m.call_duration
+			       m.call_type, m.call_status, m.call_duration,
+			       m.reply_to_id, ru.login, rm.content,
+			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
+			       m.forwarded_from
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
-				       audio_data, audio_duration, call_type, call_status, call_duration
+				       audio_data, audio_duration, call_type, call_status, call_duration,
+				       reply_to_id, forwarded_from
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				ORDER BY id DESC
 				LIMIT $2
 			) m
 			JOIN messenger.users u ON u.id = m.sender_id
+			LEFT JOIN messenger.messages rm ON rm.id = m.reply_to_id
+			LEFT JOIN messenger.users ru ON ru.id = rm.sender_id
 			ORDER BY m.id ASC
 		`, convID, limit)
 	} else {
@@ -557,16 +651,22 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
 			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
 			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
-			       m.call_type, m.call_status, m.call_duration
+			       m.call_type, m.call_status, m.call_duration,
+			       m.reply_to_id, ru.login, rm.content,
+			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
+			       m.forwarded_from
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
-				       audio_data, audio_duration, call_type, call_status, call_duration
+				       audio_data, audio_duration, call_type, call_status, call_duration,
+				       reply_to_id, forwarded_from
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				ORDER BY id DESC
 				LIMIT $3
 			) m
 			JOIN messenger.users u ON u.id = m.sender_id
+			LEFT JOIN messenger.messages rm ON rm.id = m.reply_to_id
+			LEFT JOIN messenger.users ru ON ru.id = rm.sender_id
 			ORDER BY m.id ASC
 		`, convID, beforeID, limit)
 	}
@@ -578,22 +678,27 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type HistMsg struct {
-		ID            int    `json:"id"`
-		From          string `json:"from"`
-		Text          string `json:"text"`
-		Own           bool   `json:"own"`
-		CreatedAt     string `json:"created_at"`
-		ImageID       int    `json:"image_id,omitempty"`
-		ImageName     string `json:"image_name,omitempty"`
-		ImageMime     string `json:"image_mime,omitempty"`
-		AudioID       int    `json:"audio_id,omitempty"`
-		AudioDuration int    `json:"audio_duration,omitempty"`
-		CallType      string `json:"call_type,omitempty"`
-		CallStatus    string `json:"call_status,omitempty"`
-		CallDuration  *int   `json:"call_duration,omitempty"`
+		ID            int            `json:"id"`
+		From          string         `json:"from"`
+		Text          string         `json:"text"`
+		Own           bool           `json:"own"`
+		CreatedAt     string         `json:"created_at"`
+		ImageID       int            `json:"image_id,omitempty"`
+		ImageName     string         `json:"image_name,omitempty"`
+		ImageMime     string         `json:"image_mime,omitempty"`
+		AudioID       int            `json:"audio_id,omitempty"`
+		AudioDuration int            `json:"audio_duration,omitempty"`
+		CallType      string         `json:"call_type,omitempty"`
+		CallStatus    string         `json:"call_status,omitempty"`
+		CallDuration  *int           `json:"call_duration,omitempty"`
+		ReplyToID     int            `json:"reply_to_id,omitempty"`
+		ReplyPreview  *ReplyPreview  `json:"reply_preview,omitempty"`
+		ForwardedFrom string         `json:"forwarded_from,omitempty"`
+		Reactions     []ReactionInfo `json:"reactions,omitempty"`
 	}
 
 	var messages []HistMsg
+	var ids []int
 	for rows.Next() {
 		var m HistMsg
 		var createdAt time.Time
@@ -602,10 +707,18 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var audioDuration sql.NullInt64
 		var callType, callStatus sql.NullString
 		var callDuration sql.NullInt64
+		var replyToID sql.NullInt64
+		var replyFrom, replyContent sql.NullString
+		var replyHasImage, replyHasAudio sql.NullBool
+		var replyCallType sql.NullString
+		var forwardedFrom sql.NullString
 		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
 			&imageMime, &imageFilename, &hasImage,
 			&hasAudio, &audioDuration,
-			&callType, &callStatus, &callDuration)
+			&callType, &callStatus, &callDuration,
+			&replyToID, &replyFrom, &replyContent,
+			&replyHasImage, &replyHasAudio, &replyCallType,
+			&forwardedFrom)
 		m.Own = strings.EqualFold(m.From, login)
 		m.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		if hasImage {
@@ -625,10 +738,56 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 				m.CallDuration = &d
 			}
 		}
+		if replyToID.Valid {
+			m.ReplyToID = int(replyToID.Int64)
+			// replyFrom может быть невалидным, если оригинал был удалён —
+			// ON DELETE SET NULL обнулит reply_to_id, так что сюда такая
+			// ситуация попасть не должна, но на всякий случай проверяем.
+			if replyFrom.Valid {
+				m.ReplyPreview = &ReplyPreview{
+					From: replyFrom.String,
+					Text: buildPreviewText(replyContent.String, replyHasImage.Bool, replyHasAudio.Bool, replyCallType),
+				}
+			}
+		}
+		if forwardedFrom.Valid {
+			m.ForwardedFrom = forwardedFrom.String
+		}
+		ids = append(ids, m.ID)
 		messages = append(messages, m)
 	}
 	if messages == nil {
 		messages = []HistMsg{}
+	}
+
+	// Реакции — отдельным батч-запросом по всем id сообщений на странице разом,
+	// а не подзапросом/JOIN на каждую строку — на масштабе этого приложения
+	// это и проще читать, и не плодит лишние строки в основном запросе.
+	if len(ids) > 0 {
+		rrows, err := a.db.Query(`
+			SELECT mr.message_id, u.login, mr.emoji
+			FROM messenger.message_reactions mr
+			JOIN messenger.users u ON u.id = mr.user_id
+			WHERE mr.message_id = ANY($1)
+		`, pq.Array(ids))
+		if err == nil {
+			defer rrows.Close()
+			byMsg := make(map[int][]ReactionInfo)
+			for rrows.Next() {
+				var msgID int
+				var ri ReactionInfo
+				if err := rrows.Scan(&msgID, &ri.From, &ri.Emoji); err == nil {
+					byMsg[msgID] = append(byMsg[msgID], ri)
+				}
+			}
+			for i := range messages {
+				if rs, ok := byMsg[messages[i].ID]; ok {
+					messages[i].Reactions = rs
+				}
+			}
+		} else {
+			log.Println("Ошибка загрузки реакций:", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -782,7 +941,9 @@ func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 		filename = "image"
 	}
 
-	msgID, createdAt, err := a.saveImageMessage(login, to, imageData, detectedMime, filename)
+	replyToID, _ := strconv.Atoi(r.FormValue("reply_to"))
+
+	msgID, createdAt, err := a.saveImageMessage(login, to, imageData, detectedMime, filename, replyToID)
 	if err != nil {
 		log.Println("Ошибка сохранения картинки:", err)
 		http.Error(w, "Error", http.StatusInternalServerError)
@@ -793,9 +954,16 @@ func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 		From:      login,
 		To:        to,
 		CreatedAt: createdAt,
+		MsgID:     msgID,
 		ImageID:   msgID,
 		ImageName: filename,
 		ImageMime: detectedMime,
+		ReplyToID: replyToID,
+	}
+	if replyToID > 0 {
+		if preview, err := a.getMessagePreview(replyToID); err == nil {
+			msg.ReplyPreview = preview
+		}
 	}
 
 	a.routeMessage(msg)
@@ -853,7 +1021,7 @@ func (a *App) handleGetImage(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveAudioMessage сохраняет голосовое сообщение в БД
-func (a *App) saveAudioMessage(from, to string, audioData []byte, mime string, duration int) (int, string, error) {
+func (a *App) saveAudioMessage(from, to string, audioData []byte, mime string, duration int, replyToID int) (int, string, error) {
 	convID, err := a.getOrCreateConversation(from, to)
 	if err != nil {
 		return 0, "", err
@@ -865,18 +1033,105 @@ func (a *App) saveAudioMessage(from, to string, audioData []byte, mime string, d
 		return 0, "", err
 	}
 
+	var replyTo *int
+	if replyToID > 0 {
+		replyTo = &replyToID
+	}
+
 	var msgID int
 	var createdAt time.Time
 	err = a.db.QueryRow(`
-		INSERT INTO messenger.messages (conversation_id, sender_id, content, audio_data, audio_mime, audio_duration)
-		VALUES ($1, $2, '', $3, $4, $5)
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, audio_data, audio_mime, audio_duration, reply_to_id)
+		VALUES ($1, $2, '', $3, $4, $5, $6)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
-	`, convID, senderID, audioData, mime, duration).Scan(&msgID, &createdAt)
+	`, convID, senderID, audioData, mime, duration, replyTo).Scan(&msgID, &createdAt)
 	if err != nil {
 		return 0, "", err
 	}
 
 	return msgID, createdAt.UTC().Format(time.RFC3339), nil
+}
+
+// saveForwardedMessage копирует сообщение в другой диалог — как в Telegram,
+// с подписью "Переслано от X". Отправителем НОВОГО сообщения становится тот,
+// кто пересылает (forwarder), а forwarded_from — это ИСХОДНЫЙ автор: если
+// пересылаемое сообщение уже само было переслано откуда-то, источник не
+// переписывается на текущего форвардера, цепочка всегда указывает на
+// первоисточник, как и положено.
+func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (Message, error) {
+	var msg Message
+
+	var senderLogin, content string
+	var imageData, audioData []byte
+	var imageMime, imageFilename, audioMime sql.NullString
+	var audioDuration sql.NullInt64
+	var callType sql.NullString
+	var existingForwardedFrom sql.NullString
+
+	err := a.db.QueryRow(`
+		SELECT u.login, m.content, m.image_data, m.image_mime, m.image_filename,
+		       m.audio_data, m.audio_mime, m.audio_duration, m.call_type, m.forwarded_from
+		FROM messenger.messages m
+		JOIN messenger.users u ON u.id = m.sender_id
+		WHERE m.id = $1
+	`, sourceMsgID).Scan(&senderLogin, &content, &imageData, &imageMime, &imageFilename,
+		&audioData, &audioMime, &audioDuration, &callType, &existingForwardedFrom)
+	if err != nil {
+		return msg, err
+	}
+
+	if callType.Valid {
+		return msg, fmt.Errorf("звонки нельзя пересылать")
+	}
+
+	originLogin := senderLogin
+	if existingForwardedFrom.Valid && existingForwardedFrom.String != "" {
+		originLogin = existingForwardedFrom.String
+	}
+
+	convID, err := a.getOrCreateConversation(forwarder, toLogin)
+	if err != nil {
+		return msg, err
+	}
+
+	var forwarderID int
+	if err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", forwarder).Scan(&forwarderID); err != nil {
+		return msg, err
+	}
+
+	var msgID int
+	var createdAt time.Time
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.messages
+			(conversation_id, sender_id, content, image_data, image_mime, image_filename,
+			 audio_data, audio_mime, audio_duration, forwarded_from)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id, created_at AT TIME ZONE 'UTC'
+	`, convID, forwarderID, content, imageData, imageMime, imageFilename,
+		audioData, audioMime, audioDuration, originLogin).Scan(&msgID, &createdAt)
+	if err != nil {
+		return msg, err
+	}
+
+	msg = Message{
+		From:          forwarder,
+		To:            toLogin,
+		Text:          content,
+		CreatedAt:     createdAt.UTC().Format(time.RFC3339),
+		MsgID:         msgID,
+		ForwardedFrom: originLogin,
+	}
+	if imageData != nil {
+		msg.ImageID = msgID
+		msg.ImageMime = imageMime.String
+		msg.ImageName = imageFilename.String
+	}
+	if audioData != nil {
+		msg.AudioID = msgID
+		msg.AudioDuration = int(audioDuration.Int64)
+	}
+
+	return msg, nil
 }
 
 // saveCallMessage сохраняет в БД системную запись о завершённом звонке — как
@@ -1044,7 +1299,9 @@ func (a *App) handleUploadAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgID, createdAt, err := a.saveAudioMessage(login, to, transcoded, outputAudioMime, durationSec)
+	replyToID, _ := strconv.Atoi(r.FormValue("reply_to"))
+
+	msgID, createdAt, err := a.saveAudioMessage(login, to, transcoded, outputAudioMime, durationSec, replyToID)
 	if err != nil {
 		log.Println("Ошибка сохранения голосового:", err)
 		http.Error(w, "Error", http.StatusInternalServerError)
@@ -1055,8 +1312,15 @@ func (a *App) handleUploadAudio(w http.ResponseWriter, r *http.Request) {
 		From:          login,
 		To:            to,
 		CreatedAt:     createdAt,
+		MsgID:         msgID,
 		AudioID:       msgID,
 		AudioDuration: durationSec,
+		ReplyToID:     replyToID,
+	}
+	if replyToID > 0 {
+		if preview, err := a.getMessagePreview(replyToID); err == nil {
+			msg.ReplyPreview = preview
+		}
 	}
 
 	a.routeMessage(msg)
@@ -1399,12 +1663,20 @@ func (c *Client) readPump(a *App) {
 		} else if len(msgStr) > 4 && msgStr[:4] == "msg:" {
 			var msg Message
 			json.Unmarshal([]byte(msgStr[4:]), &msg)
-			// Сохраняем в БД и получаем точное время отправки
-			createdAt, err := a.saveMessage(msg.From, msg.To, msg.Text)
+			// Сохраняем в БД и получаем точное время отправки и id сообщения
+			msgID, createdAt, err := a.saveMessage(msg.From, msg.To, msg.Text, msg.ReplyToID)
 			if err != nil {
 				log.Println("Ошибка сохранения сообщения:", err)
 			}
+			msg.MsgID = msgID
 			msg.CreatedAt = createdAt
+			// Превью реплая строим сразу здесь — чтобы получатель увидел цитату
+			// в реальном времени, не дожидаясь следующей загрузки истории.
+			if msg.ReplyToID > 0 {
+				if preview, err := a.getMessagePreview(msg.ReplyToID); err == nil {
+					msg.ReplyPreview = preview
+				}
+			}
 			a.routeMessage(msg)
 		} else if prefix, rest, ok := cutCallPrefix(msgStr); ok {
 			var sig CallSignal
@@ -1932,3 +2204,376 @@ func (a *App) handleUnreadCounts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
+
+// handleGetPinned — GET /pinned?with=<login> — текущее закреплённое сообщение
+// диалога. Пустое тело-null, если ничего не закреплено.
+func (a *App) handleGetPinned(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	withUser := r.URL.Query().Get("with")
+	if withUser == "" {
+		http.Error(w, "missing with", http.StatusBadRequest)
+		return
+	}
+
+	convID, err := a.getOrCreateConversation(login, withUser)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	var pinnedID sql.NullInt64
+	err = a.db.QueryRow("SELECT pinned_message_id FROM messenger.conversations WHERE id = $1", convID).Scan(&pinnedID)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if !pinnedID.Valid {
+		json.NewEncoder(w).Encode(nil)
+		return
+	}
+
+	preview, err := a.getMessagePreview(int(pinnedID.Int64))
+	if err != nil {
+		json.NewEncoder(w).Encode(nil)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message_id": int(pinnedID.Int64),
+		"from":       preview.From,
+		"text":       preview.Text,
+	})
+}
+
+// handlePin — POST /pin (form: with, message_id) — закрепляет сообщение в
+// диалоге (один закреп на диалог, не несколько, как в группах) и рассылает
+// обновление обеим сторонам в реальном времени.
+func (a *App) handlePin(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	withUser := r.FormValue("with")
+	messageID, _ := strconv.Atoi(r.FormValue("message_id"))
+	if withUser == "" || messageID <= 0 {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	convID, err := a.getOrCreateConversation(login, withUser)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Сообщение обязано принадлежать ИМЕННО этому диалогу — иначе можно было бы
+	// закрепить чужое сообщение из другого разговора, подставив произвольный id.
+	var belongsConvID int
+	err = a.db.QueryRow("SELECT conversation_id FROM messenger.messages WHERE id = $1", messageID).Scan(&belongsConvID)
+	if err != nil || belongsConvID != convID {
+		http.Error(w, "Сообщение не найдено в этом диалоге", http.StatusBadRequest)
+		return
+	}
+
+	if _, err = a.db.Exec("UPDATE messenger.conversations SET pinned_message_id = $1 WHERE id = $2", messageID, convID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	preview, err := a.getMessagePreview(messageID)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.broadcastPinState(login, withUser, messageID, preview)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"message_id": messageID,
+		"from":       preview.From,
+		"text":       preview.Text,
+	})
+}
+
+// handleUnpin — POST /unpin (form: with)
+func (a *App) handleUnpin(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	withUser := r.FormValue("with")
+	if withUser == "" {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	convID, err := a.getOrCreateConversation(login, withUser)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err = a.db.Exec("UPDATE messenger.conversations SET pinned_message_id = NULL WHERE id = $1", convID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.broadcastPinState(login, withUser, 0, nil)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// broadcastPinState рассылает изменение закреплённого сообщения на все активные
+// устройства обеих сторон диалога. messageID == 0 — открепили (preview тогда nil).
+// "with" в каждой отдельной рассылке — логин СОБЕСЕДНИКА с точки зрения именно
+// этого получателя (у fromLogin собеседник toLogin, и наоборот), поэтому
+// рассылаем индивидуально, а не одним общим payload.
+func (a *App) broadcastPinState(fromLogin, toLogin string, messageID int, preview *ReplyPreview) {
+	msgType := "unpin:"
+	if messageID > 0 {
+		msgType = "pin:"
+	}
+
+	a.mu.Lock()
+	var targets []*Client
+	for _, login := range []string{strings.ToLower(fromLogin), strings.ToLower(toLogin)} {
+		for c := range a.clients[login] {
+			targets = append(targets, c)
+		}
+	}
+	a.mu.Unlock()
+
+	for _, c := range targets {
+		individual := map[string]interface{}{"message_id": messageID}
+		if preview != nil {
+			individual["from"] = preview.From
+			individual["text"] = preview.Text
+		}
+		if strings.EqualFold(c.login, fromLogin) {
+			individual["with"] = toLogin
+		} else {
+			individual["with"] = fromLogin
+		}
+		data, _ := json.Marshal(individual)
+		c.trySend(append([]byte(msgType), data...))
+	}
+}
+
+// handleForward — POST /forward (form: message_id, to) — пересылает сообщение
+// в другой диалог, как в Telegram (с подписью "Переслано от X").
+func (a *App) handleForward(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	messageID, _ := strconv.Atoi(r.FormValue("message_id"))
+	to := r.FormValue("to")
+	if messageID <= 0 || to == "" {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	// Пересылать можно только сообщение из СВОЕГО диалога — не подглядывая
+	// чужую переписку, подставив произвольный id. Проверяем, что текущий
+	// пользователь — участник того диалога, которому принадлежит сообщение.
+	var convID int
+	if err := a.db.QueryRow("SELECT conversation_id FROM messenger.messages WHERE id = $1", messageID).Scan(&convID); err != nil {
+		http.Error(w, "Сообщение не найдено", http.StatusBadRequest)
+		return
+	}
+	var myID int
+	a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login).Scan(&myID)
+	var u1, u2 sql.NullInt64
+	a.db.QueryRow("SELECT user1_id, user2_id FROM messenger.conversations WHERE id = $1", convID).Scan(&u1, &u2)
+	if int64(myID) != u1.Int64 && int64(myID) != u2.Int64 {
+		http.Error(w, "Нет доступа к этому сообщению", http.StatusForbidden)
+		return
+	}
+
+	msg, err := a.saveForwardedMessage(login, to, messageID)
+	if err != nil {
+		log.Println("Ошибка пересылки:", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось переслать сообщение"})
+		return
+	}
+
+	a.routeMessage(msg)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"msg_id":     msg.MsgID,
+		"created_at": msg.CreatedAt,
+	})
+}
+
+// handleReact — POST /react (form: message_id, emoji) — ставит реакцию (апсерт,
+// максимум одна реакция на сообщение от одного человека — обеспечено UNIQUE-
+// ограничением в БД) либо снимает её, если тот же эмодзи уже стоял (повторный
+// тап на свою реакцию — снять, как в большинстве мессенджеров).
+func (a *App) handleReact(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	messageID, _ := strconv.Atoi(r.FormValue("message_id"))
+	emoji := r.FormValue("emoji")
+	if messageID <= 0 || emoji == "" {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login).Scan(&myID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Та же проверка принадлежности сообщения диалогу с участием текущего
+	// пользователя, что и у /pin и /forward.
+	var convID int
+	if err := a.db.QueryRow("SELECT conversation_id FROM messenger.messages WHERE id = $1", messageID).Scan(&convID); err != nil {
+		http.Error(w, "Сообщение не найдено", http.StatusBadRequest)
+		return
+	}
+	var u1, u2 sql.NullInt64
+	a.db.QueryRow("SELECT user1_id, user2_id FROM messenger.conversations WHERE id = $1", convID).Scan(&u1, &u2)
+	if int64(myID) != u1.Int64 && int64(myID) != u2.Int64 {
+		http.Error(w, "Нет доступа к этому сообщению", http.StatusForbidden)
+		return
+	}
+
+	var existingEmoji sql.NullString
+	a.db.QueryRow("SELECT emoji FROM messenger.message_reactions WHERE message_id = $1 AND user_id = $2", messageID, myID).Scan(&existingEmoji)
+
+	removed := false
+	if existingEmoji.Valid && existingEmoji.String == emoji {
+		if _, err := a.db.Exec("DELETE FROM messenger.message_reactions WHERE message_id = $1 AND user_id = $2", messageID, myID); err != nil {
+			http.Error(w, "Error", http.StatusInternalServerError)
+			return
+		}
+		removed = true
+	} else {
+		_, err := a.db.Exec(`
+			INSERT INTO messenger.message_reactions (message_id, user_id, emoji)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (message_id, user_id) DO UPDATE SET emoji = EXCLUDED.emoji
+		`, messageID, myID, emoji)
+		if err != nil {
+			http.Error(w, "Error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Кому разослать realtime-обновление — второй стороне диалога.
+	otherID := u1.Int64
+	if otherID == int64(myID) {
+		otherID = u2.Int64
+	}
+	var otherLogin string
+	a.db.QueryRow("SELECT login FROM messenger.users WHERE id = $1", otherID).Scan(&otherLogin)
+
+	emojiOut := emoji
+	if removed {
+		emojiOut = ""
+	}
+	a.broadcastReaction(login, otherLogin, messageID, emojiOut)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "removed": removed})
+}
+
+// broadcastReaction рассылает изменение реакции на все активные устройства
+// обеих сторон диалога в реальном времени. emoji == "" — реакция снята.
+func (a *App) broadcastReaction(fromLogin, toLogin string, messageID int, emoji string) {
+	payload := map[string]interface{}{
+		"message_id": messageID,
+		"from":       fromLogin,
+		"emoji":      emoji,
+	}
+	data, _ := json.Marshal(payload)
+
+	a.mu.Lock()
+	var targets []*Client
+	for _, login := range []string{strings.ToLower(fromLogin), strings.ToLower(toLogin)} {
+		for c := range a.clients[login] {
+			targets = append(targets, c)
+		}
+	}
+	a.mu.Unlock()
+
+	for _, c := range targets {
+		c.trySend(append([]byte("reaction:"), data...))
+	}
+}
+
+// handleSettings — GET /settings возвращает текущие настройки пользователя
+// (пока только реакция по умолчанию для двойного тапа), POST (form:
+// default_reaction) — обновляет её.
+func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		emoji := r.FormValue("default_reaction")
+		if emoji == "" {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		if _, err := a.db.Exec("UPDATE messenger.users SET default_reaction = $1 WHERE LOWER(login) = LOWER($2)", emoji, login); err != nil {
+			http.Error(w, "Error", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var defaultReaction string
+	if err := a.db.QueryRow("SELECT default_reaction FROM messenger.users WHERE LOWER(login) = LOWER($1)", login).Scan(&defaultReaction); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"default_reaction": defaultReaction})
+}
+
+// handleForward — POST /forward (form: message_id, to)
