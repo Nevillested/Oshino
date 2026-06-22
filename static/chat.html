@@ -623,40 +623,70 @@
 
         /* ── Реакции под сообщением ─────────────────────────────────────────── */
 
+        /* Реакции — абсолютно позиционированы в нижнем правом углу пузыря.
+           Чтобы они не налезали на текст, у пузырей с реакциями есть
+           дополнительный padding-bottom (класс has-reactions).
+           У чужих сообщений (.other) — в нижнем левом углу. */
+        .message-wrap {
+            position: relative; /* нужно для абсолютного позиционирования реакций */
+        }
+
         .msg-reactions {
+            position: absolute;
+            bottom: 16px; /* над меткой времени */
+            right: 0;
             display: flex;
             flex-wrap: wrap;
-            gap: 4px;
-            margin-top: 4px;
+            gap: 3px;
+            max-width: 100%;
+            pointer-events: auto;
+        }
+
+        .message-wrap.other .msg-reactions {
+            right: auto;
+            left: 0;
+        }
+
+        /* Пузырь получает нижний отступ, чтобы реакция не перекрывала текст */
+        .message-wrap.has-reactions .message {
+            padding-bottom: 26px;
+        }
+
+        /* Картинка и аудио — margin снизу вместо padding (они не текстовые блоки) */
+        .message-wrap.has-reactions .message-image,
+        .message-wrap.has-reactions .audio-player {
+            margin-bottom: 20px;
         }
 
         .reaction-badge {
             display: inline-flex;
             align-items: center;
-            gap: 3px;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 15px;
+            gap: 2px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 13px;
             background: white;
             border: 1px solid #e5e5e5;
             cursor: pointer;
             transition: background 0.1s;
             user-select: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            white-space: nowrap;
         }
 
         .reaction-badge:hover { background: #f5f5f5; }
 
-        /* Своя реакция — подсвечиваем как у Telegram */
+        /* Своя реакция */
         .reaction-badge.own { background: #e8f0fe; border-color: #4a90e2; }
 
         .message-wrap.own .reaction-badge {
-            background: rgba(255,255,255,0.2);
-            border-color: rgba(255,255,255,0.4);
+            background: rgba(255,255,255,0.25);
+            border-color: rgba(255,255,255,0.45);
             color: white;
         }
 
         .message-wrap.own .reaction-badge.own {
-            background: rgba(255,255,255,0.35);
+            background: rgba(255,255,255,0.4);
         }
 
         /* ── Панель настроек (в сайдбаре) ──────────────────────────────────── */
@@ -1197,31 +1227,6 @@
         }
 
         /* ── Закреплённое сообщение ─────────────────────────────────────────── */
-        /* ── Реакции на сообщении ──────────────────────────────────────────── */
-        .message-reactions {
-            display: flex;
-            gap: 4px;
-            margin-top: 2px;
-            flex-wrap: wrap;
-        }
-
-        .reaction-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 3px;
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 1px 7px;
-            font-size: 13px;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .reaction-badge.mine {
-            border-color: #4a90e2;
-            background: #eaf2fc;
-        }
 
         /* ── Настройки (реакция по умолчанию) ─────────────────────────────────── */
         #settings-btn-sidebar {
@@ -2726,8 +2731,9 @@
                     wrap.appendChild(timeDiv);
                 }
 
-                // Реакции
+                // Реакции — абсолютно позиционированы в углу пузыря
                 if (msg.reactions && msg.reactions.length > 0) {
+                    wrap.classList.add('has-reactions');
                     wrap.appendChild(buildReactionBadges(msg.reactions, msg.id));
                 }
 
