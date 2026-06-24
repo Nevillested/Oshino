@@ -1805,7 +1805,48 @@
                 background: #4a90e2;
             }
 
-            /* ── Правая панель ── */
+            /* p5.js canvas — на весь экран, самый задний план */
+            #rp-canvas-wrap {
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                pointer-events: none;
+                width: 100vw;
+                height: 100vh;
+            }
+            #rp-canvas-wrap canvas {
+                width: 100% !important;
+                height: 100% !important;
+                display: block;
+            }
+            body.bg-anim-off #rp-canvas-wrap canvas {
+                display: none;
+            }
+            /* Цвет-заглушка когда анимация отключена */
+            body.bg-anim-off {
+                background: var(--color-messages-bg);
+            }
+
+            /* app-layout поверх canvas */
+            #app-layout {
+                position: relative;
+                z-index: 1;
+            }
+
+            /* Левая панель — непрозрачная (закрывает фон) */
+            #left-panel {
+                background: var(--color-sidebar);
+                position: relative;
+                z-index: 2;
+            }
+
+            /* Разделитель поверх всего */
+            #panel-divider {
+                position: relative;
+                z-index: 3;
+            }
+
+            /* Правая панель — прозрачная (фон просвечивает) */
             #right-panel {
                 flex: 1;
                 display: flex;
@@ -1813,24 +1854,11 @@
                 position: relative;
                 overflow: hidden;
                 min-width: 0;
+                background: transparent;
+                z-index: 1;
             }
 
-            /* p5.js canvas — постоянный фон правой панели */
-            #rp-canvas-wrap {
-                position: absolute;
-                inset: 0;
-                z-index: 0;
-                pointer-events: none;
-            }
-            body.bg-anim-off #rp-canvas-wrap canvas {
-                display: none;
-            }
-            /* Цвет-заглушка когда анимация отключена */
-            body.bg-anim-off #right-panel {
-                background: var(--color-messages-bg);
-            }
-
-            /* #chat занимает всю правую панель поверх canvas */
+            /* #chat поверх canvas */
             #chat {
                 position: relative;
                 z-index: 1;
@@ -1839,7 +1867,7 @@
                 display: flex;
                 flex-direction: column;
                 min-height: 0;
-                background: transparent;  /* canvas просвечивает насквозь */
+                background: transparent;
             }
 
             /* На welcome-экране сообщения скрыты — canvas просвечивает */
