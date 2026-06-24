@@ -796,30 +796,66 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(messages)
 }
 
+// updateLastSeen записывает текущее время UTC в last_seen пользователя.
+// Вызывается при отключении последнего WS-соединения логина.
+func (a *App) updateLastSeen(login string) {
+	if _, err := a.db.Exec(
+		"UPDATE messenger.users SET last_seen = NOW() AT TIME ZONE 'UTC' WHERE LOWER(login) = LOWER($1)",
+		login,
+	); err != nil {
+		log.Printf("Ошибка обновления last_seen для %s: %v", login, err)
+	}
+}
+
+// broadcastOnlineUsers рассылает всем подключённым клиентам текущее состояние
+// присутствия: список онлайн-логинов и last_seen для оффлайн-пользователей.
+// Формат: online:{"online":["alice"],"last_seen":{"bob":"2006-01-02T15:04:05Z"}}
 func (a *App) broadcastOnlineUsers() {
 	a.mu.Lock()
-	logins := make([]string, 0, len(a.clients))
+	onlineLogins := make([]string, 0, len(a.clients))
 	var allClients []*Client
 	for login, conns := range a.clients {
-		logins = append(logins, login)
+		onlineLogins = append(onlineLogins, login)
 		for c := range conns {
 			allClients = append(allClients, c)
 		}
 	}
 	a.mu.Unlock()
 
-	onlineList := "["
-	first := true
-	for _, login := range logins {
-		if !first {
-			onlineList += ","
-		}
-		onlineList += "\"" + login + "\""
-		first = false
+	onlineSet := make(map[string]bool, len(onlineLogins))
+	for _, l := range onlineLogins {
+		onlineSet[l] = true
 	}
-	onlineList += "]"
 
-	payload := []byte("online:" + onlineList)
+	lastSeenMap := make(map[string]string)
+	rows, err := a.db.Query(
+		"SELECT login, last_seen FROM messenger.users WHERE last_seen IS NOT NULL",
+	)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var login string
+			var ls time.Time
+			if rows.Scan(&login, &ls) == nil && !onlineSet[strings.ToLower(login)] {
+				lastSeenMap[strings.ToLower(login)] = ls.UTC().Format(time.RFC3339)
+			}
+		}
+	}
+
+	type presencePayload struct {
+		Online   []string          `json:"online"`
+		LastSeen map[string]string `json:"last_seen"`
+	}
+	p := presencePayload{
+		Online:   onlineLogins,
+		LastSeen: lastSeenMap,
+	}
+	if p.Online == nil {
+		p.Online = []string{}
+	}
+	data, _ := json.Marshal(p)
+	payload := append([]byte("online:"), data...)
+
 	for _, c := range allClients {
 		c.trySend(payload)
 	}
@@ -1638,17 +1674,22 @@ func (a *App) handleTurnCredentials(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) readPump(a *App) {
 	defer func() {
+		wasLastConn := false
 		a.mu.Lock()
 		if conns, ok := a.clients[c.login]; ok {
 			delete(conns, c)
 			if len(conns) == 0 {
 				delete(a.clients, c.login)
+				wasLastConn = true
 			}
 		}
 		a.mu.Unlock()
 		close(c.done)
 		c.conn.Close()
 		fmt.Printf("%s отключился\n", c.login)
+		if wasLastConn {
+			a.updateLastSeen(c.login)
+		}
 		a.broadcastOnlineUsers()
 	}()
 
