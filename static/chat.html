@@ -5194,19 +5194,24 @@
                 .forEach(s => s.classList.remove('open'));
             if (cur === 'settings') {
                 settingsPanel.classList.add('open');
+                // Остаёмся в настройках — пушим 'settings' чтобы следующий
+                // свайп вернул нас в сайдбар, а не выкинул из PWA
+                navPushState('settings');
             } else {
                 settingsPanel.classList.remove('open');
                 sidebarMain.style.display = 'flex';
-            }
-            // Сразу пушим новую запись — следующий свайп снова попадёт к нам
-            if (navStack.length > 0) {
-                navPushState(navStack[navStack.length - 1]);
+                // Вернулись в сайдбар — пушим 'base' чтобы следующий
+                // свайп не выкинул из PWA (поглотим его без действия)
+                navPushState('base');
             }
         }
 
         window.addEventListener('popstate', (e) => {
-            if (e.state && e.state.oshinoNav && navStack.length > 0) {
+            if (e.state && e.state.oshinoNav && e.state.oshinoNav !== 'base' && navStack.length > 0) {
                 navGoBack();
+            } else if (e.state && e.state.oshinoNav === 'base') {
+                // Поглощаем — просто снова пушим base чтобы не выйти из PWA
+                navPushState('base');
             }
         });
 
