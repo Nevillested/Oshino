@@ -3140,6 +3140,13 @@
         async function openDialog(user) {
             currentUser = user;
             fetch(`/mark-read?with=${encodeURIComponent(user)}`);
+            // Обновляем is_read в памяти для входящих сообщений
+            const stateToMark = historyState[user];
+            if (stateToMark) {
+                stateToMark.messages.forEach(m => {
+                    if (!m.own) m.is_read = true;
+                });
+            }
             unreadCount[user] = 0;
             renderDialogList();
             updateFormState();
@@ -3439,6 +3446,8 @@
                         ticks.className = 'msg-ticks' + (msg.is_read ? ' read' : '');
                         ticks.innerHTML = ticksSVG(msg.is_read);
                         ticks.dataset.msgId = msg.id;
+                        if (msg.is_read) console.log('✓✓ read msg id:', msg.id);
+                        else console.log('✓ unread msg id:', msg.id);
                         timeDiv.appendChild(ticks);
                     }
                     wrap.appendChild(timeDiv);
