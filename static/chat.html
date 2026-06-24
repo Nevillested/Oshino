@@ -1851,9 +1851,18 @@
                 display: none; /* canvas теперь в #rp-canvas-wrap */
             }
 
-            /* Область сообщений — непрозрачный фон */
+            /* Область сообщений — прозрачная, canvas просвечивает сквозь неё.
+               Непрозрачность только у самих пузырей (.message, .audio-player и т.д.)
+               и у футера #input-area — они уже имеют свой background. */
             #messages {
-                background: var(--color-messages-bg);
+                background: transparent !important;
+            }
+            /* pin-bar и reply-bar тоже должны читаться поверх canvas */
+            #pin-bar {
+                background: var(--color-pin-bar-bg);
+            }
+            #reply-bar {
+                background: var(--color-reply-bar-bg);
             }
 
             /* Шапка чата (pin-bar уже есть; добавляем desktop-topbar) */
@@ -2130,8 +2139,8 @@
         /* #app-layout на desktop занимает весь оставшийся body-space */
         @media (min-width: 768px) {
             body {
-                flex-direction: row;  /* перекрываем column */
-                overflow: hidden;
+                /* flex-direction остаётся column — topbar скрыт через display:none,
+                   app-layout занимает оставшееся место по flex: 1 */
             }
             #app-layout {
                 flex: 1;
