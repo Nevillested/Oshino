@@ -15,6 +15,142 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Oshino">
     <style>
+        /* ── Темы ──────────────────────────────────────────────────────────────
+           Тёмная тема (default) использует текущие хардкод-цвета,
+           светлая — чистые, тёплые оттенки. Все цвета вынесены в CSS-переменные
+           на :root и переопределяются классом body.light на нужных элементах.    */
+        :root {
+            /* Основные поверхности */
+            --color-bg:           #f5f5f5;
+            --color-topbar:       #2c2c2c;
+            --color-sidebar:      #2c2c2c;
+            --color-sidebar-text: #ffffff;
+            --color-input-bg:     #ffffff;
+
+            /* Область сообщений */
+            --color-messages-bg:  #f5f5f5;
+            --color-bubble-other: #ffffff;
+            --color-bubble-text:  #1a1a1a;
+            --color-time:         #999;
+
+            /* Элементы сайдбара */
+            --color-search-bg:    #ffffff;
+            --color-search-text:  #1a1a1a;
+            --color-results-bg:   #1a1a1a;
+            --color-results-text: #ffffff;
+            --color-results-sep:  #444;
+            --color-results-hover:#333;
+            --color-user-hover:   #444;
+            --color-section-title:#aaa;
+
+            /* UI-элементы */
+            --color-pin-bar-bg:   #ffffff;
+            --color-pin-sep:      #e5e5e5;
+            --color-pin-text:     #555;
+            --color-reply-bar-bg: #f8f9fa;
+            --color-reply-sep:    #e5e5e5;
+            --color-reply-text:   #666;
+            --color-ctx-bg:       #ffffff;
+            --color-ctx-text:     #2c2c2c;
+            --color-ctx-hover:    #f5f5f5;
+            --color-ctx-active:   #eeeeee;
+            --color-ctx-sep:      #f0f0f0;
+            --color-ctx-icon:     #666;
+            --color-reaction-bg:  #ffffff;
+            --color-reaction-sep: #e5e5e5;
+            --color-reaction-own-bg: #e8f0fe;
+
+            /* Settings */
+            --color-settings-item-bg:   #3a3a3a;
+            --color-settings-item-text: #dddddd;
+            --color-settings-item-hover:#4a4a4a;
+            --color-pwd-input-bg:       #3a3a3a;
+            --color-pwd-input-border:   #555555;
+            --color-pwd-input-text:     #eeeeee;
+            --color-react-btn-bg:       #3a3a3a;
+            --color-react-btn-sel-bg:   #1a2a3a;
+
+            /* Input bar */
+            --color-input-bar-bg:   #ffffff;
+            --color-input-bar-sep:  #e5e5e5;
+            --color-input-text:     #1a1a1a;
+            --color-input-border:   #ddd;
+            --color-input-focus:    #4a90e2;
+            --color-attach-btn:     #666;
+            --color-cancel-btn:     #999;
+            --color-cancel-hover:   #eeeeee;
+
+            /* Call overlay */
+            --color-call-bg:      rgba(30,30,30,0.97);
+            --color-call-text:    #ffffff;
+
+            /* Offline / welcome */
+            --color-offline-text: #999;
+            --color-welcome-text: #aaa;
+        }
+
+        /* ── Светлая тема ──────────────────────────────────────────────────── */
+        body.light {
+            --color-bg:           #f0f2f5;
+            --color-topbar:       #5b7fa6;
+            --color-sidebar:      #4a6a8a;
+            --color-sidebar-text: #f0f4f8;
+
+            --color-messages-bg:  #e8ecf0;
+            --color-bubble-other: #ffffff;
+            --color-bubble-text:  #1a1a1a;
+            --color-time:         #888;
+
+            --color-search-bg:    rgba(255,255,255,0.2);
+            --color-search-text:  #f0f4f8;
+            --color-results-bg:   #3a5a7a;
+            --color-results-text: #f0f4f8;
+            --color-results-sep:  rgba(255,255,255,0.15);
+            --color-results-hover:rgba(255,255,255,0.12);
+            --color-user-hover:   rgba(255,255,255,0.15);
+            --color-section-title:rgba(240,244,248,0.6);
+
+            --color-pin-bar-bg:   #d8e4f0;
+            --color-pin-sep:      #c0cfde;
+            --color-pin-text:     #3a5a7a;
+            --color-reply-bar-bg: #dce8f4;
+            --color-reply-sep:    #c0cfde;
+            --color-reply-text:   #4a6a8a;
+            --color-ctx-bg:       #ffffff;
+            --color-ctx-text:     #1a1a1a;
+            --color-ctx-hover:    #f0f4f8;
+            --color-ctx-active:   #e4ecf4;
+            --color-ctx-sep:      #e8ecf0;
+            --color-ctx-icon:     #5b7fa6;
+            --color-reaction-bg:  #ffffff;
+            --color-reaction-sep: #d0dce8;
+            --color-reaction-own-bg: #dce8f8;
+
+            --color-settings-item-bg:   rgba(255,255,255,0.18);
+            --color-settings-item-text: #f0f4f8;
+            --color-settings-item-hover:rgba(255,255,255,0.28);
+            --color-pwd-input-bg:       rgba(255,255,255,0.15);
+            --color-pwd-input-border:   rgba(255,255,255,0.35);
+            --color-pwd-input-text:     #f0f4f8;
+            --color-react-btn-bg:       rgba(255,255,255,0.15);
+            --color-react-btn-sel-bg:   rgba(255,255,255,0.35);
+
+            --color-input-bar-bg:   #dce8f4;
+            --color-input-bar-sep:  #c0cfde;
+            --color-input-text:     #1a1a1a;
+            --color-input-border:   #b0c4d8;
+            --color-input-focus:    #5b7fa6;
+            --color-attach-btn:     #5b7fa6;
+            --color-cancel-btn:     #7a9ab8;
+            --color-cancel-hover:   #c8d8e8;
+
+            --color-call-bg:      rgba(50,80,110,0.97);
+            --color-call-text:    #ffffff;
+
+            --color-offline-text: #7a9ab8;
+            --color-welcome-text: #7a9ab8;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -34,15 +170,17 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: #f5f5f5;
+            background: var(--color-bg);
             display: flex;
             flex-direction: column;
+            transition: background 0.3s;
         }
 
         #topbar {
             height: auto;
-            background: #2c2c2c;
-            color: white;
+            background: var(--color-topbar);
+            color: var(--color-sidebar-text);
+            transition: background 0.3s;
             display: flex;
             align-items: center;
             padding: 12px 16px;
@@ -151,11 +289,11 @@
             left: 0;
             height: 100%;
             width: 100%;
-            background: #2c2c2c;
-            color: white;
+            background: var(--color-sidebar);
+            color: var(--color-sidebar-text);
             z-index: 15;
             transform: translateX(-100%);
-            transition: transform 0.3s ease;
+            transition: transform 0.3s ease, background 0.3s;
             padding: 16px;
             overflow-y: auto;
             display: flex;
@@ -193,10 +331,13 @@
             border-radius: 6px;
             outline: none;
             font-size: 16px;
+            background: var(--color-search-bg);
+            color: var(--color-search-text);
+            transition: background 0.3s, color 0.3s;
         }
 
         #search-results {
-            background: #1a1a1a;
+            background: var(--color-results-bg);
             border-radius: 6px;
             margin-top: 6px;
             max-height: 200px;
@@ -206,9 +347,10 @@
         #search-results li {
             list-style: none;
             padding: 12px;
-            border-bottom: 1px solid #444;
+            border-bottom: 1px solid var(--color-results-sep);
             cursor: pointer;
             font-size: 15px;
+            color: var(--color-results-text);
         }
 
         #search-results li:last-child {
@@ -216,12 +358,12 @@
         }
 
         #search-results li:active {
-            background: #333;
+            background: var(--color-results-hover);
         }
 
         #sidebar h3 {
             font-size: 12px;
-            color: #aaa;
+            color: var(--color-section-title);
             margin-bottom: 16px;
             margin-top: 16px;
             text-transform: uppercase;
@@ -249,11 +391,11 @@
         }
 
         #users li:active {
-            background: #444;
+            background: var(--color-user-hover);
         }
 
         #users li:hover {
-            background: #444;
+            background: var(--color-user-hover);
         }
 
         #users li.active {
@@ -328,7 +470,7 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            color: #999;
+            color: var(--color-offline-text);
             font-size: 16px;
         }
 
@@ -338,6 +480,8 @@
             overflow-y: auto;
             display: flex;
             flex-direction: column;
+            background: var(--color-messages-bg);
+            transition: background 0.3s;
             gap: 10px;
         }
 
@@ -375,7 +519,7 @@
 
         .message-time {
             font-size: 11px;
-            color: #999;
+            color: var(--color-time);
             margin-top: 2px;
             padding: 0 4px;
         }
@@ -386,7 +530,8 @@
         }
 
         .message.other {
-            background: white;
+            background: var(--color-bubble-other);
+            color: var(--color-bubble-text);
         }
 
         /* Системная запись о звонке — по центру, отдельным "бейджем", а не
@@ -403,8 +548,8 @@
             gap: 6px;
             padding: 6px 14px;
             border-radius: 16px;
-            background: white;
-            color: #777;
+            background: var(--color-bubble-other);
+            color: var(--color-time);
             font-size: 13px;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
         }
@@ -424,7 +569,7 @@
         #ctx-menu {
             position: fixed;
             z-index: 200;
-            background: white;
+            background: var(--color-ctx-bg);
             border-radius: 12px;
             box-shadow: 0 4px 24px rgba(0,0,0,0.18);
             overflow: hidden;
@@ -439,7 +584,7 @@
             display: flex;
             gap: 2px;
             padding: 10px 10px 8px;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid var(--color-ctx-sep);
             flex-wrap: wrap;
         }
 
@@ -454,8 +599,8 @@
             transition: background 0.1s;
         }
 
-        .ctx-reaction-btn:hover { background: #f5f5f5; }
-        .ctx-reaction-btn.active { background: #e8f0fe; }
+        .ctx-reaction-btn:hover { background: var(--color-ctx-hover); }
+        .ctx-reaction-btn.active { background: var(--color-reaction-own-bg); }
 
         /* Пункты меню */
         .ctx-item {
@@ -465,7 +610,7 @@
             padding: 12px 16px;
             cursor: pointer;
             font-size: 15px;
-            color: #2c2c2c;
+            color: var(--color-ctx-text);
             background: none;
             border: none;
             width: 100%;
@@ -473,11 +618,11 @@
             transition: background 0.1s;
         }
 
-        .ctx-item:hover { background: #f5f5f5; }
-        .ctx-item:active { background: #eee; }
+        .ctx-item:hover { background: var(--color-ctx-hover); }
+        .ctx-item:active { background: var(--color-ctx-active); }
         .ctx-item.danger { color: #e74c3c; }
 
-        .ctx-item svg { flex-shrink: 0; color: #666; }
+        .ctx-item svg { flex-shrink: 0; color: var(--color-ctx-icon); }
         .ctx-item.danger svg { color: #e74c3c; }
 
         #ctx-backdrop {
@@ -495,8 +640,8 @@
             align-items: center;
             gap: 10px;
             padding: 8px 12px;
-            background: #f8f9fa;
-            border-top: 1px solid #e5e5e5;
+            background: var(--color-reply-bar-bg);
+            border-top: 1px solid var(--color-reply-sep);
             flex-shrink: 0;
         }
 
@@ -516,7 +661,7 @@
 
         #reply-preview-text {
             font-size: 13px;
-            color: #666;
+            color: var(--color-reply-text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -525,7 +670,7 @@
         #reply-cancel-btn {
             background: none;
             border: none;
-            color: #999;
+            color: var(--color-cancel-btn);
             cursor: pointer;
             padding: 4px;
             border-radius: 50%;
@@ -535,7 +680,7 @@
             flex-shrink: 0;
         }
 
-        #reply-cancel-btn:hover { background: #eee; }
+        #reply-cancel-btn:hover { background: var(--color-cancel-hover); }
 
         /* Цитата внутри пузыря сообщения */
         .msg-reply-quote {
@@ -579,8 +724,8 @@
             align-items: center;
             gap: 10px;
             padding: 8px 14px;
-            background: white;
-            border-bottom: 1px solid #e5e5e5;
+            background: var(--color-pin-bar-bg);
+            border-bottom: 1px solid var(--color-pin-sep);
             flex-shrink: 0;
             cursor: pointer;
         }
@@ -600,7 +745,7 @@
 
         #pin-bar-text {
             font-size: 13px;
-            color: #555;
+            color: var(--color-pin-text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -609,7 +754,7 @@
         #pin-unpin-btn {
             background: none;
             border: none;
-            color: #bbb;
+            color: var(--color-cancel-btn);
             cursor: pointer;
             padding: 4px;
             border-radius: 50%;
@@ -619,7 +764,7 @@
             flex-shrink: 0;
         }
 
-        #pin-unpin-btn:hover { color: #999; background: #f5f5f5; }
+        #pin-unpin-btn:hover { color: var(--color-cancel-btn); background: var(--color-cancel-hover); }
 
         /* ── Реакции под сообщением ─────────────────────────────────────────── */
 
@@ -665,8 +810,8 @@
             padding: 1px 6px;
             border-radius: 10px;
             font-size: 13px;
-            background: white;
-            border: 1px solid #e5e5e5;
+            background: var(--color-reaction-bg);
+            border: 1px solid var(--color-reaction-sep);
             cursor: pointer;
             transition: background 0.1s;
             user-select: none;
@@ -674,10 +819,10 @@
             white-space: nowrap;
         }
 
-        .reaction-badge:hover { background: #f5f5f5; }
+        .reaction-badge:hover { background: var(--color-ctx-hover); }
 
         /* Своя реакция */
-        .reaction-badge.own { background: #e8f0fe; border-color: #4a90e2; }
+        .reaction-badge.own { background: var(--color-reaction-own-bg); border-color: #4a90e2; }
 
         .message-wrap.own .reaction-badge {
             background: rgba(255,255,255,0.25);
@@ -732,9 +877,9 @@
 
         /* Пункты меню настроек (список) */
         .settings-menu-item {
-            background: #3a3a3a;
+            background: var(--color-settings-item-bg);
             border: none;
-            color: #ddd;
+            color: var(--color-settings-item-text);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -748,7 +893,7 @@
             transition: background 0.15s;
         }
 
-        .settings-menu-item:hover { background: #4a4a4a; }
+        .settings-menu-item:hover { background: var(--color-settings-item-hover); }
 
         .settings-menu-item .chevron {
             color: #888;
@@ -764,7 +909,7 @@
         }
 
         .reaction-pick-btn {
-            background: #3a3a3a;
+            background: var(--color-react-btn-bg);
             border: 2px solid transparent;
             border-radius: 8px;
             font-size: 22px;
@@ -777,19 +922,19 @@
             min-width: 0;
         }
 
-        .reaction-pick-btn:hover { background: #4a4a4a; }
+        .reaction-pick-btn:hover { background: var(--color-settings-item-hover); }
         .reaction-pick-btn.selected {
             border-color: #4a90e2;
-            background: #1a2a3a;
+            background: var(--color-react-btn-sel-bg);
         }
 
         /* Форма смены пароля */
         .pwd-input {
             width: 100%;
-            background: #3a3a3a;
-            border: 1px solid #555;
+            background: var(--color-pwd-input-bg);
+            border: 1px solid var(--color-pwd-input-border);
             border-radius: 8px;
-            color: #eee;
+            color: var(--color-pwd-input-text);
             font-size: 15px;
             padding: 11px 12px;
             margin-bottom: 10px;
@@ -887,19 +1032,19 @@
             align-items: center;
             justify-content: space-between;
             padding: 14px 16px;
-            background: white;
+            background: var(--color-bubble-other);
             border-radius: 8px;
             margin-bottom: 8px;
             cursor: pointer;
             font-size: 16px;
             font-weight: 600;
-            color: #2c2c2c;
+            color: var(--color-bubble-text);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
             transition: background 0.15s;
         }
 
         #welcome-dialogs li:hover {
-            background: #f0f0f0;
+            background: var(--color-ctx-hover);
         }
 
         #welcome-dialogs li:active {
@@ -909,11 +1054,12 @@
         #input-area {
             display: none;
             padding: 10px;
-            background: white;
-            border-top: 1px solid #ddd;
+            background: var(--color-input-bar-bg);
+            border-top: 1px solid var(--color-input-bar-sep);
             gap: 10px;
             flex-shrink: 0;
             width: 100%;
+            transition: background 0.3s;
         }
 
         #form-area {
@@ -927,14 +1073,17 @@
             flex: 1;
             min-width: 100px;
             padding: 12px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--color-input-border);
             border-radius: 6px;
             outline: none;
             font-size: 16px;
+            background: var(--color-input-bar-bg);
+            color: var(--color-input-text);
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
         }
 
         #form-area textarea:disabled {
-            background: #eee;
+            background: var(--color-cancel-hover);
             cursor: not-allowed;
         }
 
@@ -1017,8 +1166,8 @@
         }
 
         #recording-bar {
-            background: white;
-            border-top: 1px solid #ddd;
+            background: var(--color-input-bar-bg);
+            border-top: 1px solid var(--color-input-bar-sep);
             padding: 10px 16px;
             display: flex;
             align-items: center;
@@ -1107,8 +1256,8 @@
         }
 
         .audio-player.other {
-            background: white;
-            border: 1px solid #e5e5e5;
+            background: var(--color-bubble-other);
+            border: 1px solid var(--color-reaction-sep);
         }
 
         .audio-play-btn {
@@ -1177,8 +1326,8 @@
         }
 
         #upload-progress-bar {
-            background: white;
-            border-top: 1px solid #eee;
+            background: var(--color-input-bar-bg);
+            border-top: 1px solid var(--color-input-bar-sep);
             padding: 10px 16px;
             flex-shrink: 0;
         }
@@ -1730,6 +1879,220 @@
                 font-size: 20px;
             }
         }
+
+        /* ── Переключатель темы (theme-toggle) ──────────────────────────────
+           CSS взят из присланного style.css без изменений, только
+           --hue1/2/3/4 и transition-vars переопределены локально.          */
+        .theme-switch-wrap {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            margin-top: auto;
+        }
+
+        .theme-switch {
+            --hue1: 223;
+            --hue2: 48;
+            --hue3: 38;
+            --hue4: 63;
+            --trans-dur: 0.4s;
+            --trans-timing1: cubic-bezier(0.65, 0.05, 0.36, 1);
+            --trans-timing2: cubic-bezier(0.65, -0.05, 0.36, 1.1);
+            animation: tswOff var(--trans-dur) var(--trans-timing1) forwards;
+            border-radius: 1.5em;
+            box-shadow: 0 0 0 0.125em hsla(var(--hue1), 90%, 50%, 0);
+            position: relative;
+            transform-origin: 0 50%;
+            transition: box-shadow 0.15s linear;
+            font-size: 14px; /* масштаб em-единиц */
+            display: inline-block;
+        }
+
+        .theme-switch:before,
+        .theme-switch:after {
+            content: "";
+            display: block;
+            position: absolute;
+        }
+
+        .theme-switch:before {
+            background-color: hsl(var(--hue1), 10%, 60%);
+            box-shadow: 0.0625em 0 0.0625em hsla(0, 0%, 10%, 0.8) inset;
+            top: calc(50% - 0.125em);
+            right: 100%;
+            width: 0.5em;
+            height: 0.25em;
+            transition: background-color calc(var(--trans-dur) / 2) calc(var(--trans-dur) / 2) var(--trans-timing1);
+        }
+
+        .theme-switch:after {
+            background-image: radial-gradient(0.3em 0.3em at 25% 50%,
+                hsla(var(--hue1), 10%, 20%, 0) 30%,
+                hsl(var(--hue1), 10%, 20%) 35% 45%,
+                hsl(var(--hue1), 10%, 30%) 50%);
+            border-radius: 0.25em 0.125em 0.125em 0.25em;
+            box-shadow: 0 0 0.125em hsl(var(--hue1), 10%, 10%) inset;
+            top: calc(50% - 0.25em);
+            right: calc(100% + 0.5em);
+            width: 1.5em;
+            height: 0.5em;
+        }
+
+        .theme-switch__input,
+        .theme-switch__input:before,
+        .theme-switch__input:after {
+            display: block;
+        }
+
+        .theme-switch__input {
+            animation: tswOffInput var(--trans-dur) var(--trans-timing1) forwards;
+            background-color: hsl(var(--hue1), 10%, 30%);
+            border-radius: 1.5em;
+            box-shadow:
+                0 0 0 0.125em hsl(var(--hue1), 10%, 40%) inset,
+                0 0 0.125em 0.375em hsl(var(--hue1), 10%, 25%) inset,
+                0 0 0 0.375em hsl(var(--hue1), 10%, 55%) inset;
+            outline: transparent;
+            position: relative;
+            width: 6em;
+            height: 3em;
+            -webkit-appearance: none;
+            appearance: none;
+            -webkit-tap-highlight-color: transparent;
+            cursor: pointer;
+        }
+
+        .theme-switch__input:before,
+        .theme-switch__input:after {
+            content: "";
+            position: absolute;
+            transition:
+                background-color var(--trans-dur) var(--trans-timing1),
+                box-shadow var(--trans-dur) var(--trans-timing1),
+                transform var(--trans-dur) var(--trans-timing1);
+        }
+
+        .theme-switch__input:before {
+            background-color: hsla(var(--hue4), 90%, 50%, 0.15);
+            box-shadow: 0.0625em 0.0625em 0 hsla(var(--hue4), 0%, 100%, 0.15) inset;
+            border-radius: 50% 40%;
+            top: 0.625em;
+            left: 0.5em;
+            width: 2em;
+            height: 1.75em;
+        }
+
+        .theme-switch__input:after {
+            background-color: hsl(var(--hue3), 90%, 50%);
+            background-image:
+                radial-gradient(12.5% 12.5% at 20% 25%, hsl(0, 0%, 100%) 45%, hsla(0, 0%, 100%, 0) 50%),
+                radial-gradient(15% 30% at 15% 50%, hsl(0, 0%, 100%) 45%, hsla(0, 0%, 100%, 0) 50%);
+            border-radius: 50%;
+            box-shadow:
+                -0.0625em 0 0 hsla(var(--hue3), 10%, 95%, 0.9),
+                -0.125em 0 0 hsl(var(--hue3), 90%, 45%) inset,
+                0.125em 0 0.125em hsla(0, 0%, 10%, 0.3);
+            top: 1em;
+            left: 1em;
+            width: 1em;
+            height: 1em;
+            transform: rotate(45deg);
+            transition-timing-function: var(--trans-timing1), var(--trans-timing1), var(--trans-timing2);
+        }
+
+        .theme-switch:has([data-pristine="true"]),
+        .theme-switch__input[data-pristine="true"] {
+            animation: none;
+        }
+
+        .theme-switch:has(:focus-visible) {
+            box-shadow: 0 0 0 0.125em hsl(var(--hue1), 90%, 50%);
+        }
+
+        .theme-switch:has(:checked) {
+            animation-name: tswOn;
+        }
+
+        .theme-switch:has(:checked):before {
+            background-color: hsl(var(--hue2), 90%, 60%);
+        }
+
+        .theme-switch__input:checked {
+            animation-name: tswOnInput;
+        }
+
+        .theme-switch__input:checked:before {
+            background-color: hsl(var(--hue4), 10%, 95%);
+            box-shadow: -0.0625em -0.0625em 0 hsl(var(--hue4), 0%, 100%) inset;
+            transform: translateX(3em) rotate(180deg);
+        }
+
+        .theme-switch__input:checked:after {
+            background-color: hsl(var(--hue3), 90%, 50%);
+            box-shadow:
+                -0.0625em -0.0625em 0 hsla(var(--hue3), 10%, 95%, 0.6),
+                -0.125em 0 0 hsl(var(--hue3), 90%, 45%) inset,
+                0.0625em 0.0625em 0.125em hsla(0, 0%, 10%, 0);
+            transform: translateX(3em) rotate(45deg);
+        }
+
+        @keyframes tswOff {
+            from, to { transform: rotateY(0); }
+            50%       { transform: rotateY(-15deg); }
+        }
+
+        @keyframes tswOffInput {
+            from {
+                background-color: hsl(var(--hue2), 90%, 30%);
+                box-shadow:
+                    0 0 0 0.125em hsl(var(--hue2), 90%, 40%) inset,
+                    0 0 0.125em 0.375em hsl(var(--hue2), 90%, 25%) inset,
+                    0 0 0 0.375em hsl(var(--hue2), 90%, 55%) inset;
+            }
+            50% {
+                background-color: hsl(var(--hue2), 90%, 30%);
+                box-shadow:
+                    -0.0625em 0 0 0.125em hsl(var(--hue2), 90%, 40%) inset,
+                    0.0625em 0 0.125em 0.375em hsl(var(--hue2), 90%, 25%) inset,
+                    0.0625em 0 0 0.375em hsl(var(--hue2), 90%, 55%) inset;
+            }
+            to {
+                background-color: hsl(var(--hue1), 10%, 30%);
+                box-shadow:
+                    0 0 0 0.125em hsl(var(--hue1), 10%, 40%) inset,
+                    0 0 0.125em 0.375em hsl(var(--hue1), 10%, 25%) inset,
+                    0 0 0 0.375em hsl(var(--hue1), 10%, 55%) inset;
+            }
+        }
+
+        @keyframes tswOn {
+            from, to { transform: rotateY(0); }
+            50%       { transform: rotateY(15deg); }
+        }
+
+        @keyframes tswOnInput {
+            from {
+                background-color: hsl(var(--hue1), 10%, 30%);
+                box-shadow:
+                    0 0 0 0.125em hsl(var(--hue1), 10%, 40%) inset,
+                    0 0 0.125em 0.375em hsl(var(--hue1), 10%, 25%) inset,
+                    0 0 0 0.375em hsl(var(--hue1), 10%, 55%) inset;
+            }
+            50% {
+                background-color: hsl(var(--hue1), 10%, 30%);
+                box-shadow:
+                    0.0625em 0 0 0.125em hsl(var(--hue1), 10%, 40%) inset,
+                    -0.0625em 0 0.125em 0.375em hsl(var(--hue1), 10%, 25%) inset,
+                    -0.0625em 0 0 0.375em hsl(var(--hue1), 10%, 55%) inset;
+            }
+            to {
+                background-color: hsl(var(--hue2), 90%, 30%);
+                box-shadow:
+                    0 0 0 0.125em hsl(var(--hue2), 90%, 40%) inset,
+                    0 0 0.125em 0.375em hsl(var(--hue2), 90%, 25%) inset,
+                    0 0 0 0.375em hsl(var(--hue2), 90%, 55%) inset;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1772,7 +2135,13 @@
             <h3>Диалоги</h3>
             <ul id="users"></ul>
 
-            <button id="settings-open-btn" style="margin-top: auto; margin-bottom: 10px; background: #3a3a3a; color: #ddd; border: none; padding: 12px; border-radius: 6px; font-size: 15px; width: 100%; cursor: pointer; text-align: left;">⚙ Настройки</button>
+            <div class="theme-switch-wrap">
+                <label class="theme-switch">
+                    <input id="theme-toggle" class="theme-switch__input" type="checkbox" role="switch" data-pristine="true" />
+                    <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
+                </label>
+            </div>
+            <button id="settings-open-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
             <button id="logout-btn-sidebar">Выход</button>
         </div>
 
@@ -4734,6 +5103,36 @@
             } finally {
                 pwdSaveBtn.disabled = false;
             }
+        });
+
+        // ── Theme toggle ─────────────────────────────────────────────────────
+        // Влево (unchecked) = тёмная тема (дефолт), вправо (checked) = светлая.
+
+        const themeToggle = document.getElementById('theme-toggle');
+
+        function applyTheme(isLight) {
+            if (isLight) {
+                document.body.classList.add('light');
+            } else {
+                document.body.classList.remove('light');
+            }
+        }
+
+        // Восстанавливаем тему из localStorage
+        const savedTheme = localStorage.getItem('oshino-theme');
+        if (savedTheme === 'light') {
+            applyTheme(true);
+            themeToggle.checked = true;
+        }
+        // Снимаем data-pristine после инициализации, чтобы анимация работала
+        requestAnimationFrame(() => {
+            themeToggle.removeAttribute('data-pristine');
+        });
+
+        themeToggle.addEventListener('change', () => {
+            const isLight = themeToggle.checked;
+            applyTheme(isLight);
+            localStorage.setItem('oshino-theme', isLight ? 'light' : 'dark');
         });
 
         // Загружаем настройки и пин при инициализации
