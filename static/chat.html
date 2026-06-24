@@ -2446,6 +2446,30 @@
     </div>
 
     <script>
+        // ── Восстановление сессии для iOS PWA ────────────────────────────────
+        (function restoreSession() {
+            const token = localStorage.getItem('oshino_session');
+            if (!token) {
+                // Нет токена — проверяем куку через тихий запрос
+                fetch('/unread-counts').then(r => {
+                    if (r.status === 401) window.location.href = '/index';
+                }).catch(() => {});
+                return;
+            }
+            // Восстанавливаем куку из localStorage, затем проверяем авторизацию
+            fetch('/set-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'token=' + encodeURIComponent(token)
+            }).then(r => {
+                if (!r.ok) {
+                    // Токен протух — чистим и отправляем на логин
+                    localStorage.removeItem('oshino_session');
+                    window.location.href = '/index';
+                }
+            }).catch(() => {});
+        })();
+
         let currentLogin = null;
         let currentUser = null;
         let onlineUsers = [];
@@ -4734,6 +4758,7 @@
         // ── Logout ───────────────────────────────────────────────────────────────
 
         document.getElementById('logout-btn-sidebar').addEventListener('click', () => {
+            localStorage.removeItem('oshino_session');
             window.location.href = '/logout';
         });
 

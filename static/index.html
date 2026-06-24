@@ -275,6 +275,7 @@
                     errorDiv.textContent = data.error;
                     errorDiv.style.display = 'block';
                 } else if (data.success) {
+                    if (data.token) localStorage.setItem('oshino_session', data.token);
                     window.location.href = '/main';
                 }
             } catch (err) { console.error(err); }

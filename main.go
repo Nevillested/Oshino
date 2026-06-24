@@ -280,6 +280,7 @@ func main() {
 		http.ServeFile(w, r, "static/manifest.json")
 	})
 	http.HandleFunc("/login", app.handleLogin)
+	http.HandleFunc("/set-session", app.handleSetSession)
 	http.HandleFunc("/main", app.handleMain)
 	http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/main", http.StatusMovedPermanently)
@@ -376,10 +377,46 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Name:     "session",
 		Value:    token,
 		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   365 * 24 * 60 * 60, // 1 год
 		Path:     "/",
 	})
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"success": "ok", "token": token})
+}
+
+func (a *App) handleSetSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := r.FormValue("token")
+	if token == "" {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	// Проверяем что токен реально существует в БД
+	var login string
+	err := a.db.QueryRow(
+		"SELECT login FROM messenger.sessions WHERE token = $1 AND expires_at > NOW() AT TIME ZONE 'UTC'",
+		token,
+	).Scan(&login)
+	if err != nil {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+	// Ставим куку
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    token,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   365 * 24 * 60 * 60,
+		Path:     "/",
+	})
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"success": "ok"})
 }
@@ -387,7 +424,9 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleMain(w http.ResponseWriter, r *http.Request) {
 	login := a.getSessionLogin(r)
 	if login == "" {
-		http.Redirect(w, r, "/index", http.StatusSeeOther)
+		// Для iOS PWA: отдаём страницу, JS восстановит сессию через localStorage
+		// и перенаправит на /index если токен невалиден
+		http.ServeFile(w, r, "static/chat.html")
 		return
 	}
 	http.ServeFile(w, r, "static/chat.html")
