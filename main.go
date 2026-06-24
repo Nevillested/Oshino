@@ -295,6 +295,9 @@ func main() {
 	http.HandleFunc("/react", app.handleReact)
 	http.HandleFunc("/settings", app.handleSettings)
 	http.HandleFunc("/change-password", app.handleChangePassword)
+	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/pacman.html")
+	})
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
