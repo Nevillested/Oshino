@@ -1768,55 +1768,23 @@
                 font-size: 18px;
             }
 
-            /* ── Десктоп: sidebar = статичная левая колонка ── */
-            body {
-                flex-direction: row;
-                flex-wrap: nowrap;
-                overflow: hidden;
-            }
-
             #sidebar {
-                position: static;
-                transform: none !important;
-                width: var(--sidebar-w, 28%);
-                min-width: 220px;
-                max-width: 460px;
-                height: 100vh;
-                flex-shrink: 0;
-                z-index: 1;
-                overflow-y: auto;
-                border-right: none;
+                position: fixed;
+                width: 300px;
+                transform: translateX(-100%);
+                height: 100%;
             }
 
-            #menu-btn { display: none; }
-            #overlay   { display: none !important; }
-
-            /* Разделитель */
-            #resize-handle {
-                width: 4px;
-                background: var(--color-input-bar-sep);
-                cursor: col-resize;
-                flex-shrink: 0;
-                position: relative;
-                transition: background 0.15s;
-            }
-            #resize-handle:hover,
-            #resize-handle.dragging { background: #4a90e2; }
-            #resize-handle::after {
-                content: '';
-                position: absolute;
-                inset: 0 -6px;
+            #sidebar.open {
+                transform: translateX(0);
             }
 
-            /* ── Десктоп: chat = правая колонка ── */
+            #overlay.open {
+                display: block;
+            }
+
             #chat {
-                flex: 1;
-                width: auto;
-                min-width: 0;
-                height: 100vh;
-                position: static;
-                transform: none;
-                overflow: hidden;
+                width: 100%;
             }
 
             #users li {
@@ -1824,8 +1792,10 @@
                 font-size: 15px;
                 margin-bottom: 4px;
             }
-
-            .message-wrap { max-width: 60%; }
+            
+            .message-wrap {
+                max-width: 60%;
+            }
 
             .message {
                 font-size: 15px;
@@ -2353,9 +2323,7 @@
             <button id="pwd-save-btn" class="pwd-save-btn">Сохранить</button>
             <div id="pwd-status" class="pwd-status"></div>
         </div>
-    </div><!-- /#sidebar -->
-
-    <div id="resize-handle"></div>
+    </div>
 
     <div id="chat">
         <!-- Pin-bar — закреплённое сообщение -->
@@ -5640,50 +5608,6 @@
             overlay.classList.remove('open');
             showPacman();
         });
-
-        // ── Десктоп: resize handle ───────────────────────────────────────────
-        (function() {
-            if (window.innerWidth < 768) return;
-
-            const handle  = document.getElementById('resize-handle');
-            const sideEl  = document.getElementById('sidebar');
-            if (!handle || !sideEl) return;
-
-            // Восстанавливаем сохранённую ширину
-            const saved = localStorage.getItem('oshino-sidebar-w');
-            if (saved) {
-                const w = Math.max(220, Math.min(460, parseInt(saved)));
-                sideEl.style.width = w + 'px';
-                document.documentElement.style.setProperty('--sidebar-w', w + 'px');
-            }
-
-            let dragging = false, startX = 0, startW = 0;
-
-            handle.addEventListener('mousedown', e => {
-                dragging = true;
-                startX = e.clientX;
-                startW = sideEl.offsetWidth;
-                handle.classList.add('dragging');
-                document.body.style.userSelect = 'none';
-                document.body.style.cursor = 'col-resize';
-            });
-
-            document.addEventListener('mousemove', e => {
-                if (!dragging) return;
-                const w = Math.max(220, Math.min(460, startW + e.clientX - startX));
-                sideEl.style.width = w + 'px';
-                document.documentElement.style.setProperty('--sidebar-w', w + 'px');
-            });
-
-            document.addEventListener('mouseup', () => {
-                if (!dragging) return;
-                dragging = false;
-                handle.classList.remove('dragging');
-                document.body.style.userSelect = '';
-                document.body.style.cursor = '';
-                localStorage.setItem('oshino-sidebar-w', sideEl.offsetWidth);
-            });
-        })();
 
         // Загружаем настройки и пин при инициализации
         loadSettings();
