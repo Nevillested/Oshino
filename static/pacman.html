@@ -1058,7 +1058,7 @@ var PACMAN = (function () {
         } else if (state === WAITING && stateChanged) {            
             stateChanged = false;
             map.draw(ctx);
-            dialog("Press N to start a New game");            
+            setTimeout(function(){ startNewGame(); }, 2000);            
         } else if (state === EATEN_PAUSE && 
                    (tick - timerStart) > (Pacman.FPS / 3)) {
             map.draw(ctx);
@@ -1161,12 +1161,13 @@ var PACMAN = (function () {
         
     function loaded() {
 
-        dialog("Press N to Start");
-        
         document.addEventListener("keydown", keyDown, true);
         document.addEventListener("keypress", keyPress, true); 
         
         timer = window.setInterval(mainLoop, 1000 / Pacman.FPS);
+        
+        // Автостарт
+        startNewGame();
     };
     
     return {
@@ -1352,6 +1353,13 @@ Object.prototype.clone = function () {
 <script>
 window.addEventListener('load', function() {
     PACMAN.init(document.getElementById('pacman-game'), '');
+    
+    // Тап по игровой области — пауза/продолжение
+    document.getElementById('pacman-game').addEventListener('click', function() {
+        // эмулируем нажатие P
+        var e = new KeyboardEvent('keydown', { keyCode: 80, which: 80, bubbles: true });
+        document.dispatchEvent(e);
+    });
 });
 </script>
 </body>
