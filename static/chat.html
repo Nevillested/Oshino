@@ -1850,37 +1850,27 @@
                 display: none; /* canvas теперь в #rp-canvas-wrap */
             }
 
-            /* Шапка чата — непрозрачная, поверх canvas */
-            #desktop-chat-header {
-                background: var(--color-topbar);
-                backdrop-filter: none;
-            }
-
-            /* Область сообщений — прозрачная, canvas просвечивает сквозь неё.
-               Непрозрачность только у самих пузырей (.message, .audio-player и т.д.)
-               и у футера #input-area — они уже имеют свой background. */
+            /* Область сообщений — прозрачная, canvas просвечивает сквозь неё. */
             #messages {
                 background: transparent !important;
             }
-            /* pin-bar и reply-bar тоже должны читаться поверх canvas */
-            #pin-bar {
-                background: var(--color-pin-bar-bg);
-            }
-            #reply-bar {
-                background: var(--color-reply-bar-bg);
-            }
+            /* pin-bar и reply-bar поверх canvas */
+            #pin-bar  { background: var(--color-pin-bar-bg); }
+            #reply-bar { background: var(--color-reply-bar-bg); }
 
-            /* Шапка чата (pin-bar уже есть; добавляем desktop-topbar) */
+            /* Шапка чата — полностью непрозрачная */
             #desktop-chat-header {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 padding: 12px 16px;
-                background: var(--color-topbar);
+                background: var(--color-topbar) !important;
                 border-bottom: 1px solid var(--color-results-sep);
                 flex-shrink: 0;
                 min-height: 56px;
                 transition: background 0.3s;
+                position: relative;
+                z-index: 2;
             }
             #desktop-chat-header.hidden { display: none; }
 
