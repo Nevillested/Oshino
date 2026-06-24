@@ -2134,6 +2134,138 @@
                     0 0 0 0.375em hsl(var(--hue2), 90%, 55%) inset;
             }
         }
+
+        /* ── Pac-Man экран ─────────────────────────────────────────────────── */
+        #pacman-screen {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            background: var(--color-messages-bg);
+        }
+
+        #pacman-screen.active { display: flex; }
+
+        #pacman-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--color-topbar);
+            color: var(--color-sidebar-text);
+            flex-shrink: 0;
+            gap: 12px;
+        }
+
+        #pacman-close-btn {
+            background: none;
+            border: none;
+            color: var(--color-sidebar-text);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 4px 0;
+            flex-shrink: 0;
+            opacity: 0.9;
+        }
+
+        #pacman-close-btn:hover { opacity: 1; }
+
+        #pacman-hud {
+            display: flex;
+            gap: 16px;
+            font-size: 13px;
+            color: var(--color-sidebar-text);
+            opacity: 0.9;
+        }
+
+        #pacman-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            min-height: 0;
+            padding: 8px;
+        }
+
+        #pacman-canvas {
+            display: block;
+            /* размер выставляется JS-ом */
+        }
+
+        #pacman-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            background: rgba(0,0,0,0.62);
+        }
+
+        #pacman-overlay.hidden { display: none; }
+
+        #pacman-overlay-text {
+            color: #ffe000;
+            font-size: 22px;
+            font-weight: 700;
+            text-align: center;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+        }
+
+        #pacman-start-btn {
+            background: #ffe000;
+            color: #111;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 36px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+        }
+
+        #pacman-start-btn:hover  { background: #ffd000; }
+        #pacman-start-btn:active { transform: scale(0.97); }
+
+        /* D-pad для мобильных */
+        #pacman-dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 48px);
+            grid-template-rows: repeat(3, 48px);
+            gap: 4px;
+            justify-content: center;
+            padding: 10px 0 14px;
+            flex-shrink: 0;
+        }
+
+        .dpad-btn {
+            background: var(--color-settings-item-bg);
+            color: var(--color-sidebar-text);
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: background 0.1s;
+        }
+
+        .dpad-btn:active { background: #4a90e2; color: white; }
+
+        @media (min-width: 768px) {
+            /* На десктопе d-pad прячем — есть клавиатура */
+            #pacman-dpad { display: none; }
+        }
     </style>
 </head>
 <body>
@@ -2202,6 +2334,10 @@
                 <span>🔑 Смена пароля</span>
                 <span class="chevron">›</span>
             </button>
+            <button class="settings-menu-item" id="open-pacman-btn">
+                <span>🕹 Pac-Man</span>
+                <span class="chevron">›</span>
+            </button>
         </div>
 
         <!-- Подменю: реакции по умолчанию -->
@@ -2261,6 +2397,41 @@
                 <div id="welcome-subtitle">Выберите пользователя для начала диалога</div>
                 <ul id="welcome-dialogs"></ul>
                 <div id="welcome-empty-hint">Пока нет ни одного диалога — найдите собеседника через поиск в меню</div>
+            </div>
+        </div>
+
+        <!-- Экран игры Pac-Man -->
+        <div id="pacman-screen">
+            <div id="pacman-topbar">
+                <button id="pacman-close-btn">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                    Pac-Man
+                </button>
+                <div id="pacman-hud">
+                    <span>Счёт: <b id="pacman-score">0</b></span>
+                    <span>Рекорд: <b id="pacman-hiscore">0</b></span>
+                    <span>Жизни: <b id="pacman-lives">3</b></span>
+                </div>
+            </div>
+            <div id="pacman-wrap">
+                <canvas id="pacman-canvas"></canvas>
+                <div id="pacman-overlay">
+                    <div id="pacman-overlay-text"></div>
+                    <button id="pacman-start-btn">Начать</button>
+                </div>
+            </div>
+            <div id="pacman-dpad">
+                <div></div>
+                <button class="dpad-btn" data-dir="up">▲</button>
+                <div></div>
+                <button class="dpad-btn" data-dir="left">◀</button>
+                <div></div>
+                <button class="dpad-btn" data-dir="right">▶</button>
+                <div></div>
+                <button class="dpad-btn" data-dir="down">▼</button>
+                <div></div>
             </div>
         </div>
         <div id="offline-notice">Пользователь не в сети</div>
@@ -5182,9 +5353,457 @@
             localStorage.setItem('oshino-theme', isLight ? 'light' : 'dark');
         });
 
+        // ── Pac-Man навигация ────────────────────────────────────────────────
+
+        const pacmanScreen   = document.getElementById('pacman-screen');
+        const openPacmanBtn  = document.getElementById('open-pacman-btn');
+        const pacmanCloseBtn = document.getElementById('pacman-close-btn');
+
+        let pacmanGame = null; // инстанс игры, создаётся один раз
+
+        function showPacman() {
+            // прячем все остальные экраны
+            welcomeScreen.style.display    = 'none';
+            messagesDiv.style.display      = 'none';
+            inputArea.style.display        = 'none';
+            offlineNotice.style.display    = 'none';
+            pacmanScreen.classList.add('active');
+            // закрываем сайдбар
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            settingsPanel.classList.remove('open');
+            // создаём игру один раз
+            if (!pacmanGame) pacmanGame = new PacManGame();
+            pacmanGame.resize();
+            topbarTitle.textContent = 'Pac-Man';
+            callBtn.style.display       = 'none';
+            videoCallBtn.style.display  = 'none';
+        }
+
+        function hidePacman() {
+            pacmanScreen.classList.remove('active');
+            if (pacmanGame) pacmanGame.pause();
+            updateFormState();
+        }
+
+        openPacmanBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('open');
+            sidebarMain.style.display = 'flex';
+            showPacman();
+        });
+
+        pacmanCloseBtn.addEventListener('click', hidePacman);
+
         // Загружаем настройки и пин при инициализации
         loadSettings();
 
+    </script>
+
+    <!-- Pac-Man игра -->
+    <script>
+    class PacManGame {
+        constructor() {
+            this.canvas  = document.getElementById('pacman-canvas');
+            this.ctx     = this.canvas.getContext('2d');
+            this.scoreEl = document.getElementById('pacman-score');
+            this.hiEl    = document.getElementById('pacman-hiscore');
+            this.livesEl = document.getElementById('pacman-lives');
+            this.overlay = document.getElementById('pacman-overlay');
+            this.overlayText = document.getElementById('pacman-overlay-text');
+            this.startBtn = document.getElementById('pacman-start-btn');
+
+            this.CELL   = 20;          // px на клетку
+            this.COLS   = 21;
+            this.ROWS   = 21;
+            this.score  = 0;
+            this.hi     = 0;
+            this.lives  = 3;
+            this.state  = 'idle';      // idle | playing | dead | won | paused
+            this.raf    = null;
+            this.lastTs = 0;
+            this.frightenTimer = 0;
+
+            this._buildMaze();
+            this._spawnActors();
+            this._bindKeys();
+            this._bindDpad();
+            this.resize();
+            this.render();             // статичный кадр до старта
+
+            this.startBtn.onclick = () => this.start();
+        }
+
+        /* ── Лабиринт ──────────────────────────────────────────────────────── */
+        _buildMaze() {
+            // 0=dot 1=wall 2=empty 3=energizer 4=ghost-house
+            const T = [
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+                [1,3,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,3,1],
+                [1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,0,1],
+                [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+                [1,1,1,1,0,1,1,1,2,2,1,2,2,1,1,1,0,1,1,1,1],
+                [2,2,2,1,0,1,2,2,2,2,2,2,2,2,2,1,0,1,2,2,2],
+                [1,1,1,1,0,1,2,1,1,4,4,4,1,1,2,1,0,1,1,1,1],
+                [2,2,2,2,0,2,2,1,4,4,4,4,4,1,2,2,0,2,2,2,2],
+                [1,1,1,1,0,1,2,1,1,1,1,1,1,1,2,1,0,1,1,1,1],
+                [2,2,2,1,0,1,2,2,2,2,2,2,2,2,2,1,0,1,2,2,2],
+                [1,1,1,1,0,1,2,1,1,1,1,1,1,1,2,1,0,1,1,1,1],
+                [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+                [1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,0,1],
+                [1,3,0,1,0,0,0,0,0,0,2,0,0,0,0,0,0,1,0,3,1],
+                [1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1],
+                [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+                [1,0,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,0,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            ];
+            this.maze     = T.map(r => r.slice());
+            this.initMaze = T.map(r => r.slice());
+            this.totalDots = T.flat().filter(v => v === 0 || v === 3).length;
+        }
+
+        _resetMaze() {
+            this.maze = this.initMaze.map(r => r.slice());
+        }
+
+        /* ── Актёры ─────────────────────────────────────────────────────────── */
+        _spawnActors() {
+            this.pac = { x:10, y:16, dx:0, dy:0, nextDx:0, nextDy:0, animT:0 };
+            this.ghosts = [
+                { x:9,  y:9,  dx:1,  dy:0,  color:'#FF0000', name:'blinky', mode:'scatter', frighten:false, eaten:false, homeX:9,  homeY:9  },
+                { x:10, y:10, dx:-1, dy:0,  color:'#FFB8FF', name:'pinky',  mode:'scatter', frighten:false, eaten:false, homeX:10, homeY:10 },
+                { x:11, y:9,  dx:1,  dy:0,  color:'#00FFFF', name:'inky',   mode:'scatter', frighten:false, eaten:false, homeX:11, homeY:9  },
+                { x:10, y:11, dx:0,  dy:-1, color:'#FFB852', name:'clyde',  mode:'scatter', frighten:false, eaten:false, homeX:10, homeY:11 },
+            ];
+        }
+
+        /* ── Ввод ───────────────────────────────────────────────────────────── */
+        _bindKeys() {
+            this._onKey = (e) => {
+                const map = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0],
+                              KeyW:[0,-1],    KeyS:[0,1],      KeyA:[-1,0],      KeyD:[1,0] };
+                if (map[e.code]) {
+                    e.preventDefault();
+                    [this.pac.nextDx, this.pac.nextDy] = map[e.code];
+                    if (this.state === 'idle') this.start();
+                }
+            };
+            window.addEventListener('keydown', this._onKey);
+        }
+
+        _bindDpad() {
+            document.querySelectorAll('.dpad-btn').forEach(btn => {
+                const onPress = (e) => {
+                    e.preventDefault();
+                    const dir = btn.dataset.dir;
+                    const map = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
+                    if (map[dir]) {
+                        [this.pac.nextDx, this.pac.nextDy] = map[dir];
+                        if (this.state === 'idle') this.start();
+                    }
+                };
+                btn.addEventListener('touchstart', onPress, { passive: false });
+                btn.addEventListener('mousedown',  onPress);
+            });
+        }
+
+        /* ── Размер ─────────────────────────────────────────────────────────── */
+        resize() {
+            const wrap = document.getElementById('pacman-wrap');
+            const availW = wrap.clientWidth  - 16;
+            const availH = wrap.clientHeight - 16;
+            const cellW = Math.floor(availW / this.COLS);
+            const cellH = Math.floor(availH / this.ROWS);
+            this.CELL = Math.max(12, Math.min(cellW, cellH, 28));
+            this.canvas.width  = this.COLS * this.CELL;
+            this.canvas.height = this.ROWS * this.CELL;
+        }
+
+        /* ── Игровой цикл ───────────────────────────────────────────────────── */
+        start() {
+            if (this.state === 'idle') {
+                this._resetMaze();
+                this._spawnActors();
+                this.score = 0;
+                this.lives = 3;
+                this._updateHUD();
+            }
+            this.state = 'playing';
+            this.overlay.classList.add('hidden');
+            this.lastTs = performance.now();
+            cancelAnimationFrame(this.raf);
+            this._loop(this.lastTs);
+        }
+
+        pause() {
+            if (this.state === 'playing') {
+                this.state = 'paused';
+                cancelAnimationFrame(this.raf);
+            }
+        }
+
+        _loop(ts) {
+            if (this.state !== 'playing') return;
+            const dt = Math.min(ts - this.lastTs, 80); // cap при сворачивании
+            this.lastTs = ts;
+            this._update(dt);
+            this.render();
+            this.raf = requestAnimationFrame(t => this._loop(t));
+        }
+
+        /* ── Update ─────────────────────────────────────────────────────────── */
+        _update(dt) {
+            const SPEED = this.CELL * 5; // px/sec
+
+            // --- Pac-Man движение ---
+            const p = this.pac;
+            p.animT += dt;
+
+            // Проверяем nextDir
+            const nx = p.x + p.nextDx;
+            const ny = p.y + p.nextDy;
+            if (this._canMove(nx, ny)) { p.dx = p.nextDx; p.dy = p.nextDy; }
+
+            const moved = SPEED * dt / 1000;
+            p.x = this._wrapX(p.x + p.dx * moved);
+            p.y = p.y + p.dy * moved;
+            p.y = Math.max(0, Math.min(this.ROWS - 1, p.y));
+
+            // Snap & eat
+            const col = Math.round(p.x), row = Math.round(p.y);
+            if (Math.abs(p.x - col) < 0.45 && Math.abs(p.y - row) < 0.45) {
+                const cell = this.maze[row]?.[col];
+                if (cell === 0) { this.maze[row][col] = 2; this.score += 10; this._updateHUD(); }
+                if (cell === 3) {
+                    this.maze[row][col] = 2;
+                    this.score += 50;
+                    this._updateHUD();
+                    this.frightenTimer = 7000;
+                    this.ghosts.forEach(g => { g.frighten = true; g.eaten = false; });
+                }
+            }
+
+            // Проверка победы
+            const dots = this.maze.flat().filter(v => v === 0 || v === 3).length;
+            if (dots === 0) { this._win(); return; }
+
+            // --- Frighten таймер ---
+            if (this.frightenTimer > 0) {
+                this.frightenTimer -= dt;
+                if (this.frightenTimer <= 0) this.ghosts.forEach(g => { g.frighten = false; });
+            }
+
+            // --- Призраки ---
+            const GSPEED = SPEED * 0.72;
+            for (const g of this.ghosts) {
+                if (g.eaten) { this._moveToward(g, g.homeX, g.homeY, GSPEED * 1.8, dt); continue; }
+                this._moveGhost(g, GSPEED, dt);
+            }
+
+            // --- Столкновения ---
+            for (const g of this.ghosts) {
+                const dist = Math.hypot(p.x - g.x, p.y - g.y);
+                if (dist < 0.8) {
+                    if (g.frighten && !g.eaten) {
+                        g.eaten = true; g.frighten = false;
+                        this.score += 200; this._updateHUD();
+                    } else if (!g.frighten && !g.eaten) {
+                        this._die(); return;
+                    }
+                }
+            }
+        }
+
+        _canMove(x, y) {
+            const col = Math.round(x), row = Math.round(y);
+            if (row < 0 || row >= this.ROWS) return false;
+            const wCol = ((col % this.COLS) + this.COLS) % this.COLS;
+            const cell = this.maze[row]?.[wCol];
+            return cell !== 1;
+        }
+
+        _wrapX(x) {
+            if (x < 0) return x + this.COLS;
+            if (x >= this.COLS) return x - this.COLS;
+            return x;
+        }
+
+        _moveGhost(g, speed, dt) {
+            // Простая AI: пробуем продолжить направление, иначе — случайный разворот
+            const moved = speed * dt / 1000;
+            const nx = this._wrapX(g.x + g.dx * moved);
+            const ny = g.y + g.dy * moved;
+            const cols = [[1,0],[-1,0],[0,1],[0,-1]];
+
+            // На пересечении (целые координаты) — выбираем направление
+            if (Math.abs(g.x - Math.round(g.x)) < 0.15 && Math.abs(g.y - Math.round(g.y)) < 0.15) {
+                const cx = Math.round(g.x), cy = Math.round(g.y);
+                // Страх — убегаем от пакмана
+                const targets = g.frighten
+                    ? cols.filter(([dx,dy]) => dx !== -g.dx || dy !== -g.dy)
+                           .filter(([dx,dy]) => this._canMove(cx+dx, cy+dy))
+                           .sort(() => Math.random() - 0.5)
+                    : cols.filter(([dx,dy]) => dx !== -g.dx || dy !== -g.dy)
+                           .filter(([dx,dy]) => this._canMove(cx+dx, cy+dy))
+                           .sort((a,b) => {
+                               const da = Math.hypot(cx+a[0]-this.pac.x, cy+a[1]-this.pac.y);
+                               const db = Math.hypot(cx+b[0]-this.pac.x, cy+b[1]-this.pac.y);
+                               return da - db;
+                           });
+                if (targets.length) { [g.dx, g.dy] = targets[0]; }
+            }
+
+            const nnx = this._wrapX(g.x + g.dx * moved);
+            const nny = g.y + g.dy * moved;
+            if (this._canMove(nnx, Math.round(g.y)) || this._canMove(Math.round(g.x), nny)) {
+                g.x = nnx; g.y = nny;
+            }
+        }
+
+        _moveToward(g, tx, ty, speed, dt) {
+            const moved = speed * dt / 1000;
+            const dx = tx - g.x, dy = ty - g.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 0.3) { g.x = tx; g.y = ty; g.eaten = false; return; }
+            g.x += (dx / dist) * moved;
+            g.y += (dy / dist) * moved;
+        }
+
+        _die() {
+            this.lives--;
+            this._updateHUD();
+            if (this.lives <= 0) {
+                this.state = 'idle';
+                cancelAnimationFrame(this.raf);
+                this.render();
+                this.overlayText.textContent = `Игра окончена!\nСчёт: ${this.score}`;
+                this.startBtn.textContent = 'Играть снова';
+                this.overlay.classList.remove('hidden');
+                if (this.score > this.hi) { this.hi = this.score; this._updateHUD(); }
+            } else {
+                this._spawnActors();
+                this.state = 'playing';
+            }
+        }
+
+        _win() {
+            this.state = 'idle';
+            cancelAnimationFrame(this.raf);
+            this.render();
+            this.overlayText.textContent = `Победа! 🎉\nСчёт: ${this.score}`;
+            this.startBtn.textContent = 'Ещё раз';
+            this.overlay.classList.remove('hidden');
+            if (this.score > this.hi) { this.hi = this.score; this._updateHUD(); }
+        }
+
+        _updateHUD() {
+            this.scoreEl.textContent = this.score;
+            this.hiEl.textContent    = this.hi;
+            this.livesEl.textContent = this.lives;
+        }
+
+        /* ── Render ─────────────────────────────────────────────────────────── */
+        render() {
+            const ctx  = this.ctx;
+            const C    = this.CELL;
+            const W    = this.canvas.width;
+            const H    = this.canvas.height;
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, W, H);
+
+            // Лабиринт
+            for (let row = 0; row < this.ROWS; row++) {
+                for (let col = 0; col < this.COLS; col++) {
+                    const v = this.maze[row][col];
+                    const x = col * C, y = row * C;
+                    if (v === 1) {
+                        ctx.fillStyle = '#1a6fff';
+                        ctx.fillRect(x+1, y+1, C-2, C-2);
+                        ctx.strokeStyle = '#4488ff';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x+1.5, y+1.5, C-3, C-3);
+                    } else if (v === 0) {
+                        ctx.fillStyle = '#ffee88';
+                        ctx.beginPath();
+                        ctx.arc(x + C/2, y + C/2, C*0.12, 0, Math.PI*2);
+                        ctx.fill();
+                    } else if (v === 3) {
+                        const t = Date.now() / 400;
+                        ctx.fillStyle = `hsl(55,100%,${60 + 20*Math.sin(t)}%)`;
+                        ctx.beginPath();
+                        ctx.arc(x + C/2, y + C/2, C*0.28, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // Pac-Man
+            const p   = this.pac;
+            const px  = p.x * C + C/2;
+            const py  = p.y * C + C/2;
+            const mouthAngle = (Math.sin(p.animT / 120) * 0.35 + 0.05) * Math.PI;
+            let angle = 0;
+            if (p.dx === -1) angle = Math.PI;
+            else if (p.dy === -1) angle = -Math.PI/2;
+            else if (p.dy === 1)  angle =  Math.PI/2;
+
+            ctx.fillStyle = '#ffe000';
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.arc(px, py, C*0.44, angle + mouthAngle, angle + Math.PI*2 - mouthAngle);
+            ctx.closePath();
+            ctx.fill();
+
+            // Призраки
+            for (const g of this.ghosts) {
+                const gx = g.x * C + C/2;
+                const gy = g.y * C + C/2;
+                const r  = C * 0.42;
+
+                if (g.frighten && !g.eaten) {
+                    const flash = this.frightenTimer < 2000 && Math.floor(Date.now()/200)%2;
+                    ctx.fillStyle = flash ? '#ffffff' : '#2121de';
+                } else if (g.eaten) {
+                    // просто глаза
+                    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                } else {
+                    ctx.fillStyle = g.color;
+                }
+
+                // Тело
+                ctx.beginPath();
+                ctx.arc(gx, gy - r*0.1, r, Math.PI, 0);
+                ctx.lineTo(gx + r, gy + r*0.9);
+                // Зубчатый низ
+                const steps = 4;
+                for (let i = steps; i >= 0; i--) {
+                    const tx = gx - r + (2*r/steps)*i;
+                    const ty = gy + r*0.9 - (i%2 === 0 ? 0 : r*0.25);
+                    ctx.lineTo(tx, ty);
+                }
+                ctx.closePath();
+                ctx.fill();
+
+                if (!g.eaten) {
+                    // Глаза
+                    ctx.fillStyle = 'white';
+                    ctx.beginPath(); ctx.arc(gx - r*0.3, gy - r*0.15, r*0.22, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(gx + r*0.3, gy - r*0.15, r*0.22, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#00f';
+                    ctx.beginPath(); ctx.arc(gx - r*0.3 + r*0.08, gy - r*0.1, r*0.12, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(gx + r*0.3 + r*0.08, gy - r*0.1, r*0.12, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        destroy() {
+            cancelAnimationFrame(this.raf);
+            window.removeEventListener('keydown', this._onKey);
+        }
+    }
     </script>
 
     <!-- p5.js для фоновой анимации welcome-экрана -->
