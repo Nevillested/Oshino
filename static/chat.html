@@ -3446,7 +3446,6 @@
                         ticks.className = 'msg-ticks' + (msg.is_read ? ' read' : '');
                         ticks.innerHTML = ticksSVG(msg.is_read);
                         ticks.dataset.msgId = msg.id;
-                        console.log('tick msg:', msg.id, 'own:', msg.own, 'is_read:', msg.is_read, 'type:', typeof msg.is_read);
                         timeDiv.appendChild(ticks);
                     }
                     wrap.appendChild(timeDiv);
@@ -3794,6 +3793,8 @@
             renderDialogList();
 
             if (currentUser === msg.from) {
+                // Чат открыт — сразу помечаем как прочитанное
+                fetch(`/mark-read?with=${encodeURIComponent(msg.from)}`);
                 renderMessages(state.messages);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
