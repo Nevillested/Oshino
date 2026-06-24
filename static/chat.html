@@ -537,6 +537,23 @@
             color: var(--color-time);
             margin-top: 2px;
             padding: 0 4px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        /* Галочки статуса — только у своих сообщений */
+        .msg-ticks {
+            display: inline-flex;
+            align-items: center;
+            line-height: 1;
+            color: rgba(255,255,255,0.6);
+            margin-left: 3px;
+            vertical-align: middle;
+        }
+
+        .msg-ticks.read {
+            color: #ffffff; /* белые на синем пузыре = прочитано */
         }
 
         .message.own {
@@ -2724,6 +2741,9 @@
                     onPinUpdate(JSON.parse(message.substring(6)));
                 } else if (message.startsWith('reaction:')) {
                     onReactionUpdate(JSON.parse(message.substring(9)));
+                } else if (message.startsWith('read:')) {
+                    const data = JSON.parse(message.substring(5));
+                    applyReadReceipt(data.by, data.with);
                 }
             };
 
@@ -3413,6 +3433,14 @@
                     const timeDiv = document.createElement('div');
                     timeDiv.className = 'message-time';
                     timeDiv.textContent = timeLabel;
+                    // Галочки только для своих сообщений
+                    if (msg.own && !msg.call_type && !msg.pending) {
+                        const ticks = document.createElement('span');
+                        ticks.className = 'msg-ticks' + (msg.is_read ? ' read' : '');
+                        ticks.innerHTML = ticksSVG(msg.is_read);
+                        ticks.dataset.msgId = msg.id;
+                        timeDiv.appendChild(ticks);
+                    }
                     wrap.appendChild(timeDiv);
                 }
 
@@ -3565,6 +3593,42 @@
         }
 
         // Серверное подтверждение отправленного сообщения с реальным created_at из БД
+        // SVG галочки: одна = доставлено, две = прочитано
+        function ticksSVG(read) {
+            if (read) {
+                // Две синие галочки
+                return `<svg width="18" height="11" viewBox="0 0 18 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 5.5L4.5 9L10 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6 5.5L9.5 9L15 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+            } else {
+                // Одна серая галочка
+                return `<svg width="11" height="11" viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 5.5L4.5 9L10 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+            }
+        }
+        function applyReadReceipt(byLogin, withLogin) {
+            // byLogin — кто прочитал, withLogin — у кого в переписке
+            // Нас интересует только если прочитал наш текущий собеседник
+            const partner = (byLogin || '').toLowerCase();
+            if (partner !== (currentUser || '').toLowerCase()) return;
+
+            // Обновляем state
+            const state = historyState[partner];
+            if (state) {
+                state.messages.forEach(m => {
+                    if (m.own) m.is_read = true;
+                });
+            }
+
+            // Обновляем DOM — все галочки в текущем чате
+            document.querySelectorAll('.msg-ticks').forEach(el => {
+                el.classList.add('read');
+                el.innerHTML = ticksSVG(true);
+            });
+        }
+
         function applyMessageAck(msg) {
             const state = historyState[msg.to];
             if (!state) return;
