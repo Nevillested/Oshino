@@ -2221,6 +2221,25 @@
                 <span>🔑 Смена пароля</span>
                 <span class="chevron">›</span>
             </button>
+            <button class="settings-menu-item" id="open-add-user-submenu" style="display:none;">
+                <span>👤 Добавить пользователя</span>
+                <span class="chevron">›</span>
+            </button>
+        </div>
+
+        <!-- Подменю: добавить пользователя (только admin) -->
+        <div id="add-user-submenu" class="settings-submenu">
+            <button id="add-user-back-btn" class="settings-back-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Добавить пользователя
+            </button>
+            <p class="settings-section-title">Новый пользователь</p>
+            <input type="text" id="add-user-login" class="pwd-input" placeholder="Логин" autocomplete="off">
+            <input type="password" id="add-user-password" class="pwd-input" placeholder="Пароль" autocomplete="new-password">
+            <button id="add-user-save-btn" class="pwd-save-btn">Создать</button>
+            <div id="add-user-status" class="pwd-status"></div>
         </div>
 
         <!-- Подменю: реакции по умолчанию -->
@@ -2547,8 +2566,15 @@
         const reactionsSubmenu = document.getElementById('reactions-submenu');
         const openReactionsBtn = document.getElementById('open-reactions-submenu');
         const reactionsBackBtn = document.getElementById('reactions-back-btn');
-        const changePwdSubmenu = document.getElementById('change-password-submenu');
+        const addUserSubmenu   = document.getElementById('add-user-submenu');
+        const openAddUserBtn   = document.getElementById('open-add-user-submenu');
+        const addUserBackBtn   = document.getElementById('add-user-back-btn');
+        const addUserLogin     = document.getElementById('add-user-login');
+        const addUserPassword  = document.getElementById('add-user-password');
+        const addUserSaveBtn   = document.getElementById('add-user-save-btn');
+        const addUserStatus    = document.getElementById('add-user-status');
         const openChangePwdBtn = document.getElementById('open-change-password-submenu');
+        const changePwdSubmenu = document.getElementById('change-password-submenu');
         const changePwdBackBtn = document.getElementById('change-password-back-btn');
         const pwdNew = document.getElementById('pwd-new');
         const pwdConfirm = document.getElementById('pwd-confirm');
@@ -2598,6 +2624,7 @@
 
                 if (message.startsWith('user:')) {
                     currentLogin = message.substring(5);
+                    updateAdminUI();
                     updateWelcomeGreeting();
                 } else if (message.startsWith('dialogs:')) {
                     const dialogs = JSON.parse(message.substring(8));
@@ -5154,6 +5181,63 @@
             pwdStatus.textContent = '';
             pwdStatus.className = 'pwd-status';
         });
+
+        // Подменю добавления пользователя → настройки
+        addUserBackBtn.addEventListener('click', () => {
+            addUserSubmenu.classList.remove('open');
+            settingsPanel.classList.add('open');
+        });
+
+        // Настройки → подменю добавления пользователя
+        openAddUserBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('open');
+            addUserSubmenu.classList.add('open');
+            addUserLogin.value = '';
+            addUserPassword.value = '';
+            addUserStatus.textContent = '';
+            addUserStatus.className = 'pwd-status';
+        });
+
+        // Создать пользователя
+        addUserSaveBtn.addEventListener('click', async () => {
+            const login = addUserLogin.value.trim();
+            const pass  = addUserPassword.value;
+            addUserStatus.className = 'pwd-status';
+            addUserStatus.textContent = '';
+            if (!login || !pass) {
+                addUserStatus.className = 'pwd-status err';
+                addUserStatus.textContent = 'Заполните оба поля';
+                return;
+            }
+            addUserSaveBtn.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append('new_login', login);
+                fd.append('new_password', pass);
+                const resp = await fetch('/admin/add-user', { method: 'POST', body: fd });
+                const data = await resp.json();
+                if (data.error) {
+                    addUserStatus.className = 'pwd-status err';
+                    addUserStatus.textContent = data.error;
+                } else {
+                    addUserStatus.className = 'pwd-status ok';
+                    addUserStatus.textContent = `Пользователь «${login}» создан`;
+                    addUserLogin.value = '';
+                    addUserPassword.value = '';
+                }
+            } catch {
+                addUserStatus.className = 'pwd-status err';
+                addUserStatus.textContent = 'Ошибка соединения';
+            } finally {
+                addUserSaveBtn.disabled = false;
+            }
+        });
+
+        // Показываем пункт меню только для admin
+        function updateAdminUI() {
+            openAddUserBtn.style.display =
+                currentLogin && currentLogin.toLowerCase() === 'admin' ? 'flex' : 'none';
+        }
 
         // Подменю смены пароля → Настройки
         changePwdBackBtn.addEventListener('click', () => {

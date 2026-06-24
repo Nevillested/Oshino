@@ -306,6 +306,7 @@ func main() {
 	http.HandleFunc("/react", app.handleReact)
 	http.HandleFunc("/settings", app.handleSettings)
 	http.HandleFunc("/change-password", app.handleChangePassword)
+	http.HandleFunc("/admin/add-user", app.handleAdminAddUser)
 	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/pacman.html")
 	})
@@ -2674,6 +2675,67 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"default_reaction": defaultReaction})
+}
+
+// handleAdminAddUser — POST /admin/add-user — только для пользователя с id=1.
+func (a *App) handleAdminAddUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	// Проверяем что это admin (id = 1)
+	var id int
+	err := a.db.QueryRow(
+		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login,
+	).Scan(&id)
+	if err != nil || id != 1 {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	newLogin := strings.TrimSpace(r.FormValue("new_login"))
+	newPassword := r.FormValue("new_password")
+
+	if newLogin == "" || newPassword == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Логин и пароль обязательны"})
+		return
+	}
+
+	// Проверяем уникальность логина
+	var exists int
+	a.db.QueryRow(
+		"SELECT COUNT(*) FROM messenger.users WHERE LOWER(login) = LOWER($1)", newLogin,
+	).Scan(&exists)
+	if exists > 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Пользователь с таким логином уже существует"})
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Ошибка хеширования", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = a.db.Exec(
+		"INSERT INTO messenger.users (login, password) VALUES ($1, $2)",
+		newLogin, string(hashed),
+	)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка создания пользователя"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"success": "Пользователь создан"})
 }
 
 // handleChangePassword — POST /change-password (form: new_password) —
