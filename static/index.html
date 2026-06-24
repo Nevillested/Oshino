@@ -16,128 +16,295 @@
         }
 
         body {
-            font-family: sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: #f5f5f5;
+            background: #0f1117;
             padding: 20px;
+            overflow: hidden;
+            position: relative;
         }
 
-        /* Математический центр визуально воспринимается как "чуть ниже центра" —
-           глаз ожидает оптический центр, а не геометрический. Сдвигаем
-           весь блок логина вверх на фиксированное смещение через transform —
-           это не зависит от тонкостей расчёта flex-центрирования и работает
-           предсказуемо на любой высоте экрана. */
+        /* ── Волна снизу ──────────────────────────────────────────────────── */
+        .wave-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            line-height: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wave-container svg {
+            display: block;
+            width: 200%;
+            animation: wave-move 8s linear infinite;
+        }
+
+        .wave-container svg:nth-child(2) {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            opacity: 0.4;
+            animation: wave-move 12s linear infinite reverse;
+        }
+
+        @keyframes wave-move {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-50%); }
+        }
+
+        /* ── Логин-блок ───────────────────────────────────────────────────── */
         .login-box {
+            position: relative;
+            z-index: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
-            transform: translateY(-8vh);
+            transform: translateY(-6vh);
         }
 
         h1 {
             font-size: 32px;
-            color: #2c2c2c;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            font-size: 13px;
+            color: #5a6070;
             margin-bottom: 40px;
+            letter-spacing: 1px;
         }
 
         form {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 16px;
             width: 300px;
         }
 
-        input {
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-            text-align: center;
-            outline: none;
+        /* ── Инпуты ───────────────────────────────────────────────────────── */
+        .input-wrap {
+            position: relative;
         }
+
+        input {
+            width: 100%;
+            padding: 13px 16px;
+            background: #1a1d26;
+            border: 1px solid #2a2d3a;
+            border-radius: 8px;
+            font-size: 15px;
+            color: #e0e4f0;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input::placeholder { color: #3a3f52; }
 
         input:focus {
-            border-color: #2c2c2c;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74,144,226,0.12);
         }
 
-        button {
-            padding: 12px;
-            background: #3a3a3a;
+        /* ── Глаз ─────────────────────────────────────────────────────────── */
+        .eye-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            padding: 4px;
+            cursor: pointer;
+            color: #4a4f65;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+            border-radius: 4px;
+        }
+
+        .eye-btn:hover { color: #8a90b0; }
+
+        .eye-btn svg {
+            width: 20px;
+            height: 20px;
+            overflow: visible;
+        }
+
+        /* Верхнее веко — анимируется при закрытии */
+        .eye-top {
+            transition: d 0.25s ease;
+        }
+
+        .eye-bottom {
+            transition: d 0.25s ease;
+        }
+
+        /* Зрачок — скрывается когда глаз закрыт */
+        .eye-pupil {
+            transition: opacity 0.15s ease, transform 0.25s ease;
+            transform-origin: 50px 50px;
+        }
+
+        /* Состояние: глаз закрыт (пароль скрыт) */
+        .eye-btn.closed .eye-pupil {
+            opacity: 0;
+            transform: scaleY(0);
+        }
+
+        /* Черта через глаз — видна только когда закрыт */
+        .eye-slash {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .eye-btn.closed .eye-slash {
+            opacity: 1;
+        }
+
+        /* Поле пароля — правый отступ под глазик */
+        input[type="password"],
+        input[type="text"].pwd-visible {
+            padding-right: 44px;
+        }
+
+        /* ── Кнопка входа ─────────────────────────────────────────────────── */
+        .btn-submit {
+            padding: 13px;
+            background: #4a90e2;
             color: white;
             border: none;
-            border-radius: 5px;
-            font-size: 16px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.1s;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
         }
 
-        button:hover {
-            background: #2a2a2a;
-        }
+        .btn-submit:hover  { background: #3a7bd5; }
+        .btn-submit:active { transform: scale(0.98); }
 
         #error {
-            color: #d32f2f;
+            color: #e05555;
             text-align: center;
-            margin-top: 15px;
-            font-size: 14px;
+            font-size: 13px;
             display: none;
+            margin-top: -4px;
         }
 
+        /* ── Mobile ───────────────────────────────────────────────────────── */
         @media (max-width: 600px) {
-            h1 {
-                font-size: 28px;
-                margin-bottom: 30px;
-            }
-
-            form {
-                width: 100%;
-                max-width: 280px;
-                gap: 15px;
-            }
-
-            input {
-                padding: 14px;
-                font-size: 18px;
-            }
-
-            button {
-                padding: 14px;
-                font-size: 18px;
-            }
+            h1 { font-size: 28px; margin-bottom: 6px; }
+            form { width: 100%; max-width: 280px; }
         }
     </style>
 </head>
 <body>
+
+    <!-- Волна -->
+    <div class="wave-container">
+        <!-- Основная волна -->
+        <svg viewBox="0 0 1440 120" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+            <path d="M0,60 C180,100 360,20 540,60 C720,100 900,20 1080,60 C1260,100 1440,20 1440,60
+                     L1440,120 L0,120 Z"
+                  fill="#1a2035" opacity="0.9"/>
+            <path d="M0,80 C200,40 400,100 600,70 C800,40 1000,90 1200,65 C1350,48 1440,75 1440,75
+                     L1440,120 L0,120 Z"
+                  fill="#0f1420" opacity="0.7"/>
+        </svg>
+        <!-- Вторая волна (чуть другая фаза) -->
+        <svg viewBox="0 0 1440 120" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;width:200%;">
+            <path d="M0,50 C240,90 480,10 720,55 C960,95 1200,15 1440,55
+                     L1440,120 L0,120 Z"
+                  fill="#4a90e2" opacity="0.06"/>
+        </svg>
+    </div>
+
+    <!-- Форма -->
     <div class="login-box">
         <h1>Oshino</h1>
         <form id="login-form">
-        <input type="text" name="login" placeholder="Логин" required>
-        <input type="password" name="password" placeholder="Пароль" required>
-        <button type="submit">Войти</button>
-        <div id="error"></div>
-    </form>
+            <div class="input-wrap">
+                <input type="text" name="login" placeholder="Логин" required autocomplete="username">
+            </div>
+            <div class="input-wrap">
+                <input type="password" name="password" id="pwd-input" placeholder="Пароль" required autocomplete="current-password">
+                <button type="button" class="eye-btn closed" id="eye-btn" aria-label="Показать пароль">
+                    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Верхнее веко -->
+                        <path class="eye-top" d="M10,50 Q50,-10 90,50"
+                              stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
+                        <!-- Нижнее веко -->
+                        <path class="eye-bottom" d="M10,50 Q50,110 90,50"
+                              stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
+                        <!-- Зрачок -->
+                        <circle class="eye-pupil" cx="50" cy="50" r="11"
+                                fill="currentColor"/>
+                        <!-- Черта (закрытый глаз) -->
+                        <line class="eye-slash" x1="15" y1="50" x2="85" y2="50"
+                              stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <button type="submit" class="btn-submit">Войти</button>
+            <div id="error"></div>
+        </form>
     </div>
 
     <script>
-        const form = document.getElementById('login-form');
+        // ── Глазик ──────────────────────────────────────────────────────────
+        const eyeBtn  = document.getElementById('eye-btn');
+        const pwdInput = document.getElementById('pwd-input');
+        const eyeTop   = eyeBtn.querySelector('.eye-top');
+        const eyeBot   = eyeBtn.querySelector('.eye-bottom');
+
+        eyeBtn.addEventListener('click', () => {
+            const isHidden = pwdInput.type === 'password';
+
+            if (isHidden) {
+                // Открываем глаз
+                pwdInput.type = 'text';
+                eyeBtn.classList.remove('closed');
+                eyeBtn.setAttribute('aria-label', 'Скрыть пароль');
+                // Анимация: верхнее веко уходит вверх, нижнее — вниз
+                eyeTop.setAttribute('d', 'M10,50 Q50,-10 90,50');
+                eyeBot.setAttribute('d', 'M10,50 Q50,110 90,50');
+            } else {
+                // Закрываем глаз
+                pwdInput.type = 'password';
+                eyeBtn.classList.add('closed');
+                eyeBtn.setAttribute('aria-label', 'Показать пароль');
+                // Веки сходятся к центру
+                eyeTop.setAttribute('d', 'M10,50 Q50,40 90,50');
+                eyeBot.setAttribute('d', 'M10,50 Q50,60 90,50');
+            }
+        });
+
+        // ── Форма входа ──────────────────────────────────────────────────────
+        const form     = document.getElementById('login-form');
         const errorDiv = document.getElementById('error');
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const login = form.querySelector('input[name="login"]').value;
-            const password = form.querySelector('input[name="password"]').value;
+            const login    = form.querySelector('input[name="login"]').value;
+            const password = pwdInput.value;
 
             try {
                 const response = await fetch('/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `login=${encodeURIComponent(login)}&password=${encodeURIComponent(password)}`
                 });
 
@@ -149,8 +316,8 @@
                 } else if (data.success) {
                     window.location.href = '/main';
                 }
-            } catch (error) {
-                console.error('Ошибка:', error);
+            } catch (err) {
+                console.error('Ошибка:', err);
             }
         });
     </script>
