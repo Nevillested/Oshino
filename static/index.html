@@ -241,6 +241,20 @@
     </div>
 
     <script>
+        // Если есть токен в localStorage — восстанавливаем сессию и идём на /main
+        (function() {
+            const token = localStorage.getItem('oshino_session');
+            if (!token) return;
+            fetch('/set-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'token=' + encodeURIComponent(token)
+            }).then(r => {
+                if (r.ok) window.location.href = '/main';
+                else localStorage.removeItem('oshino_session');
+            }).catch(() => {});
+        })();
+
         // Глазик
         const eyeBtn   = document.getElementById('eye-btn');
         const pwdInput = document.getElementById('pwd-input');
