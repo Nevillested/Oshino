@@ -1914,6 +1914,7 @@
         let currentLogin = null;
         let currentUser = null;
         let onlineUsers = [];
+        let lastSeenMap = {}; // login -> ISO строка last_seen (только для оффлайн-пользователей)
         let unreadCount = {};
         let ws = null;
         let wsReady = false;
@@ -2032,7 +2033,14 @@
                     const dialogs = JSON.parse(message.substring(8));
                     mergeDialogs(dialogs);
                 } else if (message.startsWith('online:')) {
-                    onlineUsers = JSON.parse(message.substring(7));
+                    const presence = JSON.parse(message.substring(7));
+                    if (Array.isArray(presence)) {
+                        onlineUsers = presence;
+                        lastSeenMap = {};
+                    } else {
+                        onlineUsers = presence.online || [];
+                        lastSeenMap = presence.last_seen || {};
+                    }
                     updateFormState();
                     renderDialogList();
                 } else if (message.startsWith('msgack:')) {
@@ -2370,6 +2378,25 @@
             renderDialogList();
         }
 
+        // formatLastSeen возвращает строку статуса для оффлайн-пользователя.
+        // Если last_seen известен — «последний раз в сети ДД.ММ ЧЧ:ММ»,
+        // иначе — «не в сети».
+        function formatLastSeen(login) {
+            const iso = lastSeenMap[login.toLowerCase()];
+            if (!iso) return 'не в сети';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return 'не в сети';
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            // Если в этом году — показываем ДД.ММ ЧЧ:ММ, иначе ДД.ММ.ГГГГ ЧЧ:ММ
+            const sameYear = d.getFullYear() === now.getFullYear();
+            const datePart = sameYear
+                ? pad(d.getDate()) + '.' + pad(d.getMonth() + 1)
+                : pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+            const timePart = pad(d.getHours()) + ':' + pad(d.getMinutes());
+            return 'последний раз в сети ' + datePart + ' ' + timePart;
+        }
+
         function renderDialogList() {
             usersList.innerHTML = '';
             welcomeDialogsList.innerHTML = '';
@@ -2379,7 +2406,7 @@
             logins.forEach(user => {
                 const count = unreadCount[user] || 0;
                 const isOnline = onlineUsers.includes(user);
-                const statusText = isOnline ? '(в сети)' : '(не в сети)';
+                const statusText = isOnline ? '(в сети)' : '(' + formatLastSeen(user) + ')';
 
                 // Пункт в боковом меню
                 const li = document.createElement('li');
@@ -3371,7 +3398,7 @@
             messagesDiv.style.display = 'flex';
             offlineNotice.style.display = 'none';
             const isOnline = onlineUsers.includes(currentUser);
-            topbarTitle.textContent = currentUser + ' — ' + (isOnline ? 'в сети' : 'не в сети');
+            topbarTitle.textContent = currentUser + ' — ' + (isOnline ? 'в сети' : formatLastSeen(currentUser));
             // Звонить можно всегда: если собеседник оффлайн, сервер буферизует звонок
             // и отправит push-уведомление — оно разбудит его устройство и доставит звонок,
             // как только приложение откроется.

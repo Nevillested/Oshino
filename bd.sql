@@ -196,6 +196,12 @@ CREATE INDEX IF NOT EXISTS idx_message_reactions_message
 ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS default_reaction character varying(16)
     NOT NULL DEFAULT '👍';
 
+-- last_seen — время последнего отключения пользователя (NULL = никогда не был
+-- в сети, либо данных ещё нет). Обновляется сервером при закрытии последнего
+-- WebSocket-соединения логина. Используется для отображения "последний раз в сети"
+-- вместо "(не в сети)" в списке диалогов, на главном экране и в шапке чата.
+ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS last_seen timestamp without time zone;
+
 -- ============================================================================
 -- Конец файла. Новые изменения схемы дописывать ниже этой черты.
 -- ============================================================================
