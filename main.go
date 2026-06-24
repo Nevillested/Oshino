@@ -2789,8 +2789,9 @@ func (a *App) handleAdminAddUser(w http.ResponseWriter, r *http.Request) {
 		newLogin, string(hashed),
 	)
 	if err != nil {
+		log.Printf("handleAdminAddUser INSERT error: %v", err)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка создания пользователя"})
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
