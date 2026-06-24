@@ -2939,7 +2939,7 @@
                 } else {
                     results.forEach(user => {
                         const li = document.createElement('li');
-                        li.textContent = user;
+                        li.textContent = user.toLowerCase();
                         li.addEventListener('click', () => {
                             addDialog(user);
                             searchInput.value = '';
@@ -2956,7 +2956,7 @@
         // ── Список диалогов ──────────────────────────────────────────────────────
 
         function updateWelcomeGreeting() {
-            welcomeGreeting.textContent = currentLogin ? `С возвращением, ${currentLogin}.` : '';
+            welcomeGreeting.textContent = currentLogin ? `С возвращением, ${currentLogin.toLowerCase()}.` : '';
         }
 
         usersList.addEventListener('click', (e) => {
@@ -3040,7 +3040,7 @@
 
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'dialog-name';
-                nameSpan.textContent = user;
+                nameSpan.textContent = user.toLowerCase();
                 const statusSpan = document.createElement('span');
                 statusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
                 statusSpan.textContent = statusText;
@@ -3062,7 +3062,7 @@
 
                 const welcomeNameSpan = document.createElement('span');
                 welcomeNameSpan.className = 'dialog-name';
-                welcomeNameSpan.textContent = user;
+                welcomeNameSpan.textContent = user.toLowerCase();
                 const welcomeStatusSpan = document.createElement('span');
                 welcomeStatusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
                 welcomeStatusSpan.textContent = statusText;
@@ -4029,7 +4029,7 @@
             messagesDiv.style.display = 'flex';
             offlineNotice.style.display = 'none';
             const isOnline = onlineUsers.includes(currentUser);
-            topbarTitle.textContent = currentUser + ' — ' + (isOnline ? 'в сети' : formatLastSeen(currentUser));
+            topbarTitle.textContent = currentUser.toLowerCase() + ' — ' + (isOnline ? 'в сети' : formatLastSeen(currentUser));
             callBtn.style.display = 'flex';
             videoCallBtn.style.display = 'flex';
         }
@@ -5174,55 +5174,49 @@
         }
 
         // Главный сайдбар → Настройки
-        // ── История навигации внутри настроек ───────────────────────────────
-        // Уровни: 'submenu' → 'settings' → 'sidebar' → (вне настроек)
-        // При popstate полностью сбрасываем всё к нужному уровню.
+        // ── Навигация настроек ───────────────────────────────────────────────
+        // Стек уровней: [] → ['settings'] → ['settings','submenu']
+        // Свайп от левого края (≤30px) делает шаг назад по стеку.
 
-        function settingsCloseAll() {
+        let navStack = [];
+
+        function navGoBack() {
+            navStack.pop();
+            const cur = navStack[navStack.length - 1];
+            // Закрываем все подменю
             [reactionsSubmenu, changePwdSubmenu, addUserSubmenu, chpwdUserSubmenu]
                 .forEach(s => s.classList.remove('open'));
-            settingsPanel.classList.remove('open');
-            sidebarMain.style.display = 'flex';
-            sidebar.classList.remove('open');
-            overlay.classList.remove('open');
-        }
-
-        function navPush(level) {
-            history.pushState({ oshinoNav: level }, '');
-        }
-
-        window.addEventListener('popstate', (e) => {
-            const level = e.state && e.state.oshinoNav;
-            if (!level) {
-                // Вышли за пределы нашей истории — закрываем всё
-                settingsCloseAll();
-                return;
-            }
-            if (level === 'submenu') {
-                // Возврат из подменю → показываем настройки
-                [reactionsSubmenu, changePwdSubmenu, addUserSubmenu, chpwdUserSubmenu]
-                    .forEach(s => s.classList.remove('open'));
+            if (cur === 'settings') {
                 settingsPanel.classList.add('open');
-            } else if (level === 'settings') {
-                // Возврат из настроек → главный сайдбар
+            } else {
+                // Вернулись в сайдбар или вышли полностью
                 settingsPanel.classList.remove('open');
-                [reactionsSubmenu, changePwdSubmenu, addUserSubmenu, chpwdUserSubmenu]
-                    .forEach(s => s.classList.remove('open'));
                 sidebarMain.style.display = 'flex';
             }
-        });
+        }
+
+        // Свайп от левого края экрана → шаг назад
+        let _swipeStartX = 0;
+        sidebar.addEventListener('touchstart', (e) => {
+            _swipeStartX = e.touches[0].clientX;
+        }, { passive: true });
+        sidebar.addEventListener('touchend', (e) => {
+            const dx = e.changedTouches[0].clientX - _swipeStartX;
+            const startedFromEdge = _swipeStartX <= 30;
+            if (startedFromEdge && dx > 40 && navStack.length > 0) {
+                navGoBack();
+            }
+        }, { passive: true });
 
         settingsOpenBtn.addEventListener('click', () => {
             sidebarMain.style.display = 'none';
             settingsPanel.classList.add('open');
-            navPush('settings');
+            navStack = ['settings'];
         });
 
         // Настройки → главный сайдбар
         settingsBackBtn.addEventListener('click', () => {
-            settingsPanel.classList.remove('open');
-            sidebarMain.style.display = 'flex';
-            history.go(-1);
+            navGoBack();
         });
 
         // Настройки → подменю реакций
@@ -5230,14 +5224,12 @@
             settingsPanel.classList.remove('open');
             reactionsSubmenu.classList.add('open');
             renderDefaultReactionGrid();
-            navPush('submenu');
+            navStack.push('submenu');
         });
 
         // Подменю реакций → Настройки
         reactionsBackBtn.addEventListener('click', () => {
-            reactionsSubmenu.classList.remove('open');
-            settingsPanel.classList.add('open');
-            history.go(-1);
+            navGoBack();
         });
 
         // Настройки → подменю смены пароля
@@ -5248,14 +5240,12 @@
             pwdConfirm.value = '';
             pwdStatus.textContent = '';
             pwdStatus.className = 'pwd-status';
-            navPush('submenu');
+            navStack.push('submenu');
         });
 
         // Подменю добавления пользователя → настройки
         addUserBackBtn.addEventListener('click', () => {
-            addUserSubmenu.classList.remove('open');
-            settingsPanel.classList.add('open');
-            history.go(-1);
+            navGoBack();
         });
 
         // Настройки → подменю добавления пользователя
@@ -5266,7 +5256,7 @@
             addUserPassword.value = '';
             addUserStatus.textContent = '';
             addUserStatus.className = 'pwd-status';
-            navPush('submenu');
+            navStack.push('submenu');
         });
 
         // Создать пользователя
@@ -5322,14 +5312,12 @@
             chpwdUserConfirm.value = '';
             chpwdUserStatus.textContent = '';
             chpwdUserStatus.className = 'pwd-status';
-            navPush('submenu');
+            navStack.push('submenu');
         });
 
         // Подменю изменения пароля → настройки
         chpwdUserBackBtn.addEventListener('click', () => {
-            chpwdUserSubmenu.classList.remove('open');
-            settingsPanel.classList.add('open');
-            history.go(-1);
+            navGoBack();
         });
 
         // Сохранить новый пароль пользователю
@@ -5378,9 +5366,7 @@
 
         // Подменю смены пароля → Настройки
         changePwdBackBtn.addEventListener('click', () => {
-            changePwdSubmenu.classList.remove('open');
-            settingsPanel.classList.add('open');
-            history.go(-1);
+            navGoBack();
         });
 
         // Смена пароля — сохранение

@@ -2758,7 +2758,7 @@ func (a *App) handleAdminAddUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newLogin := strings.TrimSpace(r.FormValue("new_login"))
+	newLogin := strings.ToLower(strings.TrimSpace(r.FormValue("new_login")))
 	newPassword := r.FormValue("new_password")
 
 	if newLogin == "" || newPassword == "" {
