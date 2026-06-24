@@ -2225,9 +2225,27 @@
                 <span>👤 Добавить пользователя</span>
                 <span class="chevron">›</span>
             </button>
+            <button class="settings-menu-item" id="open-chpwd-user-submenu" style="display:none;">
+                <span>🔐 Изменить пароль пользователю</span>
+                <span class="chevron">›</span>
+            </button>
         </div>
 
-        <!-- Подменю: добавить пользователя (только admin) -->
+        <!-- Подменю: изменить пароль пользователю (только admin) -->
+        <div id="chpwd-user-submenu" class="settings-submenu">
+            <button id="chpwd-user-back-btn" class="settings-back-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Изменить пароль пользователю
+            </button>
+            <p class="settings-section-title">Смена пароля</p>
+            <input type="text" id="chpwd-user-login" class="pwd-input" placeholder="Логин пользователя" autocomplete="off">
+            <input type="password" id="chpwd-user-password" class="pwd-input" placeholder="Новый пароль" autocomplete="new-password">
+            <input type="password" id="chpwd-user-confirm" class="pwd-input" placeholder="Подтверждение пароля" autocomplete="new-password">
+            <button id="chpwd-user-save-btn" class="pwd-save-btn">Сохранить</button>
+            <div id="chpwd-user-status" class="pwd-status"></div>
+        </div>
         <div id="add-user-submenu" class="settings-submenu">
             <button id="add-user-back-btn" class="settings-back-btn">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2573,6 +2591,14 @@
         const addUserPassword  = document.getElementById('add-user-password');
         const addUserSaveBtn   = document.getElementById('add-user-save-btn');
         const addUserStatus    = document.getElementById('add-user-status');
+        const chpwdUserSubmenu  = document.getElementById('chpwd-user-submenu');
+        const openChpwdUserBtn  = document.getElementById('open-chpwd-user-submenu');
+        const chpwdUserBackBtn  = document.getElementById('chpwd-user-back-btn');
+        const chpwdUserLogin    = document.getElementById('chpwd-user-login');
+        const chpwdUserPassword = document.getElementById('chpwd-user-password');
+        const chpwdUserConfirm  = document.getElementById('chpwd-user-confirm');
+        const chpwdUserSaveBtn  = document.getElementById('chpwd-user-save-btn');
+        const chpwdUserStatus   = document.getElementById('chpwd-user-status');
         const openChangePwdBtn = document.getElementById('open-change-password-submenu');
         const changePwdSubmenu = document.getElementById('change-password-submenu');
         const changePwdBackBtn = document.getElementById('change-password-back-btn');
@@ -5215,7 +5241,9 @@
                 fd.append('new_login', login);
                 fd.append('new_password', pass);
                 const resp = await fetch('/admin/add-user', { method: 'POST', body: fd });
-                const data = await resp.json();
+                let data;
+                try { data = await resp.json(); }
+                catch { data = { error: `Ошибка сервера (${resp.status})` }; }
                 if (data.error) {
                     addUserStatus.className = 'pwd-status err';
                     addUserStatus.textContent = data.error;
@@ -5233,11 +5261,73 @@
             }
         });
 
-        // Показываем пункт меню только для admin
+        // Показываем пункты меню только для admin
         function updateAdminUI() {
-            openAddUserBtn.style.display =
-                currentLogin && currentLogin.toLowerCase() === 'admin' ? 'flex' : 'none';
+            const isAdmin = currentLogin && currentLogin.toLowerCase() === 'admin';
+            openAddUserBtn.style.display   = isAdmin ? 'flex' : 'none';
+            openChpwdUserBtn.style.display = isAdmin ? 'flex' : 'none';
         }
+
+        // Настройки → подменю изменения пароля пользователю
+        openChpwdUserBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('open');
+            chpwdUserSubmenu.classList.add('open');
+            chpwdUserLogin.value = '';
+            chpwdUserPassword.value = '';
+            chpwdUserConfirm.value = '';
+            chpwdUserStatus.textContent = '';
+            chpwdUserStatus.className = 'pwd-status';
+        });
+
+        // Подменю изменения пароля → настройки
+        chpwdUserBackBtn.addEventListener('click', () => {
+            chpwdUserSubmenu.classList.remove('open');
+            settingsPanel.classList.add('open');
+        });
+
+        // Сохранить новый пароль пользователю
+        chpwdUserSaveBtn.addEventListener('click', async () => {
+            const login = chpwdUserLogin.value.trim();
+            const pass  = chpwdUserPassword.value;
+            const conf  = chpwdUserConfirm.value;
+            chpwdUserStatus.className = 'pwd-status';
+            chpwdUserStatus.textContent = '';
+            if (!login || !pass || !conf) {
+                chpwdUserStatus.className = 'pwd-status err';
+                chpwdUserStatus.textContent = 'Заполните все поля';
+                return;
+            }
+            if (pass !== conf) {
+                chpwdUserStatus.className = 'pwd-status err';
+                chpwdUserStatus.textContent = 'Пароли не совпадают';
+                return;
+            }
+            chpwdUserSaveBtn.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append('target_login', login);
+                fd.append('new_password', pass);
+                const resp = await fetch('/admin/change-user-password', { method: 'POST', body: fd });
+                let data;
+                try { data = await resp.json(); }
+                catch { data = { error: `Ошибка сервера (${resp.status})` }; }
+                if (data.error) {
+                    chpwdUserStatus.className = 'pwd-status err';
+                    chpwdUserStatus.textContent = data.error;
+                } else {
+                    chpwdUserStatus.className = 'pwd-status ok';
+                    chpwdUserStatus.textContent = `Пароль пользователя «${login}» изменён`;
+                    chpwdUserLogin.value = '';
+                    chpwdUserPassword.value = '';
+                    chpwdUserConfirm.value = '';
+                }
+            } catch {
+                chpwdUserStatus.className = 'pwd-status err';
+                chpwdUserStatus.textContent = 'Ошибка соединения';
+            } finally {
+                chpwdUserSaveBtn.disabled = false;
+            }
+        });
 
         // Подменю смены пароля → Настройки
         changePwdBackBtn.addEventListener('click', () => {
