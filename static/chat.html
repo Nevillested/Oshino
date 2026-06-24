@@ -865,25 +865,21 @@
 
         /* Кнопка «назад» — одна общая для всех уровней */
         .settings-back-btn {
-            background: var(--color-settings-item-bg);
+            background: none;
             border: none;
-            color: var(--color-settings-item-text);
+            color: white;
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 8px;
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            padding: 14px;
-            margin-top: auto;   /* прижимаем вниз */
+            padding: 8px 0;
+            margin-bottom: 16px;
             flex-shrink: 0;
-            border-radius: 8px;
-            width: 100%;
-            transition: background 0.15s;
         }
 
-        .settings-back-btn:hover { background: var(--color-settings-item-hover); }
+        .settings-back-btn:hover { opacity: 0.8; }
 
         /* Заголовок секции */
         .settings-section-title {
@@ -5253,7 +5249,9 @@
                 const fd = new FormData();
                 fd.append('display_name', displayNameInput.value.trim());
                 const resp = await fetch('/display-name', { method: 'POST', body: fd });
-                const data = await resp.json();
+                let data;
+                try { data = await resp.json(); }
+                catch { data = { error: `Ошибка сервера (${resp.status})` }; }
                 if (data.error) {
                     displayNameStatus.className = 'pwd-status err';
                     displayNameStatus.textContent = data.error;
