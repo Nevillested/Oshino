@@ -2688,12 +2688,12 @@ func (a *App) handleAdminAddUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	// Проверяем что это admin (id = 1)
+	// Проверяем что это admin (id = 0)
 	var id int
 	err := a.db.QueryRow(
 		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login,
 	).Scan(&id)
-	if err != nil || id != 1 {
+	if err != nil || id != 0 {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
