@@ -3446,8 +3446,7 @@
                         ticks.className = 'msg-ticks' + (msg.is_read ? ' read' : '');
                         ticks.innerHTML = ticksSVG(msg.is_read);
                         ticks.dataset.msgId = msg.id;
-                        if (msg.is_read) console.log('✓✓ read msg id:', msg.id);
-                        else console.log('✓ unread msg id:', msg.id);
+                        console.log('tick msg:', msg.id, 'own:', msg.own, 'is_read:', msg.is_read, 'type:', typeof msg.is_read);
                         timeDiv.appendChild(ticks);
                     }
                     wrap.appendChild(timeDiv);

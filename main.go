@@ -117,6 +117,7 @@ type Message struct {
 	ReplyToID     int           `json:"reply_to_id,omitempty"`
 	ReplyPreview  *ReplyPreview `json:"reply_preview,omitempty"`
 	ForwardedFrom string        `json:"forwarded_from,omitempty"`
+	IsRead        bool          `json:"is_read,omitempty"`
 }
 
 // ReplyPreview — краткое представление сообщения, на которое отвечают
@@ -693,11 +694,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       m.call_type, m.call_status, m.call_duration,
 			       m.reply_to_id, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
-			       m.forwarded_from
+			       m.forwarded_from, m.is_read
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration, call_type, call_status, call_duration,
-				       reply_to_id, forwarded_from
+				       reply_to_id, forwarded_from, is_read
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				ORDER BY id DESC
@@ -716,11 +717,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       m.call_type, m.call_status, m.call_duration,
 			       m.reply_to_id, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
-			       m.forwarded_from
+			       m.forwarded_from, m.is_read
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration, call_type, call_status, call_duration,
-				       reply_to_id, forwarded_from
+				       reply_to_id, forwarded_from, is_read
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				ORDER BY id DESC
@@ -756,6 +757,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		ReplyToID     int            `json:"reply_to_id,omitempty"`
 		ReplyPreview  *ReplyPreview  `json:"reply_preview,omitempty"`
 		ForwardedFrom string         `json:"forwarded_from,omitempty"`
+		IsRead        bool           `json:"is_read"`
 		Reactions     []ReactionInfo `json:"reactions,omitempty"`
 	}
 
@@ -774,13 +776,16 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var replyHasImage, replyHasAudio sql.NullBool
 		var replyCallType sql.NullString
 		var forwardedFrom sql.NullString
-		rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
+		if err := rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
 			&imageMime, &imageFilename, &hasImage,
 			&hasAudio, &audioDuration,
 			&callType, &callStatus, &callDuration,
 			&replyToID, &replyFrom, &replyContent,
 			&replyHasImage, &replyHasAudio, &replyCallType,
-			&forwardedFrom)
+			&forwardedFrom, &m.IsRead); err != nil {
+			log.Printf("handleHistory Scan error: %v", err)
+			continue
+		}
 		m.Own = strings.EqualFold(m.From, login)
 		m.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		if hasImage {
@@ -2273,6 +2278,20 @@ func (a *App) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error", http.StatusInternalServerError)
 		return
 	}
+
+	// Уведомляем собеседника что его сообщения прочитаны
+	// Формат: read:{"by":"login","with":"withUser"}
+	type readNotif struct {
+		By   string `json:"by"`
+		With string `json:"with"`
+	}
+	notifData, _ := json.Marshal(readNotif{By: login, With: withUser})
+	notifPayload := append([]byte("read:"), notifData...)
+	a.mu.Lock()
+	for c := range a.clients[strings.ToLower(withUser)] {
+		c.trySend(notifPayload)
+	}
+	a.mu.Unlock()
 
 	w.WriteHeader(http.StatusOK)
 }
