@@ -217,9 +217,12 @@
     <!-- Форма -->
     <div class="login-box">
         <h1>Oshino</h1>
-        <form id="login-form">
+        <form id="login-form" autocomplete="off">
+            <!-- Honeypot: перехватывают автозаполнение Chrome на себя -->
+            <input type="text"     name="fake_user" style="display:none" tabindex="-1" autocomplete="username">
+            <input type="password" name="fake_pass" style="display:none" tabindex="-1" autocomplete="current-password">
             <div class="input-wrap">
-                <input type="text" name="login" placeholder="Логин" required autocomplete="off" inputmode="text">
+                <input type="text" name="login" id="login-input" placeholder="Логин" required autocomplete="new-password" inputmode="text">
             </div>
             <div class="input-wrap">
                 <input type="password" name="password" id="pwd-input" placeholder="Пароль" required autocomplete="current-password">
@@ -262,7 +265,7 @@
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const login    = form.querySelector('input[name="login"]').value;
+            const login    = document.getElementById('login-input').value;
             const password = pwdInput.value;
             try {
                 const res  = await fetch('/login', {
