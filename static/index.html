@@ -9,11 +9,7 @@
     <link rel="apple-touch-icon" href="/icons/icon_192.png">
     <meta name="theme-color" content="#2c2c2c">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -28,33 +24,39 @@
             position: relative;
         }
 
-        /* ── Волна снизу ──────────────────────────────────────────────────── */
+        /* ── Волны ────────────────────────────────────────────────────────── */
+        /*
+           Каждый SVG имеет viewBox="0 0 2880 300" — ровно 2 периода.
+           Реальная ширина SVG = 100vw * 2 (через width/style).
+           Анимация: translateX от 0 до -50% = сдвиг на один период.
+           При этом точка x=1440 SVG совпадает с x=0, петля бесшовна.
+        */
         .wave-container {
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
-            height: 220px;
+            height: 300px;
             pointer-events: none;
             z-index: 0;
+            overflow: hidden;
         }
 
-        .wave-container svg {
+        .wave {
             position: absolute;
             bottom: 0;
             left: 0;
-            /* width = 200% чтобы вместить два периода волны */
-            width: 200%;
-            height: 220px;
+            width: 200%;   /* два периода = 2 × 100vw */
+            height: 300px;
+            display: block;
         }
 
-        .wave-container svg:nth-child(1) { animation: wave-scroll 7s linear infinite; }
-        .wave-container svg:nth-child(2) { animation: wave-scroll 11s linear infinite reverse; }
-        .wave-container svg:nth-child(3) { animation: wave-scroll 4.5s linear infinite; }
+        .wave-1 { animation: wscroll 6s   linear infinite;         }
+        .wave-2 { animation: wscroll 9s   linear infinite reverse; }
+        .wave-3 { animation: wscroll 4s   linear infinite;         }
 
-        /* Сдвигаем ровно на половину (один период) — конец == начало */
-        @keyframes wave-scroll {
-            from { transform: translateX(0); }
+        @keyframes wscroll {
+            from { transform: translateX(0%); }
             to   { transform: translateX(-50%); }
         }
 
@@ -72,15 +74,8 @@
             font-size: 32px;
             font-weight: 700;
             color: #ffffff;
-            margin-bottom: 8px;
-            letter-spacing: 2px;
-        }
-
-        .subtitle {
-            font-size: 13px;
-            color: #5a6070;
             margin-bottom: 40px;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
         }
 
         form {
@@ -90,10 +85,7 @@
             width: 300px;
         }
 
-        /* ── Инпуты ───────────────────────────────────────────────────────── */
-        .input-wrap {
-            position: relative;
-        }
+        .input-wrap { position: relative; }
 
         input {
             width: 100%;
@@ -106,15 +98,13 @@
             outline: none;
             transition: border-color 0.2s, box-shadow 0.2s;
         }
-
         input::placeholder { color: #3a3f52; }
-
         input:focus {
             border-color: #4a90e2;
             box-shadow: 0 0 0 3px rgba(74,144,226,0.12);
         }
 
-        /* ── Глаз ─────────────────────────────────────────────────────────── */
+        /* ── Глазик ───────────────────────────────────────────────────────── */
         .eye-btn {
             position: absolute;
             right: 12px;
@@ -131,53 +121,18 @@
             transition: color 0.2s;
             border-radius: 4px;
         }
-
         .eye-btn:hover { color: #8a90b0; }
-
-        .eye-btn svg {
-            width: 20px;
-            height: 20px;
-            overflow: visible;
-        }
-
-        /* Верхнее веко — анимируется при закрытии */
-        .eye-top {
-            transition: d 0.25s ease;
-        }
-
-        .eye-bottom {
-            transition: d 0.25s ease;
-        }
-
-        /* Зрачок — скрывается когда глаз закрыт */
+        .eye-btn svg { width: 20px; height: 20px; overflow: visible; }
         .eye-pupil {
             transition: opacity 0.15s ease, transform 0.25s ease;
             transform-origin: 50px 50px;
         }
+        .eye-slash { opacity: 0; transition: opacity 0.2s ease; }
+        .eye-btn.closed .eye-pupil { opacity: 0; transform: scaleY(0); }
+        .eye-btn.closed .eye-slash { opacity: 1; }
+        input[type="password"], input[type="text"].pwd-visible { padding-right: 44px; }
 
-        /* Состояние: глаз закрыт (пароль скрыт) */
-        .eye-btn.closed .eye-pupil {
-            opacity: 0;
-            transform: scaleY(0);
-        }
-
-        /* Черта через глаз — видна только когда закрыт */
-        .eye-slash {
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-
-        .eye-btn.closed .eye-slash {
-            opacity: 1;
-        }
-
-        /* Поле пароля — правый отступ под глазик */
-        input[type="password"],
-        input[type="text"].pwd-visible {
-            padding-right: 44px;
-        }
-
-        /* ── Кнопка входа ─────────────────────────────────────────────────── */
+        /* ── Кнопка ───────────────────────────────────────────────────────── */
         .btn-submit {
             padding: 13px;
             background: #4a90e2;
@@ -191,7 +146,6 @@
             letter-spacing: 0.5px;
             margin-top: 4px;
         }
-
         .btn-submit:hover  { background: #3a7bd5; }
         .btn-submit:active { transform: scale(0.98); }
 
@@ -203,41 +157,66 @@
             margin-top: -4px;
         }
 
-        /* ── Mobile ───────────────────────────────────────────────────────── */
         @media (max-width: 600px) {
-            h1 { font-size: 28px; margin-bottom: 6px; }
+            h1 { font-size: 28px; margin-bottom: 30px; }
             form { width: 100%; max-width: 280px; }
         }
     </style>
 </head>
 <body>
 
-    <!-- Волна -->
+    <!-- 
+        Волны: каждый SVG viewBox = "0 0 2880 300" (два периода по 1440).
+        Путь рисует волну от x=0 до x=2880, где форма на 0..1440
+        точно повторяется на 1440..2880.
+        translateX(-50%) = сдвиг на половину SVG = один период → бесшов.
+    -->
     <div class="wave-container">
-        <!-- Слой 1 — основной тёмный, медленный -->
-        <svg viewBox="0 0 1440 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-            <path d="M0,120 C360,200 720,40 1080,120 C1260,160 1440,120 1440,120
-                     L1440,220 L0,220 Z
-                     M1440,120 C1800,200 2160,40 2520,120
-                     L2880,120 L2880,220 L1440,220 Z"
-                  fill="#1a2240" opacity="0.95"/>
+
+        <!-- Слой 1: тёмно-синий, средняя скорость -->
+        <svg class="wave wave-1"
+             viewBox="0 0 2880 300"
+             xmlns="http://www.w3.org/2000/svg"
+             preserveAspectRatio="none">
+            <path d="
+                M0,180
+                C240,280 480,80  720,180
+                C960,280 1200,80 1440,180
+                C1680,280 1920,80 2160,180
+                C2400,280 2640,80 2880,180
+                L2880,300 L0,300 Z"
+                fill="#1a2240"/>
         </svg>
-        <!-- Слой 2 — средний, обратный -->
-        <svg viewBox="0 0 1440 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-            <path d="M0,140 C360,60 720,200 1080,140 C1260,110 1440,140 1440,140
-                     L1440,220 L0,220 Z
-                     M1440,140 C1800,60 2160,200 2520,140
-                     L2880,140 L2880,220 L1440,220 Z"
-                  fill="#0d1428" opacity="0.85"/>
+
+        <!-- Слой 2: чуть светлее, обратный -->
+        <svg class="wave wave-2"
+             viewBox="0 0 2880 300"
+             xmlns="http://www.w3.org/2000/svg"
+             preserveAspectRatio="none">
+            <path d="
+                M0,210
+                C240,110 480,290 720,200
+                C960,110 1200,270 1440,190
+                C1680,110 1920,290 2160,200
+                C2400,110 2640,270 2880,190
+                L2880,300 L0,300 Z"
+                fill="#0d1830" opacity="0.85"/>
         </svg>
-        <!-- Слой 3 — голубой акцент, быстрый -->
-        <svg viewBox="0 0 1440 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-            <path d="M0,100 C360,180 720,20 1080,100 C1260,140 1440,100 1440,100
-                     L1440,220 L0,220 Z
-                     M1440,100 C1800,180 2160,20 2520,100
-                     L2880,100 L2880,220 L1440,220 Z"
-                  fill="#4a90e2" opacity="0.08"/>
+
+        <!-- Слой 3: голубой акцент, быстрый -->
+        <svg class="wave wave-3"
+             viewBox="0 0 2880 300"
+             xmlns="http://www.w3.org/2000/svg"
+             preserveAspectRatio="none">
+            <path d="
+                M0,230
+                C360,140 720,300 1080,220
+                C1440,140 1800,290 2160,220
+                C2520,150 2880,230 2880,230
+                L2880,300 L0,300 Z"
+                fill="#4a90e2" opacity="0.12"/>
         </svg>
+
     </div>
 
     <!-- Форма -->
@@ -251,16 +230,11 @@
                 <input type="password" name="password" id="pwd-input" placeholder="Пароль" required autocomplete="current-password">
                 <button type="button" class="eye-btn closed" id="eye-btn" aria-label="Показать пароль">
                     <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <!-- Верхнее веко -->
                         <path class="eye-top" d="M10,50 Q50,-10 90,50"
                               stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
-                        <!-- Нижнее веко -->
                         <path class="eye-bottom" d="M10,50 Q50,110 90,50"
                               stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
-                        <!-- Зрачок -->
-                        <circle class="eye-pupil" cx="50" cy="50" r="11"
-                                fill="currentColor"/>
-                        <!-- Черта (закрытый глаз) -->
+                        <circle class="eye-pupil" cx="50" cy="50" r="11" fill="currentColor"/>
                         <line class="eye-slash" x1="15" y1="50" x2="85" y2="50"
                               stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
                     </svg>
@@ -272,62 +246,43 @@
     </div>
 
     <script>
-        // ── Глазик ──────────────────────────────────────────────────────────
-        const eyeBtn  = document.getElementById('eye-btn');
+        // Глазик
+        const eyeBtn   = document.getElementById('eye-btn');
         const pwdInput = document.getElementById('pwd-input');
         const eyeTop   = eyeBtn.querySelector('.eye-top');
         const eyeBot   = eyeBtn.querySelector('.eye-bottom');
 
         eyeBtn.addEventListener('click', () => {
-            const isHidden = pwdInput.type === 'password';
-
-            if (isHidden) {
-                // Открываем глаз
-                pwdInput.type = 'text';
-                eyeBtn.classList.remove('closed');
-                eyeBtn.setAttribute('aria-label', 'Скрыть пароль');
-                // Анимация: верхнее веко уходит вверх, нижнее — вниз
-                eyeTop.setAttribute('d', 'M10,50 Q50,-10 90,50');
-                eyeBot.setAttribute('d', 'M10,50 Q50,110 90,50');
-            } else {
-                // Закрываем глаз
-                pwdInput.type = 'password';
-                eyeBtn.classList.add('closed');
-                eyeBtn.setAttribute('aria-label', 'Показать пароль');
-                // Веки сходятся к центру
-                eyeTop.setAttribute('d', 'M10,50 Q50,40 90,50');
-                eyeBot.setAttribute('d', 'M10,50 Q50,60 90,50');
-            }
+            const hidden = pwdInput.type === 'password';
+            pwdInput.type = hidden ? 'text' : 'password';
+            eyeBtn.classList.toggle('closed', !hidden);
+            eyeBtn.setAttribute('aria-label', hidden ? 'Скрыть пароль' : 'Показать пароль');
+            eyeTop.setAttribute('d', hidden ? 'M10,50 Q50,-10 90,50' : 'M10,50 Q50,40  90,50');
+            eyeBot.setAttribute('d', hidden ? 'M10,50 Q50,110 90,50' : 'M10,50 Q50,60  90,50');
         });
 
-        // ── Форма входа ──────────────────────────────────────────────────────
+        // Форма
         const form     = document.getElementById('login-form');
         const errorDiv = document.getElementById('error');
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const login    = form.querySelector('input[name="login"]').value;
             const password = pwdInput.value;
-
             try {
-                const response = await fetch('/login', {
+                const res  = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `login=${encodeURIComponent(login)}&password=${encodeURIComponent(password)}`
                 });
-
-                const data = await response.json();
-
+                const data = await res.json();
                 if (data.error) {
                     errorDiv.textContent = data.error;
                     errorDiv.style.display = 'block';
                 } else if (data.success) {
                     window.location.href = '/main';
                 }
-            } catch (err) {
-                console.error('Ошибка:', err);
-            }
+            } catch (err) { console.error(err); }
         });
     </script>
 </body>
