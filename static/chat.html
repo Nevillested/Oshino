@@ -5174,44 +5174,50 @@
         }
 
         // Главный сайдбар → Настройки
-        // ── Навигация настроек ───────────────────────────────────────────────
-        // Стек уровней: [] → ['settings'] → ['settings','submenu']
-        // Свайп от левого края (≤30px) делает шаг назад по стеку.
+        // ── Навигация настроек через History API ────────────────────────────
+        // iOS перехватывает свайп от края до DOM — единственный способ
+        // перехватить «назад» это держать в истории фиктивные записи.
+        //
+        // Правило: после каждого popstate сразу пушим новую запись,
+        // чтобы история не заканчивалась и следующий свайп тоже попал к нам.
 
         let navStack = [];
+
+        function navPushState(level) {
+            history.pushState({ oshinoNav: level }, '');
+        }
 
         function navGoBack() {
             navStack.pop();
             const cur = navStack[navStack.length - 1];
-            // Закрываем все подменю
             [reactionsSubmenu, changePwdSubmenu, addUserSubmenu, chpwdUserSubmenu]
                 .forEach(s => s.classList.remove('open'));
             if (cur === 'settings') {
                 settingsPanel.classList.add('open');
             } else {
-                // Вернулись в сайдбар или вышли полностью
                 settingsPanel.classList.remove('open');
                 sidebarMain.style.display = 'flex';
             }
+            // Сразу пушим новую запись — следующий свайп снова попадёт к нам
+            if (navStack.length > 0) {
+                navPushState(navStack[navStack.length - 1]);
+            }
         }
 
-        // Свайп от левого края экрана → шаг назад
-        let _swipeStartX = 0;
-        sidebar.addEventListener('touchstart', (e) => {
-            _swipeStartX = e.touches[0].clientX;
-        }, { passive: true });
-        sidebar.addEventListener('touchend', (e) => {
-            const dx = e.changedTouches[0].clientX - _swipeStartX;
-            const startedFromEdge = _swipeStartX <= 30;
-            if (startedFromEdge && dx > 40 && navStack.length > 0) {
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.oshinoNav && navStack.length > 0) {
                 navGoBack();
             }
-        }, { passive: true });
+        });
+
+        // При загрузке страницы — базовая запись чтобы свайп не выходил из PWA
+        navPushState('base');
 
         settingsOpenBtn.addEventListener('click', () => {
             sidebarMain.style.display = 'none';
             settingsPanel.classList.add('open');
             navStack = ['settings'];
+            navPushState('settings');
         });
 
         // Настройки → главный сайдбар
@@ -5225,6 +5231,7 @@
             reactionsSubmenu.classList.add('open');
             renderDefaultReactionGrid();
             navStack.push('submenu');
+            navPushState('submenu');
         });
 
         // Подменю реакций → Настройки
@@ -5241,6 +5248,7 @@
             pwdStatus.textContent = '';
             pwdStatus.className = 'pwd-status';
             navStack.push('submenu');
+            navPushState('submenu');
         });
 
         // Подменю добавления пользователя → настройки
@@ -5257,6 +5265,7 @@
             addUserStatus.textContent = '';
             addUserStatus.className = 'pwd-status';
             navStack.push('submenu');
+            navPushState('submenu');
         });
 
         // Создать пользователя
@@ -5313,6 +5322,7 @@
             chpwdUserStatus.textContent = '';
             chpwdUserStatus.className = 'pwd-status';
             navStack.push('submenu');
+            navPushState('submenu');
         });
 
         // Подменю изменения пароля → настройки
