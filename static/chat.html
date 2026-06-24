@@ -1839,8 +1839,7 @@
                 display: flex;
                 flex-direction: column;
                 min-height: 0;
-                /* Прозрачный фон чтобы canvas просвечивал на welcome */
-                background: transparent;
+                background: transparent;  /* canvas просвечивает насквозь */
             }
 
             /* На welcome-экране сообщения скрыты — canvas просвечивает */
@@ -1849,6 +1848,12 @@
             }
             #welcome-canvas-wrap {
                 display: none; /* canvas теперь в #rp-canvas-wrap */
+            }
+
+            /* Шапка чата — непрозрачная, поверх canvas */
+            #desktop-chat-header {
+                background: var(--color-topbar);
+                backdrop-filter: none;
             }
 
             /* Область сообщений — прозрачная, canvas просвечивает сквозь неё.
