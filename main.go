@@ -306,6 +306,7 @@ func main() {
 	http.HandleFunc("/react", app.handleReact)
 	http.HandleFunc("/settings", app.handleSettings)
 	http.HandleFunc("/change-password", app.handleChangePassword)
+	http.HandleFunc("/display-name", app.handleDisplayName)
 	http.HandleFunc("/admin/add-user", app.handleAdminAddUser)
 	http.HandleFunc("/admin/change-user-password", app.handleAdminChangeUserPassword)
 	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
@@ -901,13 +902,30 @@ func (a *App) broadcastOnlineUsers() {
 		}
 	}
 
+	// display_names: login -> display_name (только у кого задано)
+	displayNames := make(map[string]string)
+	dnRows, err := a.db.Query(
+		"SELECT login, display_name FROM messenger.users WHERE display_name IS NOT NULL AND display_name <> ''",
+	)
+	if err == nil {
+		defer dnRows.Close()
+		for dnRows.Next() {
+			var l, dn string
+			if dnRows.Scan(&l, &dn) == nil {
+				displayNames[strings.ToLower(l)] = dn
+			}
+		}
+	}
+
 	type presencePayload struct {
-		Online   []string          `json:"online"`
-		LastSeen map[string]string `json:"last_seen"`
+		Online       []string          `json:"online"`
+		LastSeen     map[string]string `json:"last_seen"`
+		DisplayNames map[string]string `json:"display_names"`
 	}
 	p := presencePayload{
-		Online:   onlineLogins,
-		LastSeen: lastSeenMap,
+		Online:       onlineLogins,
+		LastSeen:     lastSeenMap,
+		DisplayNames: displayNames,
 	}
 	if p.Online == nil {
 		p.Online = []string{}
@@ -2797,6 +2815,50 @@ func (a *App) handleAdminAddUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"success": "Пользователь создан"})
+}
+
+// handleDisplayName — GET/POST /display-name
+// GET  → возвращает текущее display_name
+// POST → сохраняет display_name для текущего пользователя
+func (a *App) handleDisplayName(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodGet {
+		var dn string
+		err := a.db.QueryRow(
+			"SELECT COALESCE(display_name, '') FROM messenger.users WHERE LOWER(login)=LOWER($1)", login,
+		).Scan(&dn)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{"display_name": ""})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"display_name": dn})
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		dn := strings.TrimSpace(r.FormValue("display_name"))
+		// Разрешаем пустую строку — означает сброс
+		_, err := a.db.Exec(
+			"UPDATE messenger.users SET display_name = NULLIF($1, '') WHERE LOWER(login)=LOWER($2)",
+			dn, login,
+		)
+		if err != nil {
+			http.Error(w, "Error", http.StatusInternalServerError)
+			return
+		}
+		// Рассылаем обновлённый presence всем
+		go a.broadcastOnlineUsers()
+		json.NewEncoder(w).Encode(map[string]string{"success": "ok"})
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
 // handleChangePassword — POST /change-password (form: new_password) —
