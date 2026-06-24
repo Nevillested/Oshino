@@ -31,9 +31,8 @@ import (
 )
 
 type App struct {
-	db       *sql.DB
-	sessions map[string]Session
-	mu       sync.Mutex
+	db *sql.DB
+	mu sync.Mutex
 	clients  map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
 
 	// defaultContact — логин пользователя с id=1, добавляется всем как контакт по умолчанию.
@@ -83,11 +82,6 @@ type activeCallInfo struct {
 type PendingCall struct {
 	Sig   CallSignal
 	Timer *time.Timer
-}
-
-type Session struct {
-	login   string
-	expires time.Time
 }
 
 type Client struct {
@@ -234,7 +228,6 @@ func main() {
 
 	app := &App{
 		db:              db,
-		sessions:        make(map[string]Session),
 		clients:         make(map[string]map[*Client]bool),
 		turnSecret:      os.Getenv("TURN_SECRET"),
 		vapidPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
@@ -306,19 +299,22 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
-// getSessionLogin возвращает логин по куке сессии, либо пустую строку если сессия не валидна
+// getSessionLogin возвращает логин по куке сессии, читая из БД.
+// Возвращает пустую строку если кука отсутствует, сессия не найдена или истекла.
 func (a *App) getSessionLogin(r *http.Request) string {
 	cookie, err := r.Cookie("session")
 	if err != nil {
 		return ""
 	}
-	a.mu.Lock()
-	sess, ok := a.sessions[cookie.Value]
-	a.mu.Unlock()
-	if !ok || time.Now().After(sess.expires) {
+	var login string
+	err = a.db.QueryRow(
+		"SELECT login FROM messenger.sessions WHERE token = $1 AND expires_at > NOW() AT TIME ZONE 'UTC'",
+		cookie.Value,
+	).Scan(&login)
+	if err != nil {
 		return ""
 	}
-	return sess.login
+	return login
 }
 
 func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -350,17 +346,23 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := generateToken()
-	expires := time.Now().Add(30 * 24 * time.Hour)
+	expires := time.Now().UTC().Add(365 * 24 * time.Hour)
 
-	a.mu.Lock()
-	a.sessions[token] = Session{login: login, expires: expires}
-	a.mu.Unlock()
+	_, err = a.db.Exec(
+		"INSERT INTO messenger.sessions (token, login, expires_at) VALUES ($1, $2, $3)",
+		token, login, expires,
+	)
+	if err != nil {
+		log.Println("Ошибка сохранения сессии:", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session",
 		Value:    token,
 		HttpOnly: true,
-		MaxAge:   30 * 24 * 60 * 60, // 30 дней
+		MaxAge:   365 * 24 * 60 * 60, // 1 год
 		Path:     "/",
 	})
 
@@ -794,70 +796,30 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(messages)
 }
 
-// updateLastSeen записывает текущее время UTC в last_seen пользователя.
-// Вызывается при отключении последнего WS-соединения логина.
-func (a *App) updateLastSeen(login string) {
-	if _, err := a.db.Exec(
-		"UPDATE messenger.users SET last_seen = NOW() AT TIME ZONE 'UTC' WHERE LOWER(login) = LOWER($1)",
-		login,
-	); err != nil {
-		log.Printf("Ошибка обновления last_seen для %s: %v", login, err)
-	}
-}
-
-// broadcastOnlineUsers рассылает всем подключённым клиентам текущее состояние
-// присутствия: список онлайн-логинов и last_seen для известных оффлайн-пользователей.
-// Формат: online:<JSON-объект {"online":["alice"],"last_seen":{"bob":"2006-01-02T15:04:05Z"}}>
 func (a *App) broadcastOnlineUsers() {
 	a.mu.Lock()
-	onlineLogins := make([]string, 0, len(a.clients))
+	logins := make([]string, 0, len(a.clients))
 	var allClients []*Client
 	for login, conns := range a.clients {
-		onlineLogins = append(onlineLogins, login)
+		logins = append(logins, login)
 		for c := range conns {
 			allClients = append(allClients, c)
 		}
 	}
 	a.mu.Unlock()
 
-	// Собираем уникальный набор всех логинов, про которых хоть кто-то из
-	// подключённых может захотеть знать last_seen (все участники их диалогов).
-	// Упрощение для небольшого приложения: читаем last_seen всех пользователей
-	// кроме тех, кто сейчас онлайн — их статус и так известен.
-	onlineSet := make(map[string]bool, len(onlineLogins))
-	for _, l := range onlineLogins {
-		onlineSet[l] = true
-	}
-
-	lastSeenMap := make(map[string]string)
-	rows, err := a.db.Query(
-		"SELECT login, last_seen FROM messenger.users WHERE last_seen IS NOT NULL",
-	)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var login string
-			var ls time.Time
-			if rows.Scan(&login, &ls) == nil && !onlineSet[strings.ToLower(login)] {
-				lastSeenMap[strings.ToLower(login)] = ls.UTC().Format(time.RFC3339)
-			}
+	onlineList := "["
+	first := true
+	for _, login := range logins {
+		if !first {
+			onlineList += ","
 		}
+		onlineList += "\"" + login + "\""
+		first = false
 	}
+	onlineList += "]"
 
-	type presencePayload struct {
-		Online   []string          `json:"online"`
-		LastSeen map[string]string `json:"last_seen"`
-	}
-	p := presencePayload{
-		Online:   onlineLogins,
-		LastSeen: lastSeenMap,
-	}
-	if p.Online == nil {
-		p.Online = []string{}
-	}
-	data, _ := json.Marshal(p)
-	payload := append([]byte("online:"), data...)
-
+	payload := []byte("online:" + onlineList)
 	for _, c := range allClients {
 		c.trySend(payload)
 	}
@@ -1676,24 +1638,17 @@ func (a *App) handleTurnCredentials(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) readPump(a *App) {
 	defer func() {
-		wasLastConn := false
 		a.mu.Lock()
 		if conns, ok := a.clients[c.login]; ok {
 			delete(conns, c)
 			if len(conns) == 0 {
 				delete(a.clients, c.login)
-				wasLastConn = true
 			}
 		}
 		a.mu.Unlock()
 		close(c.done)
 		c.conn.Close()
 		fmt.Printf("%s отключился\n", c.login)
-		// Обновляем last_seen только когда закрылось последнее соединение логина.
-		// Если ещё есть активные устройства — пользователь всё ещё онлайн.
-		if wasLastConn {
-			a.updateLastSeen(c.login)
-		}
 		a.broadcastOnlineUsers()
 	}()
 
@@ -2143,9 +2098,9 @@ func (a *App) routeCallSignal(sig CallSignal, from *Client) {
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session")
 	if err == nil {
-		a.mu.Lock()
-		delete(a.sessions, cookie.Value)
-		a.mu.Unlock()
+		// Удаляем только эту конкретную сессию — остальные устройства
+		// этого пользователя остаются залогиненными.
+		a.db.Exec("DELETE FROM messenger.sessions WHERE token = $1", cookie.Value)
 	}
 
 	http.SetCookie(w, &http.Cookie{

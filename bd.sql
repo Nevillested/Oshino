@@ -202,6 +202,34 @@ ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS default_reaction character 
 -- вместо "(не в сети)" в списке диалогов, на главном экране и в шапке чата.
 ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS last_seen timestamp without time zone;
 
+-- ── Table: messenger.sessions ───────────────────────────────────────────────
+-- Сессии хранятся в БД, а не в памяти процесса — чтобы перезапуск сервера
+-- не разлогинивал пользователей. Каждое устройство/браузер имеет свою строку:
+-- один логин может иметь несколько активных сессий одновременно.
+-- При logout удаляем только строку с конкретным токеном — остальные устройства
+-- остаются залогиненными.
+
+CREATE SEQUENCE IF NOT EXISTS messenger.sessions_id_seq;
+
+CREATE TABLE IF NOT EXISTS messenger.sessions
+(
+    id         integer NOT NULL DEFAULT nextval('messenger.sessions_id_seq'::regclass),
+    token      character varying(64) NOT NULL,
+    login      character varying NOT NULL,
+    expires_at timestamp without time zone NOT NULL,
+    CONSTRAINT sessions_pkey PRIMARY KEY (id),
+    CONSTRAINT sessions_token_key UNIQUE (token)
+)
+TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_sessions_token
+    ON messenger.sessions USING btree (token)
+    TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_sessions_login
+    ON messenger.sessions USING btree (login)
+    TABLESPACE pg_default;
+
 -- ============================================================================
 -- Конец файла. Новые изменения схемы дописывать ниже этой черты.
 -- ============================================================================
