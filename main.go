@@ -253,6 +253,13 @@ func main() {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, "static/index.html")
+	})
+	http.HandleFunc("/index", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/index.html")
 	})
 	http.HandleFunc("/sw.js", func(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +280,10 @@ func main() {
 		http.ServeFile(w, r, "static/manifest.json")
 	})
 	http.HandleFunc("/login", app.handleLogin)
-	http.HandleFunc("/chat", app.handleChat)
+	http.HandleFunc("/main", app.handleMain)
+	http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/main", http.StatusMovedPermanently)
+	})
 	http.HandleFunc("/ws", app.handleWS)
 	http.HandleFunc("/search", app.handleSearch)
 	http.HandleFunc("/logout", app.handleLogout)
@@ -295,9 +305,6 @@ func main() {
 	http.HandleFunc("/react", app.handleReact)
 	http.HandleFunc("/settings", app.handleSettings)
 	http.HandleFunc("/change-password", app.handleChangePassword)
-	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/pacman.html")
-	})
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -374,13 +381,17 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"success": "ok"})
 }
 
-func (a *App) handleChat(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleMain(w http.ResponseWriter, r *http.Request) {
 	login := a.getSessionLogin(r)
 	if login == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, "/index", http.StatusSeeOther)
 		return
 	}
 	http.ServeFile(w, r, "static/chat.html")
+}
+
+func (a *App) handleChat(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/main", http.StatusMovedPermanently)
 }
 
 func (a *App) handleWS(w http.ResponseWriter, r *http.Request) {

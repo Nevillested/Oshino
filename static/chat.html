@@ -2138,6 +2138,20 @@
                     0 0 0 0.375em hsl(var(--hue2), 90%, 55%) inset;
             }
         }
+
+        /* ── Pac-Man блок (третий экран) ─────────────────────────────────── */
+        #pacman-block {
+            flex: 1;
+            flex-direction: column;
+            min-height: 0;
+            background: #000;
+        }
+        #pacman-block iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -2186,6 +2200,7 @@
                     <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
                 </label>
             </div>
+            <button id="pacman-sidebar-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
             <button id="settings-open-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
             <button id="logout-btn-sidebar">Выход</button>
         </div>
@@ -2205,10 +2220,6 @@
             <button class="settings-menu-item" id="open-change-password-submenu">
                 <span>🔑 Смена пароля</span>
                 <span class="chevron">›</span>
-            </button>
-            <button class="settings-menu-item" id="open-pacman-btn">
-                <span>🕹 Pac-Man</span>
-                <span class="chevron">↗</span>
             </button>
         </div>
 
@@ -2271,6 +2282,9 @@
                 <div id="welcome-empty-hint">Пока нет ни одного диалога — найдите собеседника через поиск в меню</div>
             </div>
         </div>
+
+        <!-- Блок Pac-Man — третий экран, встроен inline -->
+        <div id="pacman-block" style="display: none;"></div>
 
         <div id="offline-notice">Пользователь не в сети</div>
         <div id="messages" style="display: none;">
@@ -2476,6 +2490,7 @@
         const loadMoreIndicator = document.getElementById('load-more-indicator');
 
         const welcomeScreen = document.getElementById('welcome-screen');
+        const pacmanBlock   = document.getElementById('pacman-block');
         const welcomeGreeting = document.getElementById('welcome-greeting');
         const welcomeDialogsList = document.getElementById('welcome-dialogs');
         const welcomeEmptyHint = document.getElementById('welcome-empty-hint');
@@ -3912,6 +3927,12 @@
         // ── Состояние формы ──────────────────────────────────────────────────────
 
         function updateFormState() {
+            // Всегда прячем Pac-Man при возврате в чат
+            pacmanBlock.style.display = 'none';
+            // Если был загружен iframe — выгружаем
+            const frame = pacmanBlock.querySelector('iframe');
+            if (frame) frame.src = 'about:blank';
+
             if (!currentUser) {
                 inputArea.style.display = 'none';
                 welcomeScreen.style.display = 'flex';
@@ -3930,9 +3951,6 @@
             offlineNotice.style.display = 'none';
             const isOnline = onlineUsers.includes(currentUser);
             topbarTitle.textContent = currentUser + ' — ' + (isOnline ? 'в сети' : formatLastSeen(currentUser));
-            // Звонить можно всегда: если собеседник оффлайн, сервер буферизует звонок
-            // и отправит push-уведомление — оно разбудит его устройство и доставит звонок,
-            // как только приложение откроется.
             callBtn.style.display = 'flex';
             videoCallBtn.style.display = 'flex';
         }
@@ -5191,11 +5209,44 @@
             localStorage.setItem('oshino-theme', isLight ? 'light' : 'dark');
         });
 
-        // ── Pac-Man навигация ────────────────────────────────────────────────
+        // ── Pac-Man (третий блок) ────────────────────────────────────────────
 
-        const openPacmanBtn = document.getElementById('open-pacman-btn');
-        openPacmanBtn.addEventListener('click', () => {
-            window.open('/pacman', '_blank');
+        const pacmanSidebarBtn = document.getElementById('pacman-sidebar-btn');
+
+        function showPacman() {
+            // Прячем все остальные блоки
+            welcomeScreen.style.display  = 'none';
+            messagesDiv.style.display    = 'none';
+            inputArea.style.display      = 'none';
+            offlineNotice.style.display  = 'none';
+
+            // Показываем Pac-Man блок
+            pacmanBlock.style.display = 'flex';
+
+            // Создаём iframe один раз
+            if (!pacmanBlock.querySelector('iframe')) {
+                const frame = document.createElement('iframe');
+                frame.src = '/pacman';
+                frame.title = 'Pac-Man';
+                pacmanBlock.appendChild(frame);
+            } else {
+                // При повторном открытии — перезагружаем для чистого старта
+                pacmanBlock.querySelector('iframe').src = '/pacman';
+            }
+
+            // Закрываем сайдбар
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+
+            topbarTitle.textContent    = '🕹 Pac-Man';
+            callBtn.style.display      = 'none';
+            videoCallBtn.style.display = 'none';
+        }
+
+        pacmanSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            showPacman();
         });
 
         // Загружаем настройки и пин при инициализации
