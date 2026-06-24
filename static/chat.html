@@ -1759,50 +1759,122 @@
 
         /* Desktop стили */
         @media (min-width: 768px) {
-            #topbar {
-                height: auto;
-                padding: 12px 16px;
-            }
 
-            #topbar span {
-                font-size: 18px;
-            }
+            /* ── ДЕСКТОП LAYOUT ─────────────────────────────────────────── */
 
-            /* ── Десктоп: sidebar = статичная левая колонка ── */
+            /* body = горизонтальный flex */
             body {
                 flex-direction: row;
-                flex-wrap: nowrap;
                 overflow: hidden;
             }
 
+            /* Мобильный topbar скрыт */
+            #topbar  { display: none !important; }
+            #menu-btn { display: none !important; }
+            #overlay  { display: none !important; }
+
+            /* ── Левая панель (sidebar) ─────────────────────────────── */
             #sidebar {
                 position: static;
                 transform: none !important;
-                width: var(--sidebar-w, 28%);
+                width: 28%;
                 min-width: 220px;
                 max-width: 460px;
                 height: 100vh;
                 flex-shrink: 0;
-                z-index: 1;
+                z-index: 2;
                 overflow-y: auto;
-                border-right: none;
+                display: flex;
+                flex-direction: column;
             }
 
-            #menu-btn { display: none; }
-            #overlay   { display: none !important; }
-            #topbar    { display: none; }
+            /* Разделитель */
+            #resize-handle {
+                width: 5px;
+                flex-shrink: 0;
+                background: var(--color-input-bar-sep);
+                cursor: col-resize;
+                position: relative;
+                transition: background 0.15s;
+                z-index: 3;
+            }
+            #resize-handle:hover,
+            #resize-handle.dragging { background: #4a90e2; }
+            /* Расширяем зону клика */
+            #resize-handle::after {
+                content: '';
+                position: absolute;
+                top: 0; bottom: 0;
+                left: -5px; right: -5px;
+            }
 
+            /* ── Правая часть: обёртка ──────────────────────────────── */
+            #chat {
+                flex: 1;
+                min-width: 0;
+                height: 100vh;
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                background: transparent; /* фон — #right-bg */
+                overflow: hidden;
+            }
+
+            /* Анимированный фон правой части */
+            #right-bg {
+                display: block;
+                position: absolute;
+                inset: 0;
+                z-index: 0;
+                overflow: hidden;
+                background: var(--color-messages-bg);
+            }
+
+            /* Весь контент чата поверх фона */
+            #chat > * { position: relative; z-index: 1; }
+            #right-bg  { z-index: 0; }
+
+            /* Welcome screen — по центру правой части */
+            #welcome-screen {
+                position: absolute;
+                inset: 0;
+                z-index: 1;
+                background: transparent;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+            }
+
+            #welcome-canvas-wrap {
+                position: absolute;
+                inset: 0;
+                z-index: 0;
+            }
+
+            #welcome-content {
+                position: relative;
+                z-index: 1;
+                /* На десктопе только приветствие, без списка диалогов */
+            }
+
+            #welcome-dialogs,
+            #welcome-empty-hint,
+            #welcome-subtitle { display: none; }
+
+            /* Топбар чата (десктоп) */
             #chat-topbar {
-                display: none; /* скрыт по умолчанию, показывается когда чат открыт */
+                display: none;
                 align-items: center;
                 padding: 10px 16px;
                 background: var(--color-topbar);
                 color: var(--color-sidebar-text);
                 flex-shrink: 0;
-                gap: 10px;
-                min-height: 48px;
+                gap: 12px;
+                min-height: 50px;
+                flex-direction: row;
             }
-
             #chat-topbar.visible { display: flex; }
 
             #chat-topbar-title {
@@ -1814,70 +1886,32 @@
                 white-space: nowrap;
             }
 
-            #chat-video-call-btn, #chat-call-btn {
+            #chat-video-call-btn,
+            #chat-call-btn {
                 background: none;
                 border: none;
                 color: var(--color-sidebar-text);
                 cursor: pointer;
-                padding: 6px;
-                border-radius: 6px;
+                padding: 8px;
+                border-radius: 8px;
                 display: flex;
                 align-items: center;
             }
+            #chat-video-call-btn:hover,
+            #chat-call-btn:hover { background: rgba(255,255,255,0.1); }
 
-            #chat-video-call-btn:hover, #chat-call-btn:hover {
-                background: rgba(255,255,255,0.1);
-            }
-
-            /* Разделитель */
-            #resize-handle {
-                width: 4px;
-                background: var(--color-input-bar-sep);
-                cursor: col-resize;
-                flex-shrink: 0;
-                position: relative;
-                transition: background 0.15s;
-            }
-            #resize-handle:hover,
-            #resize-handle.dragging { background: #4a90e2; }
-            #resize-handle::after {
-                content: '';
-                position: absolute;
-                inset: 0 -6px;
-            }
-
-            /* ── Десктоп: chat = правая колонка ── */
-            #chat {
-                flex: 1;
-                width: auto;
-                min-width: 0;
-                height: 100vh;
-                position: static;
-                transform: none;
-                overflow: hidden;
+            /* Сообщения */
+            #messages {
                 background: transparent;
             }
 
-            /* Welcome screen занимает всю правую часть */
-            #welcome-screen {
-                position: fixed;
-                top: 0;
-                right: 0;
-                bottom: 0;
-                left: var(--sidebar-w, 28%);
-                z-index: 0;
+            /* Input bar */
+            #input-area {
+                flex-shrink: 0;
             }
 
-            /* Чат поверх welcome-screen */
-            #messages,
-            #input-area,
-            #pin-bar,
-            #reply-bar,
-            #recording-bar,
-            #chat-topbar {
-                position: relative;
-                z-index: 1;
-            }
+            .message-wrap { max-width: 60%; }
+            .message { font-size: 15px; padding: 10px 16px; }
 
             #users li {
                 padding: 12px 10px;
@@ -1885,22 +1919,8 @@
                 margin-bottom: 4px;
             }
 
-            .message-wrap { max-width: 60%; }
-
-            .message {
-                font-size: 15px;
-                padding: 10px 16px;
-            }
-
-            #search-input {
-                font-size: 15px;
-                padding: 10px;
-            }
-
-            #logout-btn-sidebar {
-                font-size: 15px;
-                padding: 12px;
-            }
+            #search-input { font-size: 15px; padding: 10px; }
+            #logout-btn-sidebar { font-size: 15px; padding: 12px; }
         }
 
         /* Mobile стили - полная ширина */
@@ -2418,6 +2438,9 @@
     <div id="resize-handle"></div>
 
     <div id="chat">
+        <!-- Фон правой части (только десктоп) -->
+        <div id="right-bg"></div>
+
         <!-- Топбар чата (только десктоп, показывается когда чат открыт) -->
         <div id="chat-topbar">
             <span id="chat-topbar-title"></span>
@@ -5782,8 +5805,154 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <script>
     (function() {
-        const canvasWrap = document.getElementById('welcome-canvas-wrap');
+        const isDesktop = window.innerWidth >= 768;
+
+        // На десктопе — рисуем в #right-bg (фон всей правой части)
+        // На мобиле  — рисуем в #welcome-canvas-wrap (фон welcome-screen)
+        const canvasWrap = isDesktop
+            ? document.getElementById('right-bg')
+            : document.getElementById('welcome-canvas-wrap');
         if (!canvasWrap) return;
+
+        const pDeg  = (a) => Math.PI / 180 * a;
+        const pRand = (v1, v2) => Math.floor(v1 + Math.random() * (v2 - v1));
+
+        const THEME_PRESETS = {
+            dark: () => ({
+                h1: pRand(0, 360),   h2: pRand(0, 360),
+                s1: pRand(20, 90),   s2: pRand(20, 90),
+                l1: pRand(30, 80),   l2: pRand(30, 80),
+                bgR: 0, bgG: 0, bgB: 0,
+            }),
+            light: () => ({
+                h1: pRand(0, 360),   h2: pRand(0, 360),
+                s1: pRand(30, 70),   s2: pRand(30, 70),
+                l1: pRand(35, 65),   l2: pRand(35, 65),
+                bgR: 244, bgG: 248, bgB: 252,
+            }),
+        };
+
+        const initPreset = document.body.classList.contains('light')
+            ? THEME_PRESETS.light()
+            : THEME_PRESETS.dark();
+        const opt = {
+            particles:   700,
+            noiseScale:  0.009,
+            angle:       pDeg(-90),
+            h1: initPreset.h1, h2: initPreset.h2,
+            s1: initPreset.s1, s2: initPreset.s2,
+            l1: initPreset.l1, l2: initPreset.l2,
+            bgR: initPreset.bgR, bgG: initPreset.bgG, bgB: initPreset.bgB,
+            strokeWeight: 1.2,
+            tail: 82,
+        };
+
+        window.applyParticleTheme = function(isLight) {
+            const preset = isLight ? THEME_PRESETS.light() : THEME_PRESETS.dark();
+            Object.assign(opt, preset);
+            for (let p of pParticles) p.randomize();
+        };
+
+        const pParticles = [];
+        let pTime = 0;
+        let p5inst = null;
+
+        class PParticle {
+            constructor(x, y, p) {
+                this.p = p;
+                this.x = x; this.y = y;
+                this.lx = x; this.ly = y;
+                this.vx = 0; this.vy = 0;
+                this.ax = 0; this.ay = 0;
+                this.hueSeed = Math.random();
+                this._applyOpt();
+            }
+            _applyOpt() {
+                this.hue      = this.hueSeed > .5 ? 20 + opt.h1 : 20 + opt.h2;
+                this.sat      = this.hueSeed > .5 ? opt.s1 : opt.s2;
+                this.light    = this.hueSeed > .5 ? opt.l1 : opt.l2;
+                this.maxSpeed = this.hueSeed > .5 ? 3 : 2;
+            }
+            randomize() { this.hueSeed = Math.random(); this._applyOpt(); }
+            follow() {
+                const angle = this.p.noise(
+                    this.x * opt.noiseScale,
+                    this.y * opt.noiseScale,
+                    pTime * opt.noiseScale
+                ) * Math.PI * 0.5 + opt.angle;
+                this.ax += Math.cos(angle);
+                this.ay += Math.sin(angle);
+            }
+            update() {
+                this.follow();
+                this.vx += this.ax; this.vy += this.ay;
+                const speed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                const ang   = Math.atan2(this.vy, this.vx);
+                const m     = Math.min(this.maxSpeed, speed);
+                this.vx = Math.cos(ang)*m; this.vy = Math.sin(ang)*m;
+                this.x += this.vx; this.y += this.vy;
+                this.ax = 0; this.ay = 0;
+                const w = this.p.width, h = this.p.height;
+                if (this.x < 0)  { this.x = w; this.lx = w; this.ly = this.y; }
+                if (this.x > w)  { this.x = 0; this.lx = 0; this.ly = this.y; }
+                if (this.y < 0)  { this.y = h; this.ly = h; this.lx = this.x; }
+                if (this.y > h)  { this.y = 0; this.ly = 0; this.lx = this.x; }
+            }
+            render() {
+                this.p.stroke(`hsla(${this.hue},${this.sat}%,${this.light}%,.5)`);
+                this.p.line(this.x, this.y, this.lx, this.ly);
+                this.lx = this.x; this.ly = this.y;
+            }
+        }
+
+        p5inst = new p5(function(p) {
+            p.setup = function() {
+                const cnv = p.createCanvas(canvasWrap.offsetWidth, canvasWrap.offsetHeight);
+                cnv.parent(canvasWrap);
+                p.strokeWeight(opt.strokeWeight);
+                p.noFill();
+                for (let i = 0; i < opt.particles; i++) {
+                    pParticles.push(new PParticle(
+                        Math.random() * p.width,
+                        Math.random() * p.height,
+                        p
+                    ));
+                }
+            };
+            p.draw = function() {
+                pTime++;
+                p.background(opt.bgR, opt.bgG, opt.bgB, 100 - opt.tail);
+                for (let pt of pParticles) { pt.update(); pt.render(); }
+            };
+            p.windowResized = function() {
+                p.resizeCanvas(canvasWrap.offsetWidth, canvasWrap.offsetHeight);
+            };
+        });
+
+        // Клик по welcome-экрану — перекрашивает частицы
+        const welcomeScreen = document.getElementById('welcome-screen');
+        if (welcomeScreen) {
+            welcomeScreen.addEventListener('click', () => {
+                const isLight = document.body.classList.contains('light');
+                const preset  = isLight ? THEME_PRESETS.light() : THEME_PRESETS.dark();
+                Object.assign(opt, preset);
+                opt.angle += pDeg(p5inst ? p5inst.random(30, 60) : 45) * (Math.random() > .5 ? 1 : -1);
+                for (let p of pParticles) p.randomize();
+            });
+        }
+
+        // На мобиле: останавливаем когда welcome скрыт
+        if (!isDesktop && welcomeScreen) {
+            const observer = new MutationObserver(() => {
+                const visible = getComputedStyle(welcomeScreen).display !== 'none';
+                visible ? p5inst.loop() : p5inst.noLoop();
+            });
+            observer.observe(welcomeScreen, { attributes: true, attributeFilter: ['style', 'class'] });
+        }
+    })();
+    </script>
+</body>
+</html>
 
         const pDeg  = (a) => Math.PI / 180 * a;
         const pRand = (v1, v2) => Math.floor(v1 + Math.random() * (v2 - v1));
