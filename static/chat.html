@@ -865,21 +865,25 @@
 
         /* Кнопка «назад» — одна общая для всех уровней */
         .settings-back-btn {
-            background: none;
+            background: var(--color-settings-item-bg);
             border: none;
-            color: white;
+            color: var(--color-settings-item-text);
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 600;
             cursor: pointer;
-            padding: 8px 0;
-            margin-bottom: 16px;
+            padding: 14px;
+            margin-top: auto;   /* прижимаем вниз */
             flex-shrink: 0;
+            border-radius: 8px;
+            width: 100%;
+            transition: background 0.15s;
         }
 
-        .settings-back-btn:hover { opacity: 0.8; }
+        .settings-back-btn:hover { background: var(--color-settings-item-hover); }
 
         /* Заголовок секции */
         .settings-section-title {
@@ -5174,18 +5178,9 @@
         }
 
         // Главный сайдбар → Настройки
-        // ── Навигация настроек через History API ────────────────────────────
-        // iOS перехватывает свайп от края до DOM — единственный способ
-        // перехватить «назад» это держать в истории фиктивные записи.
-        //
-        // Правило: после каждого popstate сразу пушим новую запись,
-        // чтобы история не заканчивалась и следующий свайп тоже попал к нам.
+        // ── Навигация настроек ───────────────────────────────────────────────
 
         let navStack = [];
-
-        function navPushState(level) {
-            history.pushState({ oshinoNav: level }, '');
-        }
 
         function navGoBack() {
             navStack.pop();
@@ -5194,35 +5189,29 @@
                 .forEach(s => s.classList.remove('open'));
             if (cur === 'settings') {
                 settingsPanel.classList.add('open');
-                // Остаёмся в настройках — пушим 'settings' чтобы следующий
-                // свайп вернул нас в сайдбар, а не выкинул из PWA
-                navPushState('settings');
             } else {
                 settingsPanel.classList.remove('open');
                 sidebarMain.style.display = 'flex';
-                // Вернулись в сайдбар — пушим 'base' чтобы следующий
-                // свайп не выкинул из PWA (поглотим его без действия)
-                navPushState('base');
             }
         }
 
-        window.addEventListener('popstate', (e) => {
-            if (e.state && e.state.oshinoNav && e.state.oshinoNav !== 'base' && navStack.length > 0) {
-                navGoBack();
-            } else if (e.state && e.state.oshinoNav === 'base') {
-                // Поглощаем — просто снова пушим base чтобы не выйти из PWA
-                navPushState('base');
-            }
-        });
+        // Всегда держим одну фиктивную запись впереди текущей позиции.
+        // После popstate обрабатываем переход и сразу пушим новую запись —
+        // следующий «назад» снова попадёт к нам.
+        history.pushState({ oshinoNav: true }, '');
 
-        // При загрузке страницы — базовая запись чтобы свайп не выходил из PWA
-        navPushState('base');
+        window.addEventListener('popstate', () => {
+            if (navStack.length > 0) {
+                navGoBack();
+            }
+            // Всегда пушим новую запись — история не заканчивается
+            history.pushState({ oshinoNav: true }, '');
+        });
 
         settingsOpenBtn.addEventListener('click', () => {
             sidebarMain.style.display = 'none';
             settingsPanel.classList.add('open');
             navStack = ['settings'];
-            navPushState('settings');
         });
 
         // Настройки → главный сайдбар
@@ -5236,7 +5225,6 @@
             reactionsSubmenu.classList.add('open');
             renderDefaultReactionGrid();
             navStack.push('submenu');
-            navPushState('submenu');
         });
 
         // Подменю реакций → Настройки
@@ -5253,7 +5241,6 @@
             pwdStatus.textContent = '';
             pwdStatus.className = 'pwd-status';
             navStack.push('submenu');
-            navPushState('submenu');
         });
 
         // Подменю добавления пользователя → настройки
@@ -5270,7 +5257,6 @@
             addUserStatus.textContent = '';
             addUserStatus.className = 'pwd-status';
             navStack.push('submenu');
-            navPushState('submenu');
         });
 
         // Создать пользователя
@@ -5327,7 +5313,6 @@
             chpwdUserStatus.textContent = '';
             chpwdUserStatus.className = 'pwd-status';
             navStack.push('submenu');
-            navPushState('submenu');
         });
 
         // Подменю изменения пароля → настройки
