@@ -1790,6 +1790,44 @@
 
             #menu-btn { display: none; }
             #overlay   { display: none !important; }
+            #topbar    { display: none; }
+
+            #chat-topbar {
+                display: none; /* скрыт по умолчанию, показывается когда чат открыт */
+                align-items: center;
+                padding: 10px 16px;
+                background: var(--color-topbar);
+                color: var(--color-sidebar-text);
+                flex-shrink: 0;
+                gap: 10px;
+                min-height: 48px;
+            }
+
+            #chat-topbar.visible { display: flex; }
+
+            #chat-topbar-title {
+                flex: 1;
+                font-size: 16px;
+                font-weight: 600;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            #chat-video-call-btn, #chat-call-btn {
+                background: none;
+                border: none;
+                color: var(--color-sidebar-text);
+                cursor: pointer;
+                padding: 6px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+            }
+
+            #chat-video-call-btn:hover, #chat-call-btn:hover {
+                background: rgba(255,255,255,0.1);
+            }
 
             /* Разделитель */
             #resize-handle {
@@ -2358,6 +2396,21 @@
     <div id="resize-handle"></div>
 
     <div id="chat">
+        <!-- Топбар чата (только десктоп, показывается когда чат открыт) -->
+        <div id="chat-topbar">
+            <span id="chat-topbar-title"></span>
+            <button id="chat-video-call-btn" title="Видеозвонок" style="display:none;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+            </button>
+            <button id="chat-call-btn" title="Позвонить" style="display:none;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                </svg>
+            </button>
+        </div>
         <!-- Pin-bar — закреплённое сообщение -->
         <div id="pin-bar" style="display: none;">
             <div id="pin-bar-icon">
@@ -4144,11 +4197,15 @@
         // ── Состояние формы ──────────────────────────────────────────────────────
 
         function updateFormState() {
-            // Всегда прячем Pac-Man при возврате в чат
             pacmanBlock.style.display = 'none';
-            // Если был загружен iframe — выгружаем
             const frame = pacmanBlock.querySelector('iframe');
             if (frame) frame.src = 'about:blank';
+
+            const desktop = window.innerWidth >= 768;
+            const chatTopbar = document.getElementById('chat-topbar');
+            const chatTopbarTitle = document.getElementById('chat-topbar-title');
+            const chatCallBtn = document.getElementById('chat-call-btn');
+            const chatVideoCallBtn = document.getElementById('chat-video-call-btn');
 
             if (!currentUser) {
                 inputArea.style.display = 'none';
@@ -4158,6 +4215,7 @@
                 topbarTitle.textContent = 'Oshino';
                 callBtn.style.display = 'none';
                 videoCallBtn.style.display = 'none';
+                if (chatTopbar) chatTopbar.classList.remove('visible');
                 return;
             }
 
@@ -4167,9 +4225,18 @@
             messagesDiv.style.display = 'flex';
             offlineNotice.style.display = 'none';
             const isOnline = onlineUsers.includes(currentUser);
-            topbarTitle.textContent = getDisplayName(currentUser) + ' — ' + (isOnline ? 'в сети' : formatLastSeen(currentUser));
+            const title = getDisplayName(currentUser) + ' — ' + (isOnline ? 'в сети' : formatLastSeen(currentUser));
+            topbarTitle.textContent = title;
             callBtn.style.display = 'flex';
             videoCallBtn.style.display = 'flex';
+
+            // Десктопный топбар чата
+            if (chatTopbar && desktop) {
+                chatTopbar.classList.add('visible');
+                if (chatTopbarTitle) chatTopbarTitle.textContent = title;
+                if (chatCallBtn) chatCallBtn.style.display = 'flex';
+                if (chatVideoCallBtn) chatVideoCallBtn.style.display = 'flex';
+            }
         }
 
         async function loadUnreadCounts() {
