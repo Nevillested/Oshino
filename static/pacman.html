@@ -16,22 +16,7 @@ html, body {
     color: #fff;
     overflow: hidden;
 }
-#header {
-    width: 100%;
-    max-width: 420px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    flex-shrink: 0;
-}
 
-#title-txt {
-    color: #ffe000;
-    font-size: 14px;
-    letter-spacing: 2px;
-    font-weight: bold;
-}
 #game-wrap {
     flex: 1;
     display: flex;
@@ -42,8 +27,7 @@ html, body {
     padding: 4px;
 }
 #pacman-game {
-    /* размер выставляется JS-ом через wrapper.offsetWidth */
-    width: min(100vw, calc(100vh - 80px) * 19 / 22);
+    width: min(100vw, calc(100vh - 180px) * 19 / 22);
     max-width: 420px;
     aspect-ratio: 19 / 22.5;
 }
@@ -52,15 +36,7 @@ html, body {
     width: 100% !important;
     height: auto !important;
 }
-/* Инструкция */
-#hint {
-    font-size: 11px;
-    color: #555;
-    text-align: center;
-    padding: 4px 0 2px;
-    flex-shrink: 0;
-    letter-spacing: 1px;
-}
+
 /* D-pad */
 #dpad {
     display: grid;
@@ -87,17 +63,14 @@ html, body {
     -webkit-tap-highlight-color: transparent;
 }
 .dp:active { background: #ffe000; color: #000; }
-@media (min-width: 768px) { #dpad { display: none; } }
+@media (min-width: 1024px) { #dpad { display: none; } }
+
 </style>
 </head>
 <body>
-<div id="header">
-    <span id="title-txt">PAC-MAN</span>
-</div>
 <div id="game-wrap">
     <div id="pacman-game"></div>
 </div>
-<div id="hint">СТРЕЛКИ или WASD · ПРОБЕЛ — пауза</div>
 <div id="dpad">
     <div></div>
     <button class="dp" id="dp-up">▲</button>
