@@ -5174,15 +5174,35 @@
         }
 
         // Главный сайдбар → Настройки
+        // ── История навигации внутри настроек ───────────────────────────────
+        function navPush(level) {
+            history.pushState({ oshinoNav: level }, '');
+        }
+
+        window.addEventListener('popstate', (e) => {
+            const level = e.state && e.state.oshinoNav;
+            if (!level) return;
+            if (level === 'settings') {
+                [reactionsSubmenu, changePwdSubmenu, addUserSubmenu, chpwdUserSubmenu]
+                    .forEach(s => s.classList.remove('open'));
+                settingsPanel.classList.add('open');
+            } else if (level === 'sidebar') {
+                settingsPanel.classList.remove('open');
+                sidebarMain.style.display = 'flex';
+            }
+        });
+
         settingsOpenBtn.addEventListener('click', () => {
             sidebarMain.style.display = 'none';
             settingsPanel.classList.add('open');
+            navPush('sidebar');
         });
 
         // Настройки → главный сайдбар
         settingsBackBtn.addEventListener('click', () => {
             settingsPanel.classList.remove('open');
             sidebarMain.style.display = 'flex';
+            history.back();
         });
 
         // Настройки → подменю реакций
@@ -5190,12 +5210,14 @@
             settingsPanel.classList.remove('open');
             reactionsSubmenu.classList.add('open');
             renderDefaultReactionGrid();
+            navPush('settings');
         });
 
         // Подменю реакций → Настройки
         reactionsBackBtn.addEventListener('click', () => {
             reactionsSubmenu.classList.remove('open');
             settingsPanel.classList.add('open');
+            history.back();
         });
 
         // Настройки → подменю смены пароля
@@ -5206,12 +5228,14 @@
             pwdConfirm.value = '';
             pwdStatus.textContent = '';
             pwdStatus.className = 'pwd-status';
+            navPush('settings');
         });
 
         // Подменю добавления пользователя → настройки
         addUserBackBtn.addEventListener('click', () => {
             addUserSubmenu.classList.remove('open');
             settingsPanel.classList.add('open');
+            history.back();
         });
 
         // Настройки → подменю добавления пользователя
@@ -5222,6 +5246,7 @@
             addUserPassword.value = '';
             addUserStatus.textContent = '';
             addUserStatus.className = 'pwd-status';
+            navPush('settings');
         });
 
         // Создать пользователя
@@ -5277,12 +5302,14 @@
             chpwdUserConfirm.value = '';
             chpwdUserStatus.textContent = '';
             chpwdUserStatus.className = 'pwd-status';
+            navPush('settings');
         });
 
         // Подменю изменения пароля → настройки
         chpwdUserBackBtn.addEventListener('click', () => {
             chpwdUserSubmenu.classList.remove('open');
             settingsPanel.classList.add('open');
+            history.back();
         });
 
         // Сохранить новый пароль пользователю
@@ -5333,6 +5360,7 @@
         changePwdBackBtn.addEventListener('click', () => {
             changePwdSubmenu.classList.remove('open');
             settingsPanel.classList.add('open');
+            history.back();
         });
 
         // Смена пароля — сохранение
