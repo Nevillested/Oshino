@@ -691,16 +691,20 @@
 
         /* ── Панель настроек (в сайдбаре) ──────────────────────────────────── */
 
-        #settings-panel {
+        /* ── Общий стиль для settings-panel и подменю ───────────────────────── */
+        #settings-panel,
+        .settings-submenu {
             display: none;
             flex-direction: column;
             flex: 1;
-            overflow-y: auto; /* прокрутка внутри, не наружу */
+            overflow-y: auto;
         }
 
         #settings-panel.open { display: flex; }
+        .settings-submenu.open { display: flex; }
 
-        #settings-back-btn {
+        /* Кнопка «назад» — одна общая для всех уровней */
+        .settings-back-btn {
             background: none;
             border: none;
             color: white;
@@ -715,9 +719,10 @@
             flex-shrink: 0;
         }
 
-        #settings-back-btn:hover { opacity: 0.8; }
+        .settings-back-btn:hover { opacity: 0.8; }
 
-        #settings-panel h3 {
+        /* Заголовок секции */
+        .settings-section-title {
             font-size: 11px;
             color: #aaa;
             text-transform: uppercase;
@@ -725,16 +730,35 @@
             flex-shrink: 0;
         }
 
-        #settings-panel > p {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 12px;
-            flex-shrink: 0;
+        /* Пункты меню настроек (список) */
+        .settings-menu-item {
+            background: #3a3a3a;
+            border: none;
+            color: #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 13px 14px;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 8px;
+            text-align: left;
+            transition: background 0.15s;
         }
 
+        .settings-menu-item:hover { background: #4a4a4a; }
+
+        .settings-menu-item .chevron {
+            color: #888;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        /* Грид реакций */
         #default-reaction-grid {
             display: grid;
-            /* 5 колонок, кнопка не больше 44px — влезает в любой сайдбар */
             grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 6px;
         }
@@ -758,6 +782,48 @@
             border-color: #4a90e2;
             background: #1a2a3a;
         }
+
+        /* Форма смены пароля */
+        .pwd-input {
+            width: 100%;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 8px;
+            color: #eee;
+            font-size: 15px;
+            padding: 11px 12px;
+            margin-bottom: 10px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .pwd-input:focus { border-color: #4a90e2; }
+
+        .pwd-save-btn {
+            width: 100%;
+            background: #4a90e2;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            padding: 12px;
+            cursor: pointer;
+            margin-top: 4px;
+            transition: background 0.15s;
+        }
+
+        .pwd-save-btn:hover { background: #3a7bd5; }
+
+        .pwd-status {
+            font-size: 13px;
+            margin-top: 10px;
+            text-align: center;
+            min-height: 18px;
+        }
+
+        .pwd-status.ok  { color: #5cb85c; }
+        .pwd-status.err { color: #e74c3c; }
 
         #sidebar-main { display: flex; flex-direction: column; flex: 1; }
 
@@ -1712,15 +1778,48 @@
 
         <!-- Панель настроек (сменяет главный экран сайдбара) -->
         <div id="settings-panel">
-            <button id="settings-back-btn">
+            <button id="settings-back-btn" class="settings-back-btn">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="15 18 9 12 15 6"></polyline>
                 </svg>
                 Настройки
             </button>
-            <h3>Реакция по умолчанию</h3>
+            <button class="settings-menu-item" id="open-reactions-submenu">
+                <span>😊 Реакции по умолчанию</span>
+                <span class="chevron">›</span>
+            </button>
+            <button class="settings-menu-item" id="open-change-password-submenu">
+                <span>🔑 Смена пароля</span>
+                <span class="chevron">›</span>
+            </button>
+        </div>
+
+        <!-- Подменю: реакции по умолчанию -->
+        <div id="reactions-submenu" class="settings-submenu">
+            <button id="reactions-back-btn" class="settings-back-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Реакции по умолчанию
+            </button>
+            <p class="settings-section-title">Реакция по умолчанию</p>
             <p style="font-size: 13px; color: #aaa; margin-bottom: 14px;">Проставляется двойным тапом по сообщению</p>
             <div id="default-reaction-grid"></div>
+        </div>
+
+        <!-- Подменю: смена пароля -->
+        <div id="change-password-submenu" class="settings-submenu">
+            <button id="change-password-back-btn" class="settings-back-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Смена пароля
+            </button>
+            <p class="settings-section-title">Новый пароль</p>
+            <input type="password" id="pwd-new" class="pwd-input" placeholder="Новый пароль" autocomplete="new-password">
+            <input type="password" id="pwd-confirm" class="pwd-input" placeholder="Подтверждение нового пароля" autocomplete="new-password">
+            <button id="pwd-save-btn" class="pwd-save-btn">Сохранить</button>
+            <div id="pwd-status" class="pwd-status"></div>
         </div>
     </div>
 
@@ -1984,6 +2083,16 @@
         const settingsOpenBtn = document.getElementById('settings-open-btn');
         const settingsBackBtn = document.getElementById('settings-back-btn');
         const defaultReactionGrid = document.getElementById('default-reaction-grid');
+        const reactionsSubmenu = document.getElementById('reactions-submenu');
+        const openReactionsBtn = document.getElementById('open-reactions-submenu');
+        const reactionsBackBtn = document.getElementById('reactions-back-btn');
+        const changePwdSubmenu = document.getElementById('change-password-submenu');
+        const openChangePwdBtn = document.getElementById('open-change-password-submenu');
+        const changePwdBackBtn = document.getElementById('change-password-back-btn');
+        const pwdNew = document.getElementById('pwd-new');
+        const pwdConfirm = document.getElementById('pwd-confirm');
+        const pwdSaveBtn = document.getElementById('pwd-save-btn');
+        const pwdStatus = document.getElementById('pwd-status');
 
         // Текущее выбранное сообщение для контекстного меню
         let ctxTargetMsg = null; // {id, text, own, call_type}
@@ -4544,15 +4653,87 @@
             });
         }
 
+        // Главный сайдбар → Настройки
         settingsOpenBtn.addEventListener('click', () => {
             sidebarMain.style.display = 'none';
             settingsPanel.classList.add('open');
-            renderDefaultReactionGrid();
         });
 
+        // Настройки → главный сайдбар
         settingsBackBtn.addEventListener('click', () => {
             settingsPanel.classList.remove('open');
             sidebarMain.style.display = 'flex';
+        });
+
+        // Настройки → подменю реакций
+        openReactionsBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('open');
+            reactionsSubmenu.classList.add('open');
+            renderDefaultReactionGrid();
+        });
+
+        // Подменю реакций → Настройки
+        reactionsBackBtn.addEventListener('click', () => {
+            reactionsSubmenu.classList.remove('open');
+            settingsPanel.classList.add('open');
+        });
+
+        // Настройки → подменю смены пароля
+        openChangePwdBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('open');
+            changePwdSubmenu.classList.add('open');
+            pwdNew.value = '';
+            pwdConfirm.value = '';
+            pwdStatus.textContent = '';
+            pwdStatus.className = 'pwd-status';
+        });
+
+        // Подменю смены пароля → Настройки
+        changePwdBackBtn.addEventListener('click', () => {
+            changePwdSubmenu.classList.remove('open');
+            settingsPanel.classList.add('open');
+        });
+
+        // Смена пароля — сохранение
+        pwdSaveBtn.addEventListener('click', async () => {
+            const np = pwdNew.value;
+            const cp = pwdConfirm.value;
+
+            pwdStatus.className = 'pwd-status';
+            pwdStatus.textContent = '';
+
+            if (!np) {
+                pwdStatus.className = 'pwd-status err';
+                pwdStatus.textContent = 'Введите новый пароль';
+                return;
+            }
+            if (np !== cp) {
+                pwdStatus.className = 'pwd-status err';
+                pwdStatus.textContent = 'Пароли не совпадают';
+                return;
+            }
+
+            pwdSaveBtn.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append('new_password', np);
+                const resp = await fetch('/change-password', { method: 'POST', body: fd });
+                if (resp.ok) {
+                    pwdStatus.className = 'pwd-status ok';
+                    pwdStatus.textContent = 'Пароль изменён';
+                    pwdNew.value = '';
+                    pwdConfirm.value = '';
+                } else {
+                    const text = await resp.text();
+                    pwdStatus.className = 'pwd-status err';
+                    pwdStatus.textContent = text || 'Ошибка сервера';
+                }
+            } catch (e) {
+                pwdStatus.className = 'pwd-status err';
+                pwdStatus.textContent = 'Ошибка соединения';
+            } finally {
+                pwdSaveBtn.disabled = false;
+            }
         });
 
         // Загружаем настройки и пин при инициализации

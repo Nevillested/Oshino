@@ -294,6 +294,7 @@ func main() {
 	http.HandleFunc("/forward", app.handleForward)
 	http.HandleFunc("/react", app.handleReact)
 	http.HandleFunc("/settings", app.handleSettings)
+	http.HandleFunc("/change-password", app.handleChangePassword)
 
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -2617,6 +2618,42 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"default_reaction": defaultReaction})
+}
+
+// handleChangePassword — POST /change-password (form: new_password) —
+// хеширует новый пароль bcrypt и обновляет запись в БД для текущей сессии.
+func (a *App) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	newPassword := r.FormValue("new_password")
+	if newPassword == "" {
+		http.Error(w, "Пароль не может быть пустым", http.StatusBadRequest)
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Ошибка хеширования", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := a.db.Exec(
+		"UPDATE messenger.users SET password = $1 WHERE LOWER(login) = LOWER($2)",
+		string(hashed), login,
+	); err != nil {
+		http.Error(w, "Ошибка обновления пароля", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // handleForward — POST /forward (form: message_id, to)
