@@ -34,26 +34,26 @@
             bottom: 0;
             left: 0;
             width: 100%;
-            line-height: 0;
+            height: 220px;
             pointer-events: none;
             z-index: 0;
         }
 
         .wave-container svg {
-            display: block;
-            width: 200%;
-            animation: wave-move 8s linear infinite;
-        }
-
-        .wave-container svg:nth-child(2) {
             position: absolute;
             bottom: 0;
             left: 0;
-            opacity: 0.4;
-            animation: wave-move 12s linear infinite reverse;
+            /* width = 200% чтобы вместить два периода волны */
+            width: 200%;
+            height: 220px;
         }
 
-        @keyframes wave-move {
+        .wave-container svg:nth-child(1) { animation: wave-scroll 7s linear infinite; }
+        .wave-container svg:nth-child(2) { animation: wave-scroll 11s linear infinite reverse; }
+        .wave-container svg:nth-child(3) { animation: wave-scroll 4.5s linear infinite; }
+
+        /* Сдвигаем ровно на половину (один период) — конец == начало */
+        @keyframes wave-scroll {
             from { transform: translateX(0); }
             to   { transform: translateX(-50%); }
         }
@@ -214,20 +214,29 @@
 
     <!-- Волна -->
     <div class="wave-container">
-        <!-- Основная волна -->
-        <svg viewBox="0 0 1440 120" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-            <path d="M0,60 C180,100 360,20 540,60 C720,100 900,20 1080,60 C1260,100 1440,20 1440,60
-                     L1440,120 L0,120 Z"
-                  fill="#1a2035" opacity="0.9"/>
-            <path d="M0,80 C200,40 400,100 600,70 C800,40 1000,90 1200,65 C1350,48 1440,75 1440,75
-                     L1440,120 L0,120 Z"
-                  fill="#0f1420" opacity="0.7"/>
+        <!-- Слой 1 — основной тёмный, медленный -->
+        <svg viewBox="0 0 1440 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+            <path d="M0,120 C360,200 720,40 1080,120 C1260,160 1440,120 1440,120
+                     L1440,220 L0,220 Z
+                     M1440,120 C1800,200 2160,40 2520,120
+                     L2880,120 L2880,220 L1440,220 Z"
+                  fill="#1a2240" opacity="0.95"/>
         </svg>
-        <!-- Вторая волна (чуть другая фаза) -->
-        <svg viewBox="0 0 1440 120" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;width:200%;">
-            <path d="M0,50 C240,90 480,10 720,55 C960,95 1200,15 1440,55
-                     L1440,120 L0,120 Z"
-                  fill="#4a90e2" opacity="0.06"/>
+        <!-- Слой 2 — средний, обратный -->
+        <svg viewBox="0 0 1440 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+            <path d="M0,140 C360,60 720,200 1080,140 C1260,110 1440,140 1440,140
+                     L1440,220 L0,220 Z
+                     M1440,140 C1800,60 2160,200 2520,140
+                     L2880,140 L2880,220 L1440,220 Z"
+                  fill="#0d1428" opacity="0.85"/>
+        </svg>
+        <!-- Слой 3 — голубой акцент, быстрый -->
+        <svg viewBox="0 0 1440 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+            <path d="M0,100 C360,180 720,20 1080,100 C1260,140 1440,100 1440,100
+                     L1440,220 L0,220 Z
+                     M1440,100 C1800,180 2160,20 2520,100
+                     L2880,100 L2880,220 L1440,220 Z"
+                  fill="#4a90e2" opacity="0.08"/>
         </svg>
     </div>
 
