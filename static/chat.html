@@ -2134,93 +2134,6 @@
                     0 0 0 0.375em hsl(var(--hue2), 90%, 55%) inset;
             }
         }
-
-        /* ── Pac-Man экран ─────────────────────────────────────────────────── */
-        #pacman-screen {
-            display: none;
-            flex-direction: column;
-            flex: 1;
-            min-height: 0;
-            background: #000;
-        }
-        #pacman-screen.active { display: flex; }
-
-        #pacman-topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 6px 14px;
-            background: #000;
-            flex-shrink: 0;
-        }
-        #pacman-close-btn {
-            background: none;
-            border: none;
-            color: #ffe000;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-            padding: 4px 0;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 1px;
-        }
-        #pacman-close-btn:hover { opacity: 0.8; }
-        #pacman-hud {
-            display: flex;
-            gap: 24px;
-            font-size: 12px;
-            color: #fff;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 1px;
-        }
-        #pacman-hud b { color: #ffe000; }
-        #pacman-wrap {
-            flex: 1;
-            display: flex;
-            align-items: stretch;
-            justify-content: center;
-            position: relative;
-            min-height: 0;
-            overflow: hidden;
-            background: #000;
-        }
-        #pacman-frame {
-            border: none;
-            width: 100%;
-            height: 100%;
-            display: block;
-            background: #000;
-        }
-        /* D-pad */
-        #pacman-dpad {
-            display: grid;
-            grid-template-columns: repeat(3, 54px);
-            grid-template-rows: repeat(3, 54px);
-            gap: 3px;
-            justify-content: center;
-            padding: 8px 0 12px;
-            flex-shrink: 0;
-            background: #000;
-        }
-        .dpad-btn {
-            background: #111;
-            color: #ffe000;
-            border: 1px solid #333;
-            border-radius: 6px;
-            font-size: 20px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            touch-action: manipulation;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        .dpad-btn:active { background: #ffe000; color: #000; }
-        @media (min-width: 768px) { #pacman-dpad { display: none; } }
     </style>
 </head>
 <body>
@@ -2291,7 +2204,7 @@
             </button>
             <button class="settings-menu-item" id="open-pacman-btn">
                 <span>🕹 Pac-Man</span>
-                <span class="chevron">›</span>
+                <span class="chevron">↗</span>
             </button>
         </div>
 
@@ -2355,22 +2268,6 @@
             </div>
         </div>
 
-        <!-- Экран игры Pac-Man -->
-        <div id="pacman-screen">
-            <div id="pacman-topbar">
-                <button id="pacman-close-btn">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                    МЕНЮ
-                </button>
-                <div id="pacman-hud">
-                    <span>SCORE <b id="pacman-score">0</b></span>
-                    <span>BEST <b id="pacman-hiscore">0</b></span>
-                </div>
-            </div>
-            <div id="pacman-wrap">
-                <iframe id="pacman-frame" src="/pacman" title="Pac-Man"></iframe>
-            </div>
-        </div>
         <div id="offline-notice">Пользователь не в сети</div>
         <div id="messages" style="display: none;">
             <div id="load-more-indicator">загрузка...</div>
@@ -2393,7 +2290,7 @@
             <button id="recording-send-btn" type="button">Отправить</button>
         </div>
         <!-- Reply-bar — цитата выбранного сообщения над полем ввода -->
-        <div id="reply-bar">
+        <div id="reply-bar" style="display: none;">
             <div id="reply-preview">
                 <div id="reply-preview-from"></div>
                 <div id="reply-preview-text"></div>
@@ -2405,7 +2302,7 @@
                 </svg>
             </button>
         </div>
-        <div id="input-area">
+        <div id="input-area" style="display: none;">
             <div id="form-area" style="display: none;">
                 <input type="file" id="image-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
                 <button id="attach-btn" type="button" title="Прикрепить картинку">
@@ -5292,42 +5189,10 @@
 
         // ── Pac-Man навигация ────────────────────────────────────────────────
 
-        const pacmanScreen   = document.getElementById('pacman-screen');
-        const openPacmanBtn  = document.getElementById('open-pacman-btn');
-        const pacmanCloseBtn = document.getElementById('pacman-close-btn');
-
-        let pacmanFrame = document.getElementById('pacman-frame');
-
-        function showPacman() {
-            welcomeScreen.style.display    = 'none';
-            messagesDiv.style.display      = 'none';
-            inputArea.style.display        = 'none';
-            offlineNotice.style.display    = 'none';
-            pacmanScreen.classList.add('active');
-            sidebar.classList.remove('open');
-            overlay.classList.remove('open');
-            settingsPanel.classList.remove('open');
-            topbarTitle.textContent     = 'PAC-MAN';
-            callBtn.style.display       = 'none';
-            videoCallBtn.style.display  = 'none';
-            // Перезагружаем iframe при каждом открытии для чистого старта
-            pacmanFrame.src = '/pacman';
-        }
-
-        function hidePacman() {
-            pacmanScreen.classList.remove('active');
-            // Останавливаем игру выгрузкой iframe
-            pacmanFrame.src = 'about:blank';
-            updateFormState();
-        }
-
+        const openPacmanBtn = document.getElementById('open-pacman-btn');
         openPacmanBtn.addEventListener('click', () => {
-            settingsPanel.classList.remove('open');
-            sidebarMain.style.display = 'flex';
-            showPacman();
+            window.open('/pacman', '_blank');
         });
-
-        pacmanCloseBtn.addEventListener('click', hidePacman);
 
         // Загружаем настройки и пин при инициализации
         loadSettings();

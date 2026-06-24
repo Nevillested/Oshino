@@ -1,1729 +1,1358 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
-<title>Pac-Man</title>
+<title>Pac-Man — Oshino</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body, html { background:#000; color:#fff; font-family:'Courier New',monospace; overflow:hidden; height:100%; }
-.main { width:100%; max-width:560px; margin:0 auto; }
-.game { max-width:540px; margin:auto; padding:4px 0; }
-.score,.lives,.level { display:inline-block; font-size:11px; color:#fff; margin-right:12px; }
-#myCanvas { display:block; background:#000; width:100%; height:auto; }
-#canvas-container { position:relative; }
-#canvas-overlay-container {
-    position:absolute; background:rgba(0,0,0,0.75);
-    height:100%; width:100%; max-width:100%;
-    padding:1em; box-sizing:border-box; display:flex;
-    align-items:center; justify-content:center;
+html, body {
+    background: #000;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Courier New', monospace;
+    color: #fff;
+    overflow: hidden;
 }
-#canvas-overlay-content { text-align:center; }
-#canvas-overlay-content #title { font-size:18px; text-transform:uppercase; color:#ffe000; margin-bottom:16px; letter-spacing:2px; }
-#canvas-overlay-content #text { font-size:12px; color:#fff; cursor:pointer; letter-spacing:1px; }
-#canvas-overlay-content #text:hover { color:#ffe000; }
-.controls { text-align:center; margin-top:8px; display:none; }
-.controlButton {
-    display:inline-block; width:52px; height:52px; margin:3px;
-    background:#222; border:1px solid #444;
-    line-height:50px; border-radius:8px;
-    font-weight:bold; font-size:22px; cursor:pointer; color:#ffe000;
+#header {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    flex-shrink: 0;
 }
-.controlButton:active { background:#ffe000; color:#000; }
-#game-buttons { display:block; }
-#menu-buttons { display:none; }
-#menu-buttons ul, #menu-buttons ul li { list-style:none; padding:4px 0; }
-#menu-buttons ul li { 
-    cursor:pointer; font-size:13px; padding:8px 12px;
-    background:rgba(255,255,255,0.08); margin:4px 0; border-radius:4px;
+#back-btn {
+    background: none;
+    border: 1px solid #333;
+    color: #ffe000;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+    text-decoration: none;
+    display: inline-block;
 }
-#menu-buttons ul li:hover { background:rgba(255,255,255,0.2); }
-.content[id*=-content]:not(#game-content) { display:none; }
-#highscore-content, #instructions-content, #info-content { display:none; overflow-y:auto; }
-.controlSound { float:right; cursor:pointer; font-size:11px; color:#888; padding:2px 6px; border:1px solid #333; border-radius:3px; }
-#mute { display:none; }
+#back-btn:hover { border-color: #ffe000; }
+#title-txt {
+    color: #ffe000;
+    font-size: 14px;
+    letter-spacing: 2px;
+    font-weight: bold;
+}
+#game-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 0;
+    padding: 4px;
+}
+#pacman-game {
+    /* размер выставляется JS-ом через wrapper.offsetWidth */
+    width: min(100vw, calc(100vh - 80px) * 19 / 22);
+    max-width: 420px;
+    aspect-ratio: 19 / 22.5;
+}
+#pacman-game canvas {
+    display: block;
+    width: 100% !important;
+    height: auto !important;
+}
+/* Инструкция */
+#hint {
+    font-size: 11px;
+    color: #555;
+    text-align: center;
+    padding: 4px 0 6px;
+    flex-shrink: 0;
+    letter-spacing: 1px;
+}
 </style>
 </head>
 <body>
-<div class="container">
-<div class="main">
-<div class="content" id="game-content">
-<div class="game wrapper">
-    <div class="score">SCORE: <span id="scoreVal">0</span></div>
-    <div class="level">LVL: <span id="lvlVal">1</span></div>
-    <div class="lives">LIVES: <span id="livesVal">3</span></div>
-    <div class="controlSound"><span id="mute">MUTE</span><span id="unmute">SOUND</span></div>
-
-    <div id="canvas-container">
-        <div id="canvas-overlay-container">
-            <div id="canvas-overlay-content">
-                <div id="title">PAC-MAN</div>
-                <div><p id="text">Click to Play</p></div>
-            </div>
-        </div>
-        <canvas id="myCanvas" width="540" height="390">Canvas not supported</canvas>
-    </div>
-
-    <div class="controls" id="game-buttons">
-        <div><span id="up" class="controlButton">▲</span></div>
-        <div>
-            <span id="left" class="controlButton">◀</span>
-            <span id="down" class="controlButton">▼</span>
-            <span id="right" class="controlButton">▶</span>
-        </div>
-    </div>
-
-    <div class="controls" id="menu-buttons">
-        <ul>
-            <li class="button" id="newGame">New Game</li>
-        </ul>
-    </div>
+<div id="header">
+    <a id="back-btn" href="/chat">◀ НАЗАД</a>
+    <span id="title-txt">PAC-MAN</span>
+    <span style="width:80px"></span>
 </div>
+<div id="game-wrap">
+    <div id="pacman-game"></div>
 </div>
-</div>
-</div>
+<div id="hint">СТРЕЛКИ или WASD · N — новая игра · ПРОБЕЛ — пауза</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
 <script>
-// Inline map data
-window._pacmanMapData = {"posY": [{"row": 1, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "wall"}, {"col": 3, "type": "wall"}, {"col": 4, "type": "wall"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "wall"}, {"col": 7, "type": "wall"}, {"col": 8, "type": "wall"}, {"col": 9, "type": "wall"}, {"col": 10, "type": "wall"}, {"col": 11, "type": "wall"}, {"col": 12, "type": "wall"}, {"col": 13, "type": "wall"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "wall"}, {"col": 16, "type": "wall"}, {"col": 17, "type": "wall"}, {"col": 18, "type": "wall"}]}, {"row": 2, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "powerpill"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "pill"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "pill"}, {"col": 7, "type": "pill"}, {"col": 8, "type": "pill"}, {"col": 9, "type": "pill"}, {"col": 10, "type": "pill"}, {"col": 11, "type": "pill"}, {"col": 12, "type": "pill"}, {"col": 13, "type": "pill"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "pill"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "powerpill"}, {"col": 18, "type": "wall"}]}, {"row": 3, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "pill"}, {"col": 3, "type": "wall"}, {"col": 4, "type": "pill"}, {"col": 5, "type": "pill"}, {"col": 6, "type": "pill"}, {"col": 7, "type": "wall"}, {"col": 8, "type": "wall"}, {"col": 9, "type": "pill"}, {"col": 10, "type": "pill"}, {"col": 11, "type": "wall"}, {"col": 12, "type": "wall"}, {"col": 13, "type": "pill"}, {"col": 14, "type": "pill"}, {"col": 15, "type": "pill"}, {"col": 16, "type": "wall"}, {"col": 17, "type": "pill"}, {"col": 18, "type": "wall"}]}, {"row": 4, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "pill"}, {"col": 3, "type": "wall"}, {"col": 4, "type": "wall"}, {"col": 5, "type": "pill"}, {"col": 6, "type": "wall"}, {"col": 7, "type": "pill"}, {"col": 8, "type": "pill"}, {"col": 9, "type": "pill"}, {"col": 10, "type": "pill"}, {"col": 11, "type": "pill"}, {"col": 12, "type": "pill"}, {"col": 13, "type": "wall"}, {"col": 14, "type": "pill"}, {"col": 15, "type": "wall"}, {"col": 16, "type": "wall"}, {"col": 17, "type": "pill"}, {"col": 18, "type": "wall"}]}, {"row": 5, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "pill"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "wall"}, {"col": 5, "type": "pill"}, {"col": 6, "type": "pill"}, {"col": 7, "type": "pill"}, {"col": 8, "type": "wall"}, {"col": 9, "type": "door"}, {"col": 10, "type": "door"}, {"col": 11, "type": "wall"}, {"col": 12, "type": "pill"}, {"col": 13, "type": "pill"}, {"col": 14, "type": "pill"}, {"col": 15, "type": "wall"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "pill"}, {"col": 18, "type": "wall"}]}, {"row": 6, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "wall"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "wall"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "pill"}, {"col": 7, "type": "wall"}, {"col": 8, "type": "null"}, {"col": 9, "type": "null"}, {"col": 10, "type": "null"}, {"col": 11, "type": "null"}, {"col": 12, "type": "wall"}, {"col": 13, "type": "pill"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "wall"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "wall"}, {"col": 18, "type": "wall"}]}, {"row": 7, "posX": [{"col": 1, "type": "pill"}, {"col": 2, "type": "pill"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "pill"}, {"col": 5, "type": "pill"}, {"col": 6, "type": "pill"}, {"col": 7, "type": "wall"}, {"col": 8, "type": "wall"}, {"col": 9, "type": "wall"}, {"col": 10, "type": "wall"}, {"col": 11, "type": "wall"}, {"col": 12, "type": "wall"}, {"col": 13, "type": "pill"}, {"col": 14, "type": "pill"}, {"col": 15, "type": "pill"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "pill"}, {"col": 18, "type": "pill"}]}, {"row": 8, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "wall"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "wall"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "pill"}, {"col": 7, "type": "pill"}, {"col": 8, "type": "pill"}, {"col": 9, "type": "pill"}, {"col": 10, "type": "pill"}, {"col": 11, "type": "pill"}, {"col": 12, "type": "pill"}, {"col": 13, "type": "pill"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "wall"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "wall"}, {"col": 18, "type": "wall"}]}, {"row": 9, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "wall"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "wall"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "wall"}, {"col": 7, "type": "wall"}, {"col": 8, "type": "wall"}, {"col": 9, "type": "pill"}, {"col": 10, "type": "pill"}, {"col": 11, "type": "wall"}, {"col": 12, "type": "wall"}, {"col": 13, "type": "wall"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "wall"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "wall"}, {"col": 18, "type": "wall"}]}, {"row": 10, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "pill"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "pill"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "wall"}, {"col": 7, "type": "pill"}, {"col": 8, "type": "pill"}, {"col": 9, "type": "pill"}, {"col": 10, "type": "pill"}, {"col": 11, "type": "pill"}, {"col": 12, "type": "pill"}, {"col": 13, "type": "wall"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "pill"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "pill"}, {"col": 18, "type": "wall"}]}, {"row": 11, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "pill"}, {"col": 3, "type": "wall"}, {"col": 4, "type": "pill"}, {"col": 5, "type": "pill"}, {"col": 6, "type": "pill"}, {"col": 7, "type": "pill"}, {"col": 8, "type": "wall"}, {"col": 9, "type": "wall"}, {"col": 10, "type": "wall"}, {"col": 11, "type": "wall"}, {"col": 12, "type": "pill"}, {"col": 13, "type": "pill"}, {"col": 14, "type": "pill"}, {"col": 15, "type": "pill"}, {"col": 16, "type": "wall"}, {"col": 17, "type": "pill"}, {"col": 18, "type": "wall"}]}, {"row": 12, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "powerpill"}, {"col": 3, "type": "pill"}, {"col": 4, "type": "pill"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "wall"}, {"col": 7, "type": "pill"}, {"col": 8, "type": "pill"}, {"col": 9, "type": "pill"}, {"col": 10, "type": "pill"}, {"col": 11, "type": "pill"}, {"col": 12, "type": "pill"}, {"col": 13, "type": "wall"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "pill"}, {"col": 16, "type": "pill"}, {"col": 17, "type": "powerpill"}, {"col": 18, "type": "wall"}]}, {"row": 13, "posX": [{"col": 1, "type": "wall"}, {"col": 2, "type": "wall"}, {"col": 3, "type": "wall"}, {"col": 4, "type": "wall"}, {"col": 5, "type": "wall"}, {"col": 6, "type": "wall"}, {"col": 7, "type": "wall"}, {"col": 8, "type": "wall"}, {"col": 9, "type": "wall"}, {"col": 10, "type": "wall"}, {"col": 11, "type": "wall"}, {"col": 12, "type": "wall"}, {"col": 13, "type": "wall"}, {"col": 14, "type": "wall"}, {"col": 15, "type": "wall"}, {"col": 16, "type": "wall"}, {"col": 17, "type": "wall"}, {"col": 18, "type": "wall"}]}]}
-;
-</script>
-<script>
-/*-------------------------------------------------------------------
-
-	___________    ____   _____ _____    ____  
-	\____ \__  \ _/ ___\ /     \\__  \  /    \ 
-	|  |_> > __ \\  \___|  Y Y  \/ __ \|   |  \
-	|   __(____  /\___  >__|_|  (____  /___|  /
-	|__|       \/     \/      \/     \/     \/ .platzh1rsch.ch
-	
-	author: platzh1rsch		(www.platzh1rsch.ch)
-	
--------------------------------------------------------------------*/
-
-"use strict";
-
-// global enums
-const GHOSTS = {
-	INKY: 'inky',
-	BLINKY: 'blinky',
-	PINKY: 'pinky',
-	CLYDE: 'clyde'
-}
-
-// global constants
-const FINAL_LEVEL = 10;
-const PILL_POINTS = 10;
-const POWERPILL_POINTS = 50;
-const GHOST_POINTS = 100;
-const HIGHSCORE_ENABLED = true;
-
-
-function geronimo() {
-	/* ----- Global Variables ---------------------------------------- */
-	var canvas;
-	var context;
-	var game;
-	var canvas_walls, context_walls;
-	var inky, blinky, clyde, pinky;
-
-	var mapConfig = "data/map.json";
-
-
-	/* AJAX stuff */
-	var getHighscore = () => {
-		setTimeout(ajax_get, 30);
-	}
-	var ajax_get = () => {
-		var date = new Date().getTime();
-		$.ajax({
-			datatype: "json",
-			type: "GET",
-			url: "data/db-handler.php",
-			data: {
-				timestamp: date,
-				action: "get"
-			},
-			success: function (msg) {
-				$("#highscore-list").text("");
-				for (var i = 0; i < msg.length; i++) {
-					$("#highscore-list").append("<li>" + msg[i]['name'] + "<span id='score'>" + msg[i]['score'] + "</span></li>");
-				}
-			}
-		});
-	}
-	var ajax_add = (n, s, l) => {
-		// highscore disabled
-		return; if(false) {
-				console.log(errorThrown);
-			}
-		});
-	}
-
-	function addHighscore() {
-		var name = $("input[type=text]").val();
-		$("#highscore-form").html("Saving highscore...");
-		ajax_add(name, game.score.score, game.level);
-	}
-
-	function buildWall(context, gridX, gridY, width, height) {
-		console.log("BuildWall");
-		width = width * 2 - 1;
-		height = height * 2 - 1;
-		context.fillRect(pacman.radius / 2 + gridX * 2 * pacman.radius, pacman.radius / 2 + gridY * 2 * pacman.radius, width * pacman.radius, height * pacman.radius);
-	}
-
-	function between(x, min, max) {
-		return x >= min && x <= max;
-	}
-
-	// Logger
-	var logger = function () {
-		var originalConsoleLog = null;
-		var originalConsoleDebug = null;
-		var logger = {};
-
-		logger.enableLogger = function enableLogger() {
-			if (originalConsoleLog === null)
-				return;
-
-			window['console']['log'] = originalConsoleLog;
-			console.log('console.log enabled');
-
-			if (originalConsoleDebug === null)
-				return;
-
-			window['console']['debug'] = originalConsoleDebug;
-			console.log('console.debug enabled');
-
-		};
-
-		logger.disableLogger = function disableLogger() {
-			console.log('console.log disabled');
-			originalConsoleLog = console.log;
-			window['console']['log'] = function () {};
-			originalConsoleDebug = console.debug;
-			window['console']['debug'] = function () {};
-		};
-
-		return logger;
-	}();
-
-	// stop watch to measure the time
-	function Timer() {
-		this.time_diff = 0;
-		this.time_start = 0;
-		this.time_stop = 0;
-		this.start = function () {
-			this.time_start = new Date().getTime();
-		}
-		this.stop = function () {
-			this.time_stop = new Date().getTime();
-			this.time_diff += this.time_stop - this.time_start;
-			this.time_stop = 0;
-			this.time_start = 0;
-		}
-		this.reset = function () {
-			this.time_diff = 0;
-			this.time_start = 0;
-			this.time_stop = 0;
-		}
-		this.get_time_diff = function () {
-			return this.time_diff;
-		}
-	}
-
-	// Manages the whole game ("God Object")
-	function Game() {
-		this.timer = new Timer(); // TODO: implememnt properly, and submit with highscore
-		this.refreshRate = 33; // speed of the game, will increase in higher levels
-
-		this.started = false; // TODO: what's the purpose of this exactly?
-		this.pause = true;
-		this.gameOver = false;
-
-		this.score = new Score();
-		this.soundfx = 0;
-		this.map;
-		this.pillCount; // number of pills
-		this.monsters;
-		this.level = 1;
-		this.refreshLevel = function (h) {
-			$(h).html("Lvl: " + this.level);
-		};
-		this.canvas = $("#myCanvas").get(0);
-		this.wallColor = "Blue";
-		this.width = this.canvas.width;
-		this.height = this.canvas.height;
-
-		// global pill states
-		this.pillSize = 3;
-		this.powerpillSizeMin = 2;
-		this.powerpillSizeMax = 6;
-		this.powerpillSizeCurrent = this.powerpillSizeMax;
-		this.powerPillAnimationCounter = 0;
-
-		// TODO: vibrant power pills
-		this.nextPowerPillSize = function () {
-			/*if (this.powerPillAnimationCounter === 3) {
-				this.powerPillAnimationCounter = 0;
-				this.powerpillSizeCurrent = this.powerpillSizeMin + this.powerpillSizeCurrent % (this.powerpillSizeMax-this.powerpillSizeMin);
-			} else {
-				this.powerPillAnimationCounter++;
-			}*/
-			return this.powerpillSizeCurrent;
-		};
-
-		// global ghost states
-		this.ghostFrightened = false;
-		this.ghostFrightenedTimer = 240;
-		this.ghostMode = 0; // 0 = Scatter, 1 = Chase
-		this.ghostModeTimer = 200; // decrements each animationLoop execution
-		this.ghostSpeedNormal = (this.level > 4 ? 3 : 2); // global default for ghost speed
-		this.ghostSpeedDazzled = 2; // global default for ghost speed when dazzled
-
-		/* Game Functions */
-		this.startGhostFrightened = function () {
-			console.log("ghost frigthened");
-			this.ghostFrightened = true;
-			this.ghostFrightenedTimer = 240;
-			inky.dazzle();
-			pinky.dazzle();
-			blinky.dazzle();
-			clyde.dazzle();
-		};
-
-		this.endGhostFrightened = function () {
-			this.ghostFrightened = false;
-			inky.undazzle();
-			pinky.undazzle();
-			blinky.undazzle();
-			clyde.undazzle();
-		};
-
-
-		this.checkGhostMode = function () {
-			if (this.ghostFrightened) {
-
-				this.ghostFrightenedTimer--;
-				if (this.ghostFrightenedTimer === 0) {
-					this.endGhostFrightened();
-					this.ghostFrigthenedTimer = 240;
-					/*inky.reverseDirection();
-					pinky.reverseDirection();
-					clyde.reverseDirection();
-					blinky.reverseDirection();*/
-				}
-			}
-			// always decrement ghostMode timer
-			this.ghostModeTimer--;
-			if (this.ghostModeTimer === 0 && game.level > 1) {
-				this.ghostMode ^= 1;
-				this.ghostModeTimer = 200 + this.ghostMode * 450;
-				console.log("ghostMode=" + this.ghostMode);
-
-				game.buildWalls();
-
-				inky.reverseDirection();
-				pinky.reverseDirection();
-				clyde.reverseDirection();
-				blinky.reverseDirection();
-			}
-		};
-
-		this.getMapContent = function (x, y) {
-			var maxX = game.width / 30 - 1;
-			var maxY = game.height / 30 - 1;
-			if (x < 0) x = maxX + x;
-			if (x > maxX) x = x - maxX;
-			if (y < 0) y = maxY + y;
-			if (y > maxY) y = y - maxY;
-			return this.map.posY[y].posX[x].type;
-		};
-
-		this.setMapContent = function (x, y, val) {
-			this.map.posY[y].posX[x].type = val;
-		};
-
-		this.toggleSound = function () {
-			this.soundfx === 0 ? this.soundfx = 1 : this.soundfx = 0;
-			$('#mute').toggle();
-		};
-
-		// TODO: test
-		this.reset = function () {
-			this.score.set(0);
-			this.score.refresh(".score");
-			pacman.lives = 3;
-			game.level = 1;
-			this.refreshLevel(".level");
-
-			this.pause = false;
-			this.gameOver = false;
-		};
-
-		this.newGame = function () {
-			var r = confirm("Are you sure you want to restart?");
-			if (r) {
-				console.log("new Game");
-				this.init(0);
-				this.forceResume();
-			}
-		};
-
-		this.nextLevel = function () {
-			console.debug('nextLevel: current, final', this.level, FINAL_LEVEL);
-			if (this.level === FINAL_LEVEL) {
-				console.log('next level, ' + FINAL_LEVEL + ', end game');
-				game.endGame(true);
-				game.showHighscoreForm();
-			} else {
-				this.level++;
-				console.log("Level " + game.level);
-				game.pauseAndShowMessage("Level " + game.level, this.getLevelTitle() + "<br/>(Click to continue!)");
-				game.refreshLevel(".level");
-				this.init(1);
-			}
-		};
-
-		/* UI functions */
-		this.drawHearts = function (count) {
-			var html = "";
-			for (var i = 0; i < count; i++) {
-				html += " <img src='img/heart.png'>";
-			}
-			$(".lives").html("Lives: " + html);
-
-		};
-
-		this.showContent = function (id) {
-			$('.content').hide();
-			$('#' + id).show();
-		};
-
-		this.getLevelTitle = function () {
-			switch (this.level) {
-				case 2:
-					return '"The chase begins"';
-					// activate chase / scatter switching
-				case 3:
-					return '"Inky\s awakening"';
-					// Inky starts leaving the ghost house
-				case 4:
-					return '"Clyde\s awakening"';
-					// Clyde starts leaving the ghost house
-				case 5:
-					return '"need for speed"';
-					// All the ghosts get faster from now on
-				case 6:
-					return '"hunting season 1"';
-					// TODO: No scatter mood this time
-				case 7:
-					return '"the big calm"';
-					// TODO: Only scatter mood this time
-				case 8:
-					return '"hunting season 2"';
-					// TODO: No scatter mood and all ghosts leave instantly
-				case 9:
-					return '"ghosts on speed"';
-					// TODO: Ghosts get even faster for this level
-				case FINAL_LEVEL:
-					return '"The final chase"';
-					// TODO: Ghosts get even faster for this level
-				default:
-					return '"nothing new"';
-			}
-		}
-
-		this.showMessage = function (title, text) {
-			$('#canvas-overlay-container').fadeIn(200);
-			if ($('.controls').css('display') != "none") $('.controls').slideToggle(200);
-			$('#canvas-overlay-content #title').text(title);
-			$('#canvas-overlay-content #text').html(text);
-		}
-
-		this.pauseAndShowMessage = function (title, text) {
-			this.timer.stop();
-			this.pause = true;
-			this.showMessage(title, text);
-		};
-
-		this.closeMessage = function () {
-			$('#canvas-overlay-container').fadeOut(200);
-			$('.controls').slideToggle(200);
-		};
-
-		this.validateScoreWithLevel = function () {
-			const maxLevelPointsPills = 104 * PILL_POINTS;
-			const maxLevelPointsPowerpills = 4 * POWERPILL_POINTS;
-			const maxLevelPointsGhosts = 4 * 4 * GHOST_POINTS;
-			const maxLevelPoints = maxLevelPointsPills + maxLevelPointsPowerpills + maxLevelPointsGhosts;
-
-			const scoreIsValid = this.score.score / this.level <= maxLevelPoints;
-			console.log('validate score. score: ' + this.score.score + ', level: ' + this.level, scoreIsValid);
-			return scoreIsValid;
-
-		}
-
-		this.showHighscoreForm = function () {
-			var scoreIsValid = this.validateScoreWithLevel();
-
-			var inputHTML = scoreIsValid ? `<div id='highscore-form'>
-					<span id='form-validator'></span>
-					<input type='text' id='playerName'/>
-					<span class='button' id='score-submit'>save</span>
-				</div>` : `<div id='invalid-score'>Your score looks fake, the highscore list is only for honest players ;)</div>`;
-			this.pauseAndShowMessage("Game over", "Total Score: " + this.score.score + (HIGHSCORE_ENABLED ? inputHTML : ''));
-			$('#playerName').focus();
-		}
-
-		/* game controls */
-
-		this.forceStartAnimationLoop = function () {
-			// start timer
-			this.timer.start();
-
-			this.pause = false;
-			this.started = true;
-			this.closeMessage();
-			animationLoop();
-		}
-
-		this.forcePause = function () {
-			this.timer.stop();
-			this.pauseAndShowMessage("Pause", "Click to Resume");
-		}
-
-		this.forceResume = function () {
-			this.closeMessage();
-			this.pause = false;
-			this.timer.start();
-		}
-
-		this.pauseResume = function () {
-			if (this.gameOver) {
-				console.log('Cannot pause / resume. GameOver set to true.');
-				return;
-			}
-			if (!this.started) {
-				this.forceStartAnimationLoop();
-			} else if (this.pause) {
-				this.forceResume();
-			} else {
-				this.pauseAndShowMessage("Pause", "Click to Resume");
-			}
-		};
-
-		this.loadMapConfig = async () => {
-			return new Promise((resolve) => {
-				game.map = window._pacmanMapData;
-				resolve(window._pacmanMapData);
-			});
-		};
-
-		this.getPillCount = () => {
-			var temp = 0;
-			$.each(this.map.posY, function (i, item) {
-				$.each(this.posX, function () {
-					if (this.type == "pill") {
-						temp++;
-						//console.log("Pill Count++. temp="+temp+". PillCount="+this.pillCount+".");
-					}
-				});
-			});
-			return temp;
-		}
-
-		this.init = async (state) => {
-
-			console.log("init game " + state);
-
-			// get Level Map
-			this.map = await this.loadMapConfig();
-
-			this.pillCount = this.getPillCount();
-
-			// TODO: why are there 2 state checks?
-			if (state === 0) {
-				this.timer.reset();
-				game.reset();
-			}
-			pacman.reset();
-
-			game.drawHearts(pacman.lives);
-
-			this.ghostFrightened = false;
-			this.ghostFrightenedTimer = 240;
-			this.ghostMode = 0; // 0 = Scatter, 1 = Chase
-			this.ghostModeTimer = 200; // decrements each animationLoop execution
-
-			// initalize Ghosts, avoid memory flooding
-			if (pinky === null || pinky === undefined) {
-				pinky = new Ghost(GHOSTS.PINKY, 7, 5, 'img/pinky.svg', 2, 2);
-				inky = new Ghost(GHOSTS.INKY, 8, 5, 'img/inky.svg', 13, 11);
-				blinky = new Ghost(GHOSTS.BLINKY, 9, 5, 'img/blinky.svg', 13, 0);
-				clyde = new Ghost(GHOSTS.CLYDE, 10, 5, 'img/clyde.svg', 2, 11);
-			} else {
-				pinky.reset();
-				inky.reset();
-				blinky.reset();
-				clyde.reset();
-			}
-			blinky.start(); // blinky is the first to leave ghostHouse
-			inky.start();
-			pinky.start();
-			clyde.start();
-		};
-
-		this.checkForLevelUp = function () {
-			if ((this.pillCount === 0) && game.started) {
-				this.nextLevel();
-			}
-		};
-
-		this.endGame = function (allLevelsCompleted = false) {
-			console.log('Game Over by ' + (allLevelsCompleted ? 'WIN' : 'LOSS'));
-			this.pause = true;
-			this.gameOver = true;
-		}
-
-		this.toPixelPos = function (gridPos) {
-			return gridPos * 30;
-		};
-
-		this.toGridPos = function (pixelPos) {
-			return ((pixelPos % 30) / 30);
-		};
-
-		/* ------------ Start Pre-Build Walls  ------------ */
-		this.buildWalls = function () {
-			if (this.ghostMode === 0) game.wallColor = "Blue";
-			else game.wallColor = "Red";
-			canvas_walls = document.createElement('canvas');
-			canvas_walls.width = game.canvas.width;
-			canvas_walls.height = game.canvas.height;
-			context_walls = canvas_walls.getContext("2d");
-
-			context_walls.fillStyle = game.wallColor;
-			context_walls.strokeStyle = game.wallColor;
-
-			//horizontal outer
-			buildWall(context_walls, 0, 0, 18, 1);
-			buildWall(context_walls, 0, 12, 18, 1);
-
-			// vertical outer
-			buildWall(context_walls, 0, 0, 1, 6);
-			buildWall(context_walls, 0, 7, 1, 6);
-			buildWall(context_walls, 17, 0, 1, 6);
-			buildWall(context_walls, 17, 7, 1, 6);
-
-			// ghost base
-			buildWall(context_walls, 7, 4, 1, 1);
-			buildWall(context_walls, 6, 5, 1, 2);
-			buildWall(context_walls, 10, 4, 1, 1);
-			buildWall(context_walls, 11, 5, 1, 2);
-			buildWall(context_walls, 6, 6, 6, 1);
-
-			// ghost base door
-			context_walls.fillRect(8 * 2 * pacman.radius, pacman.radius / 2 + 4 * 2 * pacman.radius + 5, 4 * pacman.radius, 1);
-
-			// single blocks
-			buildWall(context_walls, 4, 0, 1, 2);
-			buildWall(context_walls, 13, 0, 1, 2);
-
-			buildWall(context_walls, 2, 2, 1, 2);
-			buildWall(context_walls, 6, 2, 2, 1);
-			buildWall(context_walls, 15, 2, 1, 2);
-			buildWall(context_walls, 10, 2, 2, 1);
-
-			buildWall(context_walls, 2, 3, 2, 1);
-			buildWall(context_walls, 14, 3, 2, 1);
-			buildWall(context_walls, 5, 3, 1, 1);
-			buildWall(context_walls, 12, 3, 1, 1);
-			buildWall(context_walls, 3, 3, 1, 3);
-			buildWall(context_walls, 14, 3, 1, 3);
-
-			buildWall(context_walls, 3, 4, 1, 1);
-			buildWall(context_walls, 14, 4, 1, 1);
-
-			buildWall(context_walls, 0, 5, 2, 1);
-			buildWall(context_walls, 3, 5, 2, 1);
-			buildWall(context_walls, 16, 5, 2, 1);
-			buildWall(context_walls, 13, 5, 2, 1);
-
-			buildWall(context_walls, 0, 7, 2, 2);
-			buildWall(context_walls, 16, 7, 2, 2);
-			buildWall(context_walls, 3, 7, 2, 2);
-			buildWall(context_walls, 13, 7, 2, 2);
-
-			buildWall(context_walls, 4, 8, 2, 2);
-			buildWall(context_walls, 12, 8, 2, 2);
-			buildWall(context_walls, 5, 8, 3, 1);
-			buildWall(context_walls, 10, 8, 3, 1);
-
-			buildWall(context_walls, 2, 10, 1, 1);
-			buildWall(context_walls, 15, 10, 1, 1);
-			buildWall(context_walls, 7, 10, 4, 1);
-			buildWall(context_walls, 4, 11, 2, 2);
-			buildWall(context_walls, 12, 11, 2, 2);
-			/* ------------ End Pre-Build Walls  ------------ */
-		};
-
-	}
-
-	game = new Game();
-
-
-
-	function Score() {
-		this.score = 0;
-		this.set = function (i) {
-			this.score = i;
-		};
-		this.add = function (i) {
-			this.score += i;
-		};
-		this.refresh = function (h) {
-			$(h).html("Score: " + this.score);
-		};
-
-	}
-
-
-
-	// used to play sounds during the game
-	var Sound = {};
-	Sound.play = function (sound) {
-		if (game.soundfx == 1) {
-			var audio = document.getElementById(sound);
-			(audio !== null) ? audio.play(): console.log(sound + " not found");
-		}
+/*jslint browser: true, undef: true, eqeqeq: true, nomen: true, white: true */
+/*global window: false, document: false */
+
+/*
+ * fix looped audio
+ * add fruits + levels
+ * fix what happens when a ghost is eaten (should go back to base)
+ * do proper ghost mechanics (blinky/wimpy etc)
+ */
+
+var NONE        = 4,
+    UP          = 3,
+    LEFT        = 2,
+    DOWN        = 1,
+    RIGHT       = 11,
+    WAITING     = 5,
+    PAUSE       = 6,
+    PLAYING     = 7,
+    COUNTDOWN   = 8,
+    EATEN_PAUSE = 9,
+    DYING       = 10,
+    Pacman      = {};
+
+Pacman.FPS = 30;
+
+Pacman.Ghost = function (game, map, colour) {
+
+    var position  = null,
+        direction = null,
+        eatable   = null,
+        eaten     = null,
+        due       = null;
+    
+    function getNewCoord(dir, current) { 
+        
+        var speed  = isVunerable() ? 1 : isHidden() ? 4 : 2,
+            xSpeed = (dir === LEFT && -speed || dir === RIGHT && speed || 0),
+            ySpeed = (dir === DOWN && speed || dir === UP && -speed || 0);
+    
+        return {
+            "x": addBounded(current.x, xSpeed),
+            "y": addBounded(current.y, ySpeed)
+        };
+    };
+
+    /* Collision detection(walls) is done when a ghost lands on an
+     * exact block, make sure they dont skip over it 
+     */
+    function addBounded(x1, x2) { 
+        var rem    = x1 % 10, 
+            result = rem + x2;
+        if (rem !== 0 && result > 10) {
+            return x1 + (10 - rem);
+        } else if(rem > 0 && result < 0) { 
+            return x1 - rem;
+        }
+        return x1 + x2;
+    };
+    
+    function isVunerable() { 
+        return eatable !== null;
+    };
+    
+    function isDangerous() {
+        return eaten === null;
+    };
+
+    function isHidden() { 
+        return eatable === null && eaten !== null;
+    };
+    
+    function getRandomDirection() {
+        var moves = (direction === LEFT || direction === RIGHT) 
+            ? [UP, DOWN] : [LEFT, RIGHT];
+        return moves[Math.floor(Math.random() * 2)];
+    };
+    
+    function reset() {
+        eaten = null;
+        eatable = null;
+        position = {"x": 90, "y": 80};
+        direction = getRandomDirection();
+        due = getRandomDirection();
+    };
+    
+    function onWholeSquare(x) {
+        return x % 10 === 0;
+    };
+    
+    function oppositeDirection(dir) { 
+        return dir === LEFT && RIGHT ||
+            dir === RIGHT && LEFT ||
+            dir === UP && DOWN || UP;
+    };
+
+    function makeEatable() {
+        direction = oppositeDirection(direction);
+        eatable = game.getTick();
+    };
+
+    function eat() { 
+        eatable = null;
+        eaten = game.getTick();
+    };
+
+    function pointToCoord(x) {
+        return Math.round(x / 10);
+    };
+
+    function nextSquare(x, dir) {
+        var rem = x % 10;
+        if (rem === 0) { 
+            return x; 
+        } else if (dir === RIGHT || dir === DOWN) { 
+            return x + (10 - rem);
+        } else {
+            return x - rem;
+        }
+    };
+
+    function onGridSquare(pos) {
+        return onWholeSquare(pos.y) && onWholeSquare(pos.x);
+    };
+
+    function secondsAgo(tick) { 
+        return (game.getTick() - tick) / Pacman.FPS;
+    };
+
+    function getColour() { 
+        if (eatable) { 
+            if (secondsAgo(eatable) > 5) { 
+                return game.getTick() % 20 > 10 ? "#FFFFFF" : "#0000BB";
+            } else { 
+                return "#0000BB";
+            }
+        } else if(eaten) { 
+            return "#222";
+        } 
+        return colour;
+    };
+
+    function draw(ctx) {
+  
+        var s    = map.blockSize, 
+            top  = (position.y/10) * s,
+            left = (position.x/10) * s;
+    
+        if (eatable && secondsAgo(eatable) > 8) {
+            eatable = null;
+        }
+        
+        if (eaten && secondsAgo(eaten) > 3) { 
+            eaten = null;
+        }
+        
+        var tl = left + s;
+        var base = top + s - 3;
+        var inc = s / 10;
+
+        var high = game.getTick() % 10 > 5 ? 3  : -3;
+        var low  = game.getTick() % 10 > 5 ? -3 : 3;
+
+        ctx.fillStyle = getColour();
+        ctx.beginPath();
+
+        ctx.moveTo(left, base);
+
+        ctx.quadraticCurveTo(left, top, left + (s/2),  top);
+        ctx.quadraticCurveTo(left + s, top, left+s,  base);
+        
+        // Wavy things at the bottom
+        ctx.quadraticCurveTo(tl-(inc*1), base+high, tl - (inc * 2),  base);
+        ctx.quadraticCurveTo(tl-(inc*3), base+low, tl - (inc * 4),  base);
+        ctx.quadraticCurveTo(tl-(inc*5), base+high, tl - (inc * 6),  base);
+        ctx.quadraticCurveTo(tl-(inc*7), base+low, tl - (inc * 8),  base); 
+        ctx.quadraticCurveTo(tl-(inc*9), base+high, tl - (inc * 10), base); 
+
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = "#FFF";
+        ctx.arc(left + 6,top + 6, s / 6, 0, 300, false);
+        ctx.arc((left + s) - 6,top + 6, s / 6, 0, 300, false);
+        ctx.closePath();
+        ctx.fill();
+
+        var f = s / 12;
+        var off = {};
+        off[RIGHT] = [f, 0];
+        off[LEFT]  = [-f, 0];
+        off[UP]    = [0, -f];
+        off[DOWN]  = [0, f];
+
+        ctx.beginPath();
+        ctx.fillStyle = "#000";
+        ctx.arc(left+6+off[direction][0], top+6+off[direction][1], 
+                s / 15, 0, 300, false);
+        ctx.arc((left+s)-6+off[direction][0], top+6+off[direction][1], 
+                s / 15, 0, 300, false);
+        ctx.closePath();
+        ctx.fill();
+
+    };
+
+    function pane(pos) {
+
+        if (pos.y === 100 && pos.x >= 190 && direction === RIGHT) {
+            return {"y": 100, "x": -10};
+        }
+        
+        if (pos.y === 100 && pos.x <= -10 && direction === LEFT) {
+            return position = {"y": 100, "x": 190};
+        }
+
+        return false;
+    };
+    
+    function move(ctx) {
+        
+        var oldPos = position,
+            onGrid = onGridSquare(position),
+            npos   = null;
+        
+        if (due !== direction) {
+            
+            npos = getNewCoord(due, position);
+            
+            if (onGrid &&
+                map.isFloorSpace({
+                    "y":pointToCoord(nextSquare(npos.y, due)),
+                    "x":pointToCoord(nextSquare(npos.x, due))})) {
+                direction = due;
+            } else {
+                npos = null;
+            }
+        }
+        
+        if (npos === null) {
+            npos = getNewCoord(direction, position);
+        }
+        
+        if (onGrid &&
+            map.isWallSpace({
+                "y" : pointToCoord(nextSquare(npos.y, direction)),
+                "x" : pointToCoord(nextSquare(npos.x, direction))
+            })) {
+            
+            due = getRandomDirection();            
+            return move(ctx);
+        }
+
+        position = npos;        
+        
+        var tmp = pane(position);
+        if (tmp) { 
+            position = tmp;
+        }
+        
+        due = getRandomDirection();
+        
+        return {
+            "new" : position,
+            "old" : oldPos
+        };
+    };
+    
+    return {
+        "eat"         : eat,
+        "isVunerable" : isVunerable,
+        "isDangerous" : isDangerous,
+        "makeEatable" : makeEatable,
+        "reset"       : reset,
+        "move"        : move,
+        "draw"        : draw
+    };
+};
+
+Pacman.User = function (game, map) {
+    
+    var position  = null,
+        direction = null,
+        eaten     = null,
+        due       = null, 
+        lives     = null,
+        score     = 5,
+        keyMap    = {};
+    
+    keyMap[KEY.ARROW_LEFT]  = LEFT;
+    keyMap[KEY.ARROW_UP]    = UP;
+    keyMap[KEY.ARROW_RIGHT] = RIGHT;
+    keyMap[KEY.ARROW_DOWN]  = DOWN;
+
+    function addScore(nScore) { 
+        score += nScore;
+        if (score >= 10000 && score - nScore < 10000) { 
+            lives += 1;
+        }
+    };
+
+    function theScore() { 
+        return score;
+    };
+
+    function loseLife() { 
+        lives -= 1;
+    };
+
+    function getLives() {
+        return lives;
+    };
+
+    function initUser() {
+        score = 0;
+        lives = 3;
+        newLevel();
+    }
+    
+    function newLevel() {
+        resetPosition();
+        eaten = 0;
+    };
+    
+    function resetPosition() {
+        position = {"x": 90, "y": 120};
+        direction = LEFT;
+        due = LEFT;
+    };
+    
+    function reset() {
+        initUser();
+        resetPosition();
+    };        
+    
+    function keyDown(e) {
+        if (typeof keyMap[e.keyCode] !== "undefined") { 
+            due = keyMap[e.keyCode];
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+        return true;
 	};
 
+    function getNewCoord(dir, current) {   
+        return {
+            "x": current.x + (dir === LEFT && -2 || dir === RIGHT && 2 || 0),
+            "y": current.y + (dir === DOWN && 2 || dir === UP    && -2 || 0)
+        };
+    };
 
-	// Direction object in Constructor notation
-	function Direction(name, angle1, angle2, dirX, dirY) {
-		this.name = name;
-		this.angle1 = angle1;
-		this.angle2 = angle2;
-		this.dirX = dirX;
-		this.dirY = dirY;
-		this.equals = function (dir) {
-			return JSON.stringify(this) == JSON.stringify(dir);
-		};
+    function onWholeSquare(x) {
+        return x % 10 === 0;
+    };
+
+    function pointToCoord(x) {
+        return Math.round(x/10);
+    };
+    
+    function nextSquare(x, dir) {
+        var rem = x % 10;
+        if (rem === 0) { 
+            return x; 
+        } else if (dir === RIGHT || dir === DOWN) { 
+            return x + (10 - rem);
+        } else {
+            return x - rem;
+        }
+    };
+
+    function next(pos, dir) {
+        return {
+            "y" : pointToCoord(nextSquare(pos.y, dir)),
+            "x" : pointToCoord(nextSquare(pos.x, dir)),
+        };                               
+    };
+
+    function onGridSquare(pos) {
+        return onWholeSquare(pos.y) && onWholeSquare(pos.x);
+    };
+
+    function isOnSamePlane(due, dir) { 
+        return ((due === LEFT || due === RIGHT) && 
+                (dir === LEFT || dir === RIGHT)) || 
+            ((due === UP || due === DOWN) && 
+             (dir === UP || dir === DOWN));
+    };
+
+    function move(ctx) {
+        
+        var npos        = null, 
+            nextWhole   = null, 
+            oldPosition = position,
+            block       = null;
+        
+        if (due !== direction) {
+            npos = getNewCoord(due, position);
+            
+            if (isOnSamePlane(due, direction) || 
+                (onGridSquare(position) && 
+                 map.isFloorSpace(next(npos, due)))) {
+                direction = due;
+            } else {
+                npos = null;
+            }
+        }
+
+        if (npos === null) {
+            npos = getNewCoord(direction, position);
+        }
+        
+        if (onGridSquare(position) && map.isWallSpace(next(npos, direction))) {
+            direction = NONE;
+        }
+
+        if (direction === NONE) {
+            return {"new" : position, "old" : position};
+        }
+        
+        if (npos.y === 100 && npos.x >= 190 && direction === RIGHT) {
+            npos = {"y": 100, "x": -10};
+        }
+        
+        if (npos.y === 100 && npos.x <= -12 && direction === LEFT) {
+            npos = {"y": 100, "x": 190};
+        }
+        
+        position = npos;        
+        nextWhole = next(position, direction);
+        
+        block = map.block(nextWhole);        
+        
+        if ((isMidSquare(position.y) || isMidSquare(position.x)) &&
+            block === Pacman.BISCUIT || block === Pacman.PILL) {
+            
+            map.setBlock(nextWhole, Pacman.EMPTY);           
+            addScore((block === Pacman.BISCUIT) ? 10 : 50);
+            eaten += 1;
+            
+            if (eaten === 182) {
+                game.completedLevel();
+            }
+            
+            if (block === Pacman.PILL) { 
+                game.eatenPill();
+            }
+        }   
+                
+        return {
+            "new" : position,
+            "old" : oldPosition
+        };
+    };
+
+    function isMidSquare(x) { 
+        var rem = x % 10;
+        return rem > 3 || rem < 7;
+    };
+
+    function calcAngle(dir, pos) { 
+        if (dir == RIGHT && (pos.x % 10 < 5)) {
+            return {"start":0.25, "end":1.75, "direction": false};
+        } else if (dir === DOWN && (pos.y % 10 < 5)) { 
+            return {"start":0.75, "end":2.25, "direction": false};
+        } else if (dir === UP && (pos.y % 10 < 5)) { 
+            return {"start":1.25, "end":1.75, "direction": true};
+        } else if (dir === LEFT && (pos.x % 10 < 5)) {             
+            return {"start":0.75, "end":1.25, "direction": true};
+        }
+        return {"start":0, "end":2, "direction": false};
+    };
+
+    function drawDead(ctx, amount) { 
+
+        var size = map.blockSize, 
+            half = size / 2;
+
+        if (amount >= 1) { 
+            return;
+        }
+
+        ctx.fillStyle = "#FFFF00";
+        ctx.beginPath();        
+        ctx.moveTo(((position.x/10) * size) + half, 
+                   ((position.y/10) * size) + half);
+        
+        ctx.arc(((position.x/10) * size) + half, 
+                ((position.y/10) * size) + half,
+                half, 0, Math.PI * 2 * amount, true); 
+        
+        ctx.fill();    
+    };
+
+    function draw(ctx) { 
+
+        var s     = map.blockSize, 
+            angle = calcAngle(direction, position);
+
+        ctx.fillStyle = "#FFFF00";
+
+        ctx.beginPath();        
+
+        ctx.moveTo(((position.x/10) * s) + s / 2,
+                   ((position.y/10) * s) + s / 2);
+        
+        ctx.arc(((position.x/10) * s) + s / 2,
+                ((position.y/10) * s) + s / 2,
+                s / 2, Math.PI * angle.start, 
+                Math.PI * angle.end, angle.direction); 
+        
+        ctx.fill();    
+    };
+    
+    initUser();
+
+    return {
+        "draw"          : draw,
+        "drawDead"      : drawDead,
+        "loseLife"      : loseLife,
+        "getLives"      : getLives,
+        "score"         : score,
+        "addScore"      : addScore,
+        "theScore"      : theScore,
+        "keyDown"       : keyDown,
+        "move"          : move,
+        "newLevel"      : newLevel,
+        "reset"         : reset,
+        "resetPosition" : resetPosition
+    };
+};
+
+Pacman.Map = function (size) {
+    
+    var height    = null, 
+        width     = null, 
+        blockSize = size,
+        pillSize  = 0,
+        map       = null;
+    
+    function withinBounds(y, x) {
+        return y >= 0 && y < height && x >= 0 && x < width;
+    }
+    
+    function isWall(pos) {
+        return withinBounds(pos.y, pos.x) && map[pos.y][pos.x] === Pacman.WALL;
+    }
+    
+    function isFloorSpace(pos) {
+        if (!withinBounds(pos.y, pos.x)) {
+            return false;
+        }
+        var peice = map[pos.y][pos.x];
+        return peice === Pacman.EMPTY || 
+            peice === Pacman.BISCUIT ||
+            peice === Pacman.PILL;
+    }
+    
+    function drawWall(ctx) {
+
+        var i, j, p, line;
+        
+        ctx.strokeStyle = "#0000FF";
+        ctx.lineWidth   = 5;
+        ctx.lineCap     = "round";
+        
+        for (i = 0; i < Pacman.WALLS.length; i += 1) {
+            line = Pacman.WALLS[i];
+            ctx.beginPath();
+
+            for (j = 0; j < line.length; j += 1) {
+
+                p = line[j];
+                
+                if (p.move) {
+                    ctx.moveTo(p.move[0] * blockSize, p.move[1] * blockSize);
+                } else if (p.line) {
+                    ctx.lineTo(p.line[0] * blockSize, p.line[1] * blockSize);
+                } else if (p.curve) {
+                    ctx.quadraticCurveTo(p.curve[0] * blockSize, 
+                                         p.curve[1] * blockSize,
+                                         p.curve[2] * blockSize, 
+                                         p.curve[3] * blockSize);   
+                }
+            }
+            ctx.stroke();
+        }
+    }
+    
+    function reset() {       
+        map    = Pacman.MAP.clone();
+        height = map.length;
+        width  = map[0].length;        
+    };
+
+    function block(pos) {
+        return map[pos.y][pos.x];
+    };
+    
+    function setBlock(pos, type) {
+        map[pos.y][pos.x] = type;
+    };
+
+    function drawPills(ctx) { 
+
+        if (++pillSize > 30) {
+            pillSize = 0;
+        }
+        
+        for (i = 0; i < height; i += 1) {
+		    for (j = 0; j < width; j += 1) {
+                if (map[i][j] === Pacman.PILL) {
+                    ctx.beginPath();
+
+                    ctx.fillStyle = "#000";
+		            ctx.fillRect((j * blockSize), (i * blockSize), 
+                                 blockSize, blockSize);
+
+                    ctx.fillStyle = "#FFF";
+                    ctx.arc((j * blockSize) + blockSize / 2,
+                            (i * blockSize) + blockSize / 2,
+                            Math.abs(5 - (pillSize/3)), 
+                            0, 
+                            Math.PI * 2, false); 
+                    ctx.fill();
+                    ctx.closePath();
+                }
+		    }
+	    }
+    };
+    
+    function draw(ctx) {
+        
+        var i, j, size = blockSize;
+
+        ctx.fillStyle = "#000";
+	    ctx.fillRect(0, 0, width * size, height * size);
+
+        drawWall(ctx);
+        
+        for (i = 0; i < height; i += 1) {
+		    for (j = 0; j < width; j += 1) {
+			    drawBlock(i, j, ctx);
+		    }
+	    }
+    };
+    
+    function drawBlock(y, x, ctx) {
+
+        var layout = map[y][x];
+
+        if (layout === Pacman.PILL) {
+            return;
+        }
+
+        ctx.beginPath();
+        
+        if (layout === Pacman.EMPTY || layout === Pacman.BLOCK || 
+            layout === Pacman.BISCUIT) {
+            
+            ctx.fillStyle = "#000";
+		    ctx.fillRect((x * blockSize), (y * blockSize), 
+                         blockSize, blockSize);
+
+            if (layout === Pacman.BISCUIT) {
+                ctx.fillStyle = "#FFF";
+		        ctx.fillRect((x * blockSize) + (blockSize / 2.5), 
+                             (y * blockSize) + (blockSize / 2.5), 
+                             blockSize / 6, blockSize / 6);
+	        }
+        }
+        ctx.closePath();	 
+    };
+
+    reset();
+    
+    return {
+        "draw"         : draw,
+        "drawBlock"    : drawBlock,
+        "drawPills"    : drawPills,
+        "block"        : block,
+        "setBlock"     : setBlock,
+        "reset"        : reset,
+        "isWallSpace"  : isWall,
+        "isFloorSpace" : isFloorSpace,
+        "height"       : height,
+        "width"        : width,
+        "blockSize"    : blockSize
+    };
+};
+
+Pacman.Audio = function(game) {
+    
+    var files          = [], 
+        endEvents      = [],
+        progressEvents = [],
+        playing        = [];
+    
+    function load(name, path, cb) { 
+
+        var f = files[name] = document.createElement("audio");
+
+        progressEvents[name] = function(event) { progress(event, name, cb); };
+        
+        f.addEventListener("canplaythrough", progressEvents[name], true);
+        f.setAttribute("preload", "true");
+        f.setAttribute("autobuffer", "true");
+        f.setAttribute("src", path);
+        f.pause();        
+    };
+
+    function progress(event, name, callback) { 
+        if (event.loaded === event.total && typeof callback === "function") {
+            callback();
+            files[name].removeEventListener("canplaythrough", 
+                                            progressEvents[name], true);
+        }
+    };
+
+    function disableSound() {
+        for (var i = 0; i < playing.length; i++) {
+            files[playing[i]].pause();
+            files[playing[i]].currentTime = 0;
+        }
+        playing = [];
+    };
+
+    function ended(name) { 
+
+        var i, tmp = [], found = false;
+
+        files[name].removeEventListener("ended", endEvents[name], true);
+
+        for (i = 0; i < playing.length; i++) {
+            if (!found && playing[i]) { 
+                found = true;
+            } else { 
+                tmp.push(playing[i]);
+            }
+        }
+        playing = tmp;
+    };
+
+    function play(name) { 
+        if (!game.soundDisabled()) {
+            endEvents[name] = function() { ended(name); };
+            playing.push(name);
+            files[name].addEventListener("ended", endEvents[name], true);
+            files[name].play();
+        }
+    };
+
+    function pause() { 
+        for (var i = 0; i < playing.length; i++) {
+            files[playing[i]].pause();
+        }
+    };
+    
+    function resume() { 
+        for (var i = 0; i < playing.length; i++) {
+            files[playing[i]].play();
+        }        
+    };
+    
+    return {
+        "disableSound" : disableSound,
+        "load"         : load,
+        "play"         : play,
+        "pause"        : pause,
+        "resume"       : resume
+    };
+};
+
+var PACMAN = (function () {
+
+    var state        = WAITING,
+        audio        = null,
+        ghosts       = [],
+        ghostSpecs   = ["#00FFDE", "#FF0000", "#FFB8DE", "#FFB847"],
+        eatenCount   = 0,
+        level        = 0,
+        tick         = 0,
+        ghostPos, userPos, 
+        stateChanged = true,
+        timerStart   = null,
+        lastTime     = 0,
+        ctx          = null,
+        timer        = null,
+        map          = null,
+        user         = null,
+        stored       = null;
+
+    function getTick() { 
+        return tick;
+    };
+
+    function drawScore(text, position) {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font      = "12px BDCartoonShoutRegular";
+        ctx.fillText(text, 
+                     (position["new"]["x"] / 10) * map.blockSize, 
+                     ((position["new"]["y"] + 5) / 10) * map.blockSize);
+    }
+    
+    function dialog(text) {
+        ctx.fillStyle = "#FFFF00";
+        ctx.font      = "14px BDCartoonShoutRegular";
+        var width = ctx.measureText(text).width,
+            x     = ((map.width * map.blockSize) - width) / 2;        
+        ctx.fillText(text, x, (map.height * 10) + 8);
+    }
+
+    function soundDisabled() {
+        return localStorage["soundDisabled"] === "true";
+    };
+    
+    function startLevel() {        
+        user.resetPosition();
+        for (var i = 0; i < ghosts.length; i += 1) { 
+            ghosts[i].reset();
+        }
+        // audio.play("start");
+        timerStart = tick;
+        setState(COUNTDOWN);
+    }    
+
+    function startNewGame() {
+        setState(WAITING);
+        level = 1;
+        user.reset();
+        map.reset();
+        map.draw(ctx);
+        startLevel();
+    }
+
+    function keyDown(e) {
+        if (e.keyCode === KEY.N) {
+            startNewGame();
+        } else if (e.keyCode === KEY.S) {
+            // audio.disableSound();
+            localStorage["soundDisabled"] = !soundDisabled();
+        } else if (e.keyCode === KEY.P && state === PAUSE) {
+            // audio.resume();
+            map.draw(ctx);
+            setState(stored);
+        } else if (e.keyCode === KEY.P) {
+            stored = state;
+            setState(PAUSE);
+            // audio.pause();
+            map.draw(ctx);
+            dialog("Paused");
+        } else if (state !== PAUSE) {   
+            return user.keyDown(e);
+        }
+        return true;
+    }    
+
+    function loseLife() {        
+        setState(WAITING);
+        user.loseLife();
+        if (user.getLives() > 0) {
+            startLevel();
+        }
+    }
+
+    function setState(nState) { 
+        state = nState;
+        stateChanged = true;
+    };
+    
+    function collided(user, ghost) {
+        return (Math.sqrt(Math.pow(ghost.x - user.x, 2) + 
+                          Math.pow(ghost.y - user.y, 2))) < 10;
+    };
+
+    function drawFooter() {
+        
+        var topLeft  = (map.height * map.blockSize),
+            textBase = topLeft + 17;
+        
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, topLeft, (map.width * map.blockSize), 30);
+        
+        ctx.fillStyle = "#FFFF00";
+
+        for (var i = 0, len = user.getLives(); i < len; i++) {
+            ctx.fillStyle = "#FFFF00";
+            ctx.beginPath();
+            ctx.moveTo(150 + (25 * i) + map.blockSize / 2,
+                       (topLeft+1) + map.blockSize / 2);
+            
+            ctx.arc(150 + (25 * i) + map.blockSize / 2,
+                    (topLeft+1) + map.blockSize / 2,
+                    map.blockSize / 2, Math.PI * 0.25, Math.PI * 1.75, false);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = !soundDisabled() ? "#00FF00" : "#FF0000";
+        ctx.font = "bold 16px sans-serif";
+        //ctx.fillText("♪", 10, textBase);
+        ctx.fillText("s", 10, textBase);
+
+        ctx.fillStyle = "#FFFF00";
+        ctx.font      = "14px BDCartoonShoutRegular";
+        ctx.fillText("Score: " + user.theScore(), 30, textBase);
+        ctx.fillText("Level: " + level, 260, textBase);
+    }
+
+    function redrawBlock(pos) {
+        map.drawBlock(Math.floor(pos.y/10), Math.floor(pos.x/10), ctx);
+        map.drawBlock(Math.ceil(pos.y/10), Math.ceil(pos.x/10), ctx);
+    }
+
+    function mainDraw() { 
+
+        var diff, u, i, len, nScore;
+        
+        ghostPos = [];
+
+        for (i = 0, len = ghosts.length; i < len; i += 1) {
+            ghostPos.push(ghosts[i].move(ctx));
+        }
+        u = user.move(ctx);
+        
+        for (i = 0, len = ghosts.length; i < len; i += 1) {
+            redrawBlock(ghostPos[i].old);
+        }
+        redrawBlock(u.old);
+        
+        for (i = 0, len = ghosts.length; i < len; i += 1) {
+            ghosts[i].draw(ctx);
+        }                     
+        user.draw(ctx);
+        
+        userPos = u["new"];
+        
+        for (i = 0, len = ghosts.length; i < len; i += 1) {
+            if (collided(userPos, ghostPos[i]["new"])) {
+                if (ghosts[i].isVunerable()) { 
+                    // audio.play("eatghost");
+                    ghosts[i].eat();
+                    eatenCount += 1;
+                    nScore = eatenCount * 50;
+                    drawScore(nScore, ghostPos[i]);
+                    user.addScore(nScore);                    
+                    setState(EATEN_PAUSE);
+                    timerStart = tick;
+                } else if (ghosts[i].isDangerous()) {
+                    // audio.play("die");
+                    setState(DYING);
+                    timerStart = tick;
+                }
+            }
+        }                             
+    };
+
+    function mainLoop() {
+
+        var diff;
+
+        if (state !== PAUSE) { 
+            ++tick;
+        }
+
+        map.drawPills(ctx);
+
+        if (state === PLAYING) {
+            mainDraw();
+        } else if (state === WAITING && stateChanged) {            
+            stateChanged = false;
+            map.draw(ctx);
+            dialog("Press N to start a New game");            
+        } else if (state === EATEN_PAUSE && 
+                   (tick - timerStart) > (Pacman.FPS / 3)) {
+            map.draw(ctx);
+            setState(PLAYING);
+        } else if (state === DYING) {
+            if (tick - timerStart > (Pacman.FPS * 2)) { 
+                loseLife();
+            } else { 
+                redrawBlock(userPos);
+                for (i = 0, len = ghosts.length; i < len; i += 1) {
+                    redrawBlock(ghostPos[i].old);
+                    ghostPos.push(ghosts[i].draw(ctx));
+                }                                   
+                user.drawDead(ctx, (tick - timerStart) / (Pacman.FPS * 2));
+            }
+        } else if (state === COUNTDOWN) {
+            
+            diff = 5 + Math.floor((timerStart - tick) / Pacman.FPS);
+            
+            if (diff === 0) {
+                map.draw(ctx);
+                setState(PLAYING);
+            } else {
+                if (diff !== lastTime) { 
+                    lastTime = diff;
+                    map.draw(ctx);
+                    dialog("Starting in: " + diff);
+                }
+            }
+        } 
+
+        drawFooter();
+    }
+
+    function eatenPill() {
+        // audio.play("eatpill");
+        timerStart = tick;
+        eatenCount = 0;
+        for (i = 0; i < ghosts.length; i += 1) {
+            ghosts[i].makeEatable(ctx);
+        }        
+    };
+    
+    function completedLevel() {
+        setState(WAITING);
+        level += 1;
+        map.reset();
+        user.newLevel();
+        startLevel();
+    };
+
+    function keyPress(e) { 
+        if (state !== WAITING && state !== PAUSE) { 
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    };
+    
+    function init(wrapper, root) {
+        
+        var i, len, ghost,
+            blockSize = wrapper.offsetWidth / 19,
+            canvas    = document.createElement("canvas");
+        
+        canvas.setAttribute("width", (blockSize * 19) + "px");
+        canvas.setAttribute("height", (blockSize * 22) + 30 + "px");
+
+        wrapper.appendChild(canvas);
+
+        ctx  = canvas.getContext('2d');
+
+        audio = { load: function(n,u,cb){cb();}, play: function(){}, pause: function(){}, resume: function(){}, disableSound: function(){} };
+        map   = new Pacman.Map(blockSize);
+        user  = new Pacman.User({ 
+            "completedLevel" : completedLevel, 
+            "eatenPill"      : eatenPill 
+        }, map);
+
+        for (i = 0, len = ghostSpecs.length; i < len; i += 1) {
+            ghost = new Pacman.Ghost({"getTick":getTick}, map, ghostSpecs[i]);
+            ghosts.push(ghost);
+        }
+        
+        map.draw(ctx);
+        dialog("Loading ...");
+
+        // audio disabled
+        loaded();
+    };
+
+    function load(arr, callback) { 
+        
+        if (arr.length === 0) { 
+            callback();
+        } else { 
+            var x = arr.pop();
+            audio.load(x[0], x[1], function() { load(arr, callback); });
+        }
+    };
+        
+    function loaded() {
+
+        dialog("Press N to Start");
+        
+        document.addEventListener("keydown", keyDown, true);
+        document.addEventListener("keypress", keyPress, true); 
+        
+        timer = window.setInterval(mainLoop, 1000 / Pacman.FPS);
+    };
+    
+    return {
+        "init" : init
+    };
+    
+}());
+
+/* Human readable keyCode index */
+var KEY = {'BACKSPACE': 8, 'TAB': 9, 'NUM_PAD_CLEAR': 12, 'ENTER': 13, 'SHIFT': 16, 'CTRL': 17, 'ALT': 18, 'PAUSE': 19, 'CAPS_LOCK': 20, 'ESCAPE': 27, 'SPACEBAR': 32, 'PAGE_UP': 33, 'PAGE_DOWN': 34, 'END': 35, 'HOME': 36, 'ARROW_LEFT': 37, 'ARROW_UP': 38, 'ARROW_RIGHT': 39, 'ARROW_DOWN': 40, 'PRINT_SCREEN': 44, 'INSERT': 45, 'DELETE': 46, 'SEMICOLON': 59, 'WINDOWS_LEFT': 91, 'WINDOWS_RIGHT': 92, 'SELECT': 93, 'NUM_PAD_ASTERISK': 106, 'NUM_PAD_PLUS_SIGN': 107, 'NUM_PAD_HYPHEN-MINUS': 109, 'NUM_PAD_FULL_STOP': 110, 'NUM_PAD_SOLIDUS': 111, 'NUM_LOCK': 144, 'SCROLL_LOCK': 145, 'SEMICOLON': 186, 'EQUALS_SIGN': 187, 'COMMA': 188, 'HYPHEN-MINUS': 189, 'FULL_STOP': 190, 'SOLIDUS': 191, 'GRAVE_ACCENT': 192, 'LEFT_SQUARE_BRACKET': 219, 'REVERSE_SOLIDUS': 220, 'RIGHT_SQUARE_BRACKET': 221, 'APOSTROPHE': 222};
+
+(function () {
+	/* 0 - 9 */
+	for (var i = 48; i <= 57; i++) {
+        KEY['' + (i - 48)] = i;
 	}
-
-	// Direction Objects
-	var up = new Direction("up", 1.75, 1.25, 0, -1); // UP
-	var left = new Direction("left", 1.25, 0.75, -1, 0); // LEFT
-	var down = new Direction("down", 0.75, 0.25, 0, 1); // DOWN
-	var right = new Direction("right", 0.25, 1.75, 1, 0); // RIGHT
-	/*var directions = [{},{},{},{}];
-	directions[0] = up;
-	directions[1] = down;
-	directions[2] = right;
-	directions[3] = left;*/
-
-
-	// DirectionWatcher
-	function directionWatcher() {
-		this.dir = null;
-		this.set = function (dir) {
-			this.dir = dir;
-		};
-		this.get = function () {
-			return this.dir;
-		};
+	/* A - Z */
+	for (i = 65; i <= 90; i++) {
+        KEY['' + String.fromCharCode(i)] = i;
 	}
-
-	//var directionWatcher = new directionWatcher();
-
-	// Ghost object in Constructor notation
-	function Ghost(name, gridPosX, gridPosY, image, gridBaseX, gridBaseY) {
-		this.name = name;
-		this.posX = gridPosX * 30;
-		this.posY = gridPosY * 30;
-		this.startPosX = gridPosX * 30;
-		this.startPosY = gridPosY * 30;
-		this.gridBaseX = gridBaseX;
-		this.gridBaseY = gridBaseY;
-		this.speed = game.ghostSpeedNormal;
-		this.images = JSON.parse(
-			'{"normal" : {' +
-			`"${GHOSTS.INKY}" : "0",` +
-			`"${GHOSTS.PINKY}" : "1",` +
-			`"${GHOSTS.BLINKY}" : "2",` +
-			`"${GHOSTS.CLYDE}" : "3"` +
-			'},' +
-			'"frightened1" : {' +
-			'"left" : "", "up": "", "right" : "", "down": ""},' +
-			'"frightened2" : {' +
-			'"left" : "", "up": "", "right" : "", "down": ""},' +
-			'"dead" : {' +
-			'"left" : "", "up": "", "right" : "", "down": ""}}'
-		);
-		this.image = new Image();
-		this.image.src = image;
-		this.ghostHouse = true;
-		this.dazzled = false;
-		this.dead = false;
-		this.dazzle = function () {
-			this.changeSpeed(game.ghostSpeedDazzled);
-			// ensure ghost doesnt leave grid
-			if (this.posX > 0) this.posX = this.posX - this.posX % this.speed;
-			if (this.posY > 0) this.posY = this.posY - this.posY % this.speed;
-			this.dazzled = true;
-		}
-		this.undazzle = function () {
-			// only change speed if ghost is not "dead"
-			if (!this.dead) this.changeSpeed(game.ghostSpeedNormal);
-			// ensure ghost doesnt leave grid
-			if (this.posX > 0) this.posX = this.posX - this.posX % this.speed;
-			if (this.posY > 0) this.posY = this.posY - this.posY % this.speed;
-			this.dazzled = false;
-		}
-		this.dazzleImg = new Image();
-		this.dazzleImg.src = 'img/dazzled.svg';
-		this.dazzleImg2 = new Image();
-		this.dazzleImg2.src = 'img/dazzled2.svg';
-		this.deadImg = new Image();
-		this.deadImg.src = 'img/dead.svg';
-		this.direction = right;
-		this.radius = pacman.radius;
-		this.draw = function (context) {
-			if (this.dead) {
-				context.drawImage(this.deadImg, this.posX, this.posY, 2 * this.radius, 2 * this.radius);
-			} else if (this.dazzled) {
-				if (pacman.beastModeTimer < 50 && pacman.beastModeTimer % 8 > 1) {
-					context.drawImage(this.dazzleImg2, this.posX, this.posY, 2 * this.radius, 2 * this.radius);
-				} else {
-					context.drawImage(this.dazzleImg, this.posX, this.posY, 2 * this.radius, 2 * this.radius);
-				}
-			} else context.drawImage(this.image, this.posX, this.posY, 2 * this.radius, 2 * this.radius);
-		}
-		this.getCenterX = function () {
-			return this.posX + this.radius;
-		}
-		this.getCenterY = function () {
-			return this.posY + this.radius;
-		}
-
-		this.reset = function () {
-			this.dead = false;
-			this.posX = this.startPosX;
-			this.posY = this.startPosY;
-			this.ghostHouse = true;
-			this.undazzle();
-		}
-
-		this.die = function () {
-			if (!this.dead) {
-				game.score.add(GHOST_POINTS);
-				//this.reset();
-				this.dead = true;
-				this.changeSpeed(game.ghostSpeedNormal);
-			}
-		}
-		this.changeSpeed = function (s) {
-			// adjust gridPosition to new speed
-			this.posX = Math.round(this.posX / s) * s;
-			this.posY = Math.round(this.posY / s) * s;
-			this.speed = s;
-		}
-
-		this.move = function () {
-
-			this.checkDirectionChange();
-			this.checkCollision();
-
-			// leave Ghost House
-			if (this.ghostHouse == true) {
-
-				// Clyde does not start chasing before 2/3 of all pills are eaten and if level is < 4
-				if (this.name == GHOSTS.CLYDE) {
-					if ((game.level < 4) || ((game.pillCount > 104 / 3))) this.stop = true;
-					else this.stop = false;
-				}
-				// Inky starts after 30 pills and only from the third level on
-				if (this.name == GHOSTS.INKY) {
-					if ((game.level < 3) || ((game.pillCount > 104 - 30))) this.stop = true;
-					else this.stop = false;
-				}
-
-				if ((this.getGridPosY() == 5) && this.inGrid()) {
-					if ((this.getGridPosX() == 7)) this.setDirection(right);
-					if ((this.getGridPosX() == 8) || this.getGridPosX() == 9) this.setDirection(up);
-					if ((this.getGridPosX() == 10)) this.setDirection(left);
-				}
-				if ((this.getGridPosY() == 4) && ((this.getGridPosX() == 8) || (this.getGridPosX() == 9)) && this.inGrid()) {
-					console.log("ghosthouse -> false");
-					this.ghostHouse = false;
-				}
-			}
-
-			if (!this.stop) {
-				// Move
-				this.posX += this.speed * this.dirX;
-				this.posY += this.speed * this.dirY;
-
-				// Check if out of canvas
-				if (this.posX >= game.width - this.radius) this.posX = this.speed - this.radius;
-				if (this.posX <= 0 - this.radius) this.posX = game.width - this.speed - this.radius;
-				if (this.posY >= game.height - this.radius) this.posY = this.speed - this.radius;
-				if (this.posY <= 0 - this.radius) this.posY = game.height - this.speed - this.radius;
-			}
-		}
-
-		this.checkCollision = function () {
-
-			/* Check Back to Home */
-			if (this.dead && (this.getGridPosX() == this.startPosX / 30) && (this.getGridPosY() == this.startPosY / 30)) this.reset();
-			else {
-
-				/* Check Ghost / Pacman Collision			*/
-				if ((between(pacman.getCenterX(), this.getCenterX() - 10, this.getCenterX() + 10)) &&
-					(between(pacman.getCenterY(), this.getCenterY() - 10, this.getCenterY() + 10))) {
-					if ((!this.dazzled) && (!this.dead)) {
-						pacman.die();
-					} else {
-						this.die();
-					}
-				}
-			}
-		}
-
-		/* Pathfinding */
-		this.getNextDirection = function () {
-			// get next field
-			var pX = this.getGridPosX();
-			var pY = this.getGridPosY();
-			game.getMapContent(pX, pY);
-			var u, d, r, l; // option up, down, right, left
-
-			// get target
-			if (this.dead) { // go Home
-				var tX = this.startPosX / 30;
-				var tY = this.startPosY / 30;
-			} else if (game.ghostMode == 0) { // Scatter Mode
-				var tX = this.gridBaseX;
-				var tY = this.gridBaseY;
-			} else if (game.ghostMode == 1) { // Chase Mode
-
-				switch (this.name) {
-
-					// target: 4 ahead and 4 left of pacman
-					case GHOSTS.PINKY:
-						var pdir = pacman.direction;
-						var pdirX = pdir.dirX == 0 ? -pdir.dirY : pdir.dirX;
-						var pdirY = pdir.dirY == 0 ? -pdir.dirX : pdir.dirY;
-
-						var tX = (pacman.getGridPosX() + pdirX * 4) % (game.width / pacman.radius + 1);
-						var tY = (pacman.getGridPosY() + pdirY * 4) % (game.height / pacman.radius + 1);
-						break;
-
-						// target: pacman
-					case GHOSTS.BLINKY:
-						var tX = pacman.getGridPosX();
-						var tY = pacman.getGridPosY();
-						break;
-
-						// target: 
-					case GHOSTS.INKY:
-						var tX = pacman.getGridPosX() + 2 * pacman.direction.dirX;
-						var tY = pacman.getGridPosY() + 2 * pacman.direction.dirY;
-						var vX = tX - blinky.getGridPosX();
-						var vY = tY - blinky.getGridPosY();
-						tX = Math.abs(blinky.getGridPosX() + vX * 2);
-						tY = Math.abs(blinky.getGridPosY() + vY * 2);
-						break;
-
-						// target: pacman, until pacman is closer than 5 grid fields, then back to scatter
-					case GHOSTS.CLYDE:
-						var tX = pacman.getGridPosX();
-						var tY = pacman.getGridPosY();
-						var dist = Math.sqrt(Math.pow((pX - tX), 2) + Math.pow((pY - tY), 2));
-
-						if (dist < 5) {
-							tX = this.gridBaseX;
-							tY = this.gridBaseY;
-						}
-						break;
-
-				}
-			}
-			var oppDir = this.getOppositeDirection(); // ghosts are not allowed to change direction 180�
-
-			var dirs = [{}, {}, {}, {}];
-			dirs[0].field = game.getMapContent(pX, pY - 1);
-			dirs[0].dir = up;
-			dirs[0].distance = Math.sqrt(Math.pow((pX - tX), 2) + Math.pow((pY - 1 - tY), 2));
-
-			dirs[1].field = game.getMapContent(pX, pY + 1);
-			dirs[1].dir = down;
-			dirs[1].distance = Math.sqrt(Math.pow((pX - tX), 2) + Math.pow((pY + 1 - tY), 2));
-
-			dirs[2].field = game.getMapContent(pX + 1, pY);
-			dirs[2].dir = right;
-			dirs[2].distance = Math.sqrt(Math.pow((pX + 1 - tX), 2) + Math.pow((pY - tY), 2));
-
-			dirs[3].field = game.getMapContent(pX - 1, pY);
-			dirs[3].dir = left;
-			dirs[3].distance = Math.sqrt(Math.pow((pX - 1 - tX), 2) + Math.pow((pY - tY), 2));
-
-			// Sort possible directions by distance
-			function compare(a, b) {
-				if (a.distance < b.distance)
-					return -1;
-				if (a.distance > b.distance)
-					return 1;
-				return 0;
-			}
-			var dirs2 = dirs.sort(compare);
-
-			var r = this.dir;
-			var j;
-
-			if (this.dead) {
-				for (var i = dirs2.length - 1; i >= 0; i--) {
-					if ((dirs2[i].field != "wall") && !(dirs2[i].dir.equals(this.getOppositeDirection()))) {
-						r = dirs2[i].dir;
-					}
-				}
-			} else {
-				for (var i = dirs2.length - 1; i >= 0; i--) {
-					if ((dirs2[i].field != "wall") && (dirs2[i].field != "door") && !(dirs2[i].dir.equals(this.getOppositeDirection()))) {
-						r = dirs2[i].dir;
-					}
-				}
-			}
-			this.directionWatcher.set(r);
-			return r;
-		}
-		this.setRandomDirection = function () {
-			var dir = Math.floor((Math.random() * 10) + 1) % 5;
-
-			switch (dir) {
-				case 1:
-					if (this.getOppositeDirection().equals(up)) this.setDirection(down);
-					else this.setDirection(up);
-					break;
-				case 2:
-					if (this.getOppositeDirection().equals(down)) this.setDirection(up);
-					else this.setDirection(down);
-					break;
-				case 3:
-					if (this.getOppositeDirection().equals(right)) this.setDirection(left);
-					else this.setDirection(right);
-					break;
-				case 4:
-					if (this.getOppositeDirection().equals(left)) this.setDirection(right);
-					else this.setDirection(left);
-					break;
-			}
-		}
-		this.reverseDirection = function () {
-			console.log("reverseDirection: " + this.direction.name + " to " + this.getOppositeDirection().name);
-			this.directionWatcher.set(this.getOppositeDirection());
-		}
-
+	/* NUM_PAD_0 - NUM_PAD_9 */
+	for (i = 96; i <= 105; i++) {
+        KEY['NUM_PAD_' + (i - 96)] = i;
 	}
-
-	Ghost.prototype = new Figure();
-
-	// Super Class for Pacman & Ghosts
-	function Figure() {
-		this.posX;
-		this.posY;
-		this.speed;
-		this.dirX = right.dirX;
-		this.dirY = right.dirY;
-		this.direction;
-		this.stop = true;
-		this.directionWatcher = new directionWatcher();
-		this.getNextDirection = function () {
-			console.log("Figure getNextDirection");
-		};
-		this.checkDirectionChange = function () {
-			if (this.inGrid() && (this.directionWatcher.get() == null)) this.getNextDirection();
-			if ((this.directionWatcher.get() != null) && this.inGrid()) {
-				//console.log("changeDirection to "+this.directionWatcher.get().name);
-				this.setDirection(this.directionWatcher.get());
-				this.directionWatcher.set(null);
-			}
-
-		}
-
-
-		this.inGrid = function () {
-			if ((this.posX % (2 * this.radius) === 0) && (this.posY % (2 * this.radius) === 0)) return true;
-			return false;
-		}
-		this.getOppositeDirection = function () {
-			if (this.direction.equals(up)) return down;
-			else if (this.direction.equals(down)) return up;
-			else if (this.direction.equals(right)) return left;
-			else if (this.direction.equals(left)) return right;
-		}
-		this.move = function () {
-
-			if (!this.stop) {
-				this.posX += this.speed * this.dirX;
-				this.posY += this.speed * this.dirY;
-
-				// Check if out of canvas
-				if (this.posX >= game.width - this.radius) this.posX = this.speed - this.radius;
-				if (this.posX <= 0 - this.radius) this.posX = game.width - this.speed - this.radius;
-				if (this.posY >= game.height - this.radius) this.posY = this.speed - this.radius;
-				if (this.posY <= 0 - this.radius) this.posY = game.height - this.speed - this.radius;
-			}
-		}
-		this.stop = function () {
-			this.stop = true;
-		}
-		this.start = function () {
-			this.stop = false;
-		}
-
-		this.getGridPosX = function () {
-			return (this.posX - (this.posX % 30)) / 30;
-		}
-		this.getGridPosY = function () {
-			return (this.posY - (this.posY % 30)) / 30;
-		}
-		this.setDirection = function (dir) {
-			this.dirX = dir.dirX;
-			this.dirY = dir.dirY;
-			this.angle1 = dir.angle1;
-			this.angle2 = dir.angle2;
-			this.direction = dir;
-		}
-		this.setPosition = function (x, y) {
-			this.posX = x;
-			this.posY = y;
-		}
+	/* F1 - F12 */
+	for (i = 112; i <= 123; i++) {
+        KEY['F' + (i - 112 + 1)] = i;
 	}
-
-	function pacman() {
-		this.radius = 15;
-		this.posX = 0;
-		this.posY = 6 * 2 * this.radius;
-		this.speed = 5;
-		this.angle1 = 0.25;
-		this.angle2 = 1.75;
-		this.mouth = 1; /* Switches between 1 and -1, depending on mouth closing / opening */
-		this.dirX = right.dirX;
-		this.dirY = right.dirY;
-		this.lives = 3;
-		this.stuckX = 0;
-		this.stuckY = 0;
-		this.frozen = false; // used to play die Animation
-		this.freeze = function () {
-			this.frozen = true;
-		}
-		this.unfreeze = function () {
-			this.frozen = false;
-		}
-		this.getCenterX = function () {
-			return this.posX + this.radius;
-		}
-		this.getCenterY = function () {
-			return this.posY + this.radius;
-		}
-		this.directionWatcher = new directionWatcher();
-
-		this.direction = right;
-
-		this.beastMode = false;
-		this.beastModeTimer = 0;
-
-		this.checkCollisions = function () {
-
-			if ((this.stuckX == 0) && (this.stuckY == 0) && this.frozen == false) {
-
-				// Get the Grid Position of Pac
-				var gridX = this.getGridPosX();
-				var gridY = this.getGridPosY();
-				var gridAheadX = gridX;
-				var gridAheadY = gridY;
-
-				var field = game.getMapContent(gridX, gridY);
-
-				// get the field 1 ahead to check wall collisions
-				if ((this.dirX == 1) && (gridAheadX < 17)) gridAheadX += 1;
-				if ((this.dirY == 1) && (gridAheadY < 12)) gridAheadY += 1;
-				var fieldAhead = game.getMapContent(gridAheadX, gridAheadY);
-
-
-				/*	Check Pill Collision			*/
-				if ((field === "pill") || (field === "powerpill")) {
-					//console.log("Pill found at ("+gridX+"/"+gridY+"). Pacman at ("+this.posX+"/"+this.posY+")");
-					if (
-						((this.dirX == 1) && (between(this.posX, game.toPixelPos(gridX) + this.radius - this.speed, game.toPixelPos(gridX + 1)))) ||
-						((this.dirX == -1) && (between(this.posX, game.toPixelPos(gridX), game.toPixelPos(gridX) + this.speed))) ||
-						((this.dirY == 1) && (between(this.posY, game.toPixelPos(gridY) + this.radius - this.speed, game.toPixelPos(gridY + 1)))) ||
-						((this.dirY == -1) && (between(this.posY, game.toPixelPos(gridY), game.toPixelPos(gridY) + this.speed))) ||
-						(fieldAhead === "wall")
-					) {
-						var s;
-						if (field === "powerpill") {
-							Sound.play("powerpill");
-							s = POWERPILL_POINTS;
-							this.enableBeastMode();
-							game.startGhostFrightened();
-						} else {
-							Sound.play("waka");
-							s = PILL_POINTS;
-							game.pillCount--;
-						}
-						game.map.posY[gridY].posX[gridX].type = "null";
-						game.score.add(s);
-					}
-				}
-
-				/*	Check Wall Collision			*/
-				if ((fieldAhead === "wall") || (fieldAhead === "door")) {
-					this.stuckX = this.dirX;
-					this.stuckY = this.dirY;
-					pacman.stop();
-					// get out of the wall
-					if ((this.stuckX == 1) && ((this.posX % 2 * this.radius) != 0)) this.posX -= this.speed;
-					if ((this.stuckY == 1) && ((this.posY % 2 * this.radius) != 0)) this.posY -= this.speed;
-					if (this.stuckX == -1) this.posX += this.speed;
-					if (this.stuckY == -1) this.posY += this.speed;
-				}
-
-			}
-		}
-		this.checkDirectionChange = function () {
-			if (this.directionWatcher.get() != null) {
-				console.groupCollapsed('checkDirectionChange');
-				//console.log("next Direction: "+directionWatcher.get().name);
-
-				if ((this.stuckX == 1) && this.directionWatcher.get() == right) this.directionWatcher.set(null);
-				else {
-					// reset stuck events
-					this.stuckX = 0;
-					this.stuckY = 0;
-
-
-					// only allow direction changes inside the grid
-					if ((this.inGrid())) {
-						//console.log("changeDirection to "+directionWatcher.get().name);
-
-						// check if possible to change direction without getting stuck
-						console.debug("x: " + this.getGridPosX() + " + " + this.directionWatcher.get().dirX);
-						console.debug("y: " + this.getGridPosY() + " + " + this.directionWatcher.get().dirY);
-						var x = this.getGridPosX() + this.directionWatcher.get().dirX;
-						var y = this.getGridPosY() + this.directionWatcher.get().dirY;
-						if (x <= -1) x = game.width / (this.radius * 2) - 1;
-						if (x >= game.width / (this.radius * 2)) x = 0;
-						if (y <= -1) x = game.height / (this.radius * 2) - 1;
-						if (y >= game.heigth / (this.radius * 2)) y = 0;
-
-						console.debug("x: " + x);
-						console.debug("y: " + y);
-						var nextTile = game.map.posY[y].posX[x].type;
-						console.debug("checkNextTile: " + nextTile);
-
-						if (nextTile != "wall") {
-							this.setDirection(this.directionWatcher.get());
-							this.directionWatcher.set(null);
-						}
-					}
-				}
-				console.groupEnd();
-			}
-		}
-		this.setDirection = function (dir) {
-			if (!this.frozen) {
-				this.dirX = dir.dirX;
-				this.dirY = dir.dirY;
-				this.angle1 = dir.angle1;
-				this.angle2 = dir.angle2;
-				this.direction = dir;
-			}
-		}
-		this.enableBeastMode = function () {
-			this.beastMode = true;
-			this.beastModeTimer = 240;
-			console.debug("Beast Mode activated!");
-			inky.dazzle();
-			pinky.dazzle();
-			blinky.dazzle();
-			clyde.dazzle();
-		};
-		this.disableBeastMode = function () {
-			this.beastMode = false;
-			console.debug("Beast Mode is over!");
-			inky.undazzle();
-			pinky.undazzle();
-			blinky.undazzle();
-			clyde.undazzle();
-		};
-		this.move = function () {
-
-			if (!this.frozen) {
-				if (this.beastModeTimer > 0) {
-					this.beastModeTimer--;
-					//console.log("Beast Mode: "+this.beastModeTimer);
-				}
-				if ((this.beastModeTimer == 0) && (this.beastMode == true)) this.disableBeastMode();
-
-				this.posX += this.speed * this.dirX;
-				this.posY += this.speed * this.dirY;
-
-				// Check if out of canvas
-				if (this.posX >= game.width - this.radius) this.posX = 5 - this.radius;
-				if (this.posX <= 0 - this.radius) this.posX = game.width - 5 - this.radius;
-				if (this.posY >= game.height - this.radius) this.posY = 5 - this.radius;
-				if (this.posY <= 0 - this.radius) this.posY = game.height - 5 - this.radius;
-			} else this.dieAnimation();
-		}
-
-		this.eat = function () {
-
-			if (!this.frozen) {
-				if (this.dirX == this.dirY == 0) {
-
-					this.angle1 -= this.mouth * 0.07;
-					this.angle2 += this.mouth * 0.07;
-
-					var limitMax1 = this.direction.angle1;
-					var limitMax2 = this.direction.angle2;
-					var limitMin1 = this.direction.angle1 - 0.21;
-					var limitMin2 = this.direction.angle2 + 0.21;
-
-					if (this.angle1 < limitMin1 || this.angle2 > limitMin2) {
-						this.mouth = -1;
-					}
-					if (this.angle1 >= limitMax1 || this.angle2 <= limitMax2) {
-						this.mouth = 1;
-					}
-				}
-			}
-		}
-		this.stop = function () {
-			this.dirX = 0;
-			this.dirY = 0;
-		}
-		this.reset = function () {
-			this.unfreeze();
-			this.posX = 0;
-			this.posY = 6 * 2 * this.radius;
-			this.setDirection(right);
-			this.stop();
-			this.stuckX = 0;
-			this.stuckY = 0;
-			//console.log("reset pacman");
-		}
-		this.dieAnimation = function () {
-			this.angle1 += 0.05;
-			this.angle2 -= 0.05;
-			if (this.angle1 >= this.direction.angle1 + 0.7 || this.angle2 <= this.direction.angle2 - 0.7) {
-				this.dieFinal();
-			}
-		}
-		this.die = function () {
-			Sound.play("die");
-			this.freeze();
-			this.dieAnimation();
-		}
-		this.dieFinal = function () {
-			this.reset();
-			pinky.reset();
-			inky.reset();
-			blinky.reset();
-			clyde.reset();
-			this.lives--;
-			console.log("pacman died, " + this.lives + " lives left");
-			if (this.lives <= 0) {
-				game.endGame();
-				game.showHighscoreForm();
-			}
-			game.drawHearts(this.lives);
-		}
-		this.getGridPosX = function () {
-			return (this.posX - (this.posX % 30)) / 30;
-		}
-		this.getGridPosY = function () {
-			return (this.posY - (this.posY % 30)) / 30;
-		}
-	}
-	pacman.prototype = new Figure();
-	var pacman = new pacman();
-	game.buildWalls();
-
-
-	// Check if a new cache is available on page load.	 
-	function checkAppCache() {
-		console.log('check AppCache');
-		window.applicationCache.addEventListener('updateready', function (e) {
-			console.log("AppCache: updateready");
-			if (window.applicationCache.status == window.applicationCache.UPDATEREADY) {
-
-				// Browser downloaded a new app cache.
-				// Swap it in and reload the page to get the new hotness.
-				window.applicationCache.swapCache();
-				if (confirm('A new version of this site is available. Load it?')) {
-					window.location.reload();
-				}
-
-			} else {
-				// Manifest didn't change. Nothing new to server.
-			}
-		}, false);
-
-		window.applicationCache.addEventListener('cached', function (e) {
-			console.log("AppCache: cached");
-		}, false);
-
-	}
-
-
-	// Action starts here:
-
-	function hideAdressbar() {
-		console.log("hide adressbar");
-		$("html").scrollTop(1);
-		$("body").scrollTop(1);
-	}
-
-	$(document).ready(function () {
-
-		if (!['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-			logger.disableLogger();
-		}
-
-		$.ajaxSetup({
-			mimeType: "application/json"
-		});
-
-		$.ajaxSetup({
-			beforeSend: function (xhr) {
-				if (xhr.overrideMimeType) {
-					xhr.overrideMimeType("application/json");
-				}
-			}
-		});
-
-		// Hide address bar
-		hideAdressbar();
-
-		if (window.applicationCache != null) checkAppCache();
-
-		/* -------------------- EVENT LISTENERS -------------------------- */
-
-		// Listen for resize changes
-		/*window.addEventListener("resize", function() {
-			// Get screen size (inner/outerWidth, inner/outerHeight)
-			// deactivated because of problems
-			if ((window.outerHeight < window.outerWidth) && (window.outerHeight < 720)) {
-			game.pauseAndShowMessage("Rotate Device","Your screen is too small to play in landscape view.");
-			console.log("rotate your device to portrait!");
-			}
-		}, false);*/
-
-
-		// --------------- Controls
-
-
-		// Keyboard
-		window.addEventListener('keydown', doKeyDown, true);
-
-		// pause / resume game on canvas click
-		$('#canvas-container').click(function () {
-			if (!(game.gameOver === true)) game.pauseResume();
-		});
-
-		// highscore form submit event listener
-		$('body').on('click', '#score-submit', function () {
-			console.log("submit highscore pressed");
-			if ($('#playerName').val() === "" || $('#playerName').val() === undefined) {
-				$('#form-validator').html("Please enter a name<br/>");
-			} else {
-				$('#form-validator').html("");
-				addHighscore();
-			}
-		});
-
-		$('body').on('click', '#show-highscore', function () {
-			game.showContent('highscore-content');
-			getHighscore();
-		});
-
-		// Hammerjs Touch Events
-		Hammer('.container').on("swiperight", function (event) {
-			if ($('#game-content').is(":visible")) {
-				event.gesture.preventDefault();
-				pacman.directionWatcher.set(right);
-			}
-		});
-		Hammer('.container').on("swipeleft", function (event) {
-			if ($('#game-content').is(":visible")) {
-				event.gesture.preventDefault();
-				pacman.directionWatcher.set(left);
-			}
-		});
-		Hammer('.container').on("swipeup", function (event) {
-			if ($('#game-content').is(":visible")) {
-				event.gesture.preventDefault();
-				pacman.directionWatcher.set(up);
-			}
-		});
-		Hammer('.container').on("swipedown", function (event) {
-			if ($('#game-content').is(":visible")) {
-				event.gesture.preventDefault();
-				pacman.directionWatcher.set(down);
-			}
-		});
-
-		// Mobile Control Buttons
-		$(document).on('touchend mousedown', '#up', function (event) {
-			event.preventDefault();
-			pacman.directionWatcher.set(up);
-		});
-		$(document).on('touchend mousedown', '#down', function (event) {
-			event.preventDefault();
-			pacman.directionWatcher.set(down);
-		});
-		$(document).on('touchend mousedown', '#left', function (event) {
-			event.preventDefault();
-			pacman.directionWatcher.set(left);
-		});
-		$(document).on('touchend mousedown', '#right', function (event) {
-			event.preventDefault();
-			pacman.directionWatcher.set(right);
-		});
-
-		// Menu
-		$(document).on('click', '.button#newGame', function (event) {
-			game.newGame();
-		});
-		$(document).on('click', '.button#highscore', function (event) {
-			game.showContent('highscore-content');
-			getHighscore();
-		});
-		$(document).on('click', '.button#instructions', function (event) {
-			game.showContent('instructions-content');
-		});
-		$(document).on('click', '.button#info', function (event) {
-			game.showContent('info-content');
-		});
-		// back button
-		$(document).on('click', '.button#back', function (event) {
-			game.showContent('game-content');
-		});
-		// toggleSound
-		$(document).on('click', '.controlSound', function (event) {
-			game.toggleSound();
-		});
-		// get latest
-		$(document).on('click', '#updateCode', function (event) {
-			console.log('check for new version');
-			event.preventDefault();
-			window.applicationCache.update();
-		});
-
-		// checkAppCache();
-
-		canvas = $("#myCanvas").get(0);
-		context = canvas.getContext("2d");
-
-		/* --------------- GAME INITIALISATION ------------------------------------
-		
-			TODO: put this into Game object and change code to accept different setups / levels
-		
-		-------------------------------------------------------------------------- */
-
-		game.init(0);
-
-		renderContent();
-	});
-
-	function renderContent() {
-		// Refresh Score
-		game.score.refresh(".score");
-
-		// Pills
-		context.beginPath();
-		context.fillStyle = "White";
-		context.strokeStyle = "White";
-
-		var dotPosY;
-		if (game.map && game.map.posY && game.map.posY.length > 0) {
-			$.each(game.map.posY, (i, row) => {
-				dotPosY = row.row;
-				$.each(row.posX, (j, column) => {
-					if (column.type == "pill") {
-						context.arc(game.toPixelPos(column.col - 1) + pacman.radius, game.toPixelPos(dotPosY - 1) + pacman.radius, game.pillSize, 0 * Math.PI, 2 * Math.PI);
-						context.moveTo(game.toPixelPos(column.col - 1), game.toPixelPos(dotPosY - 1));
-					} else if (column.type == "powerpill") {
-						context.arc(game.toPixelPos(column.col - 1) + pacman.radius, game.toPixelPos(dotPosY - 1) + pacman.radius, game.powerpillSizeCurrent, 0 * Math.PI, 2 * Math.PI);
-						context.moveTo(game.toPixelPos(column.col - 1), game.toPixelPos(dotPosY - 1));
-					}
-				});
-			});
-		} else {
-			console.warn('Map not loaded (yet).')
-		}
-
-		context.fill();
-
-		// Walls
-		context.drawImage(canvas_walls, 0, 0);
-
-
-		if (game.started) {
-			// Ghosts
-			pinky.draw(context);
-			blinky.draw(context);
-			inky.draw(context);
-			clyde.draw(context);
-
-
-			// Pac Man
-			context.beginPath();
-			context.fillStyle = "Yellow";
-			context.strokeStyle = "Yellow";
-			context.arc(pacman.posX + pacman.radius, pacman.posY + pacman.radius, pacman.radius, pacman.angle1 * Math.PI, pacman.angle2 * Math.PI);
-			context.lineTo(pacman.posX + pacman.radius, pacman.posY + pacman.radius);
-			context.stroke();
-			context.fill();
-		}
-
-	}
-
-	// TODO: only for debugging
-	function renderGrid(gridPixelSize, color) {
-		context.save();
-		context.lineWidth = 0.5;
-		context.strokeStyle = color;
-
-		// horizontal grid lines
-		for (var i = 0; i <= canvas.height; i = i + gridPixelSize) {
-			context.beginPath();
-			context.moveTo(0, i);
-			context.lineTo(canvas.width, i);
-			context.closePath();
-			context.stroke();
-		}
-
-		// vertical grid lines
-		for (var i = 0; i <= canvas.width; i = i + gridPixelSize) {
-			context.beginPath();
-			context.moveTo(i, 0);
-			context.lineTo(i, canvas.height);
-			context.closePath();
-			context.stroke();
-		}
-
-		context.restore();
-	}
-
-
-	function animationLoop() {
-
-		// if (gameOver) return;
-
-		canvas.width = canvas.width;
-		// enable next line to show grid
-		// renderGrid(pacman.radius, "red");
-		renderContent();
-
-		if (game.dieAnimation == 1) pacman.dieAnimation();
-		if (game.pause !== true) {
-			// Make changes before next loop
-			pacman.move();
-			pacman.eat();
-			pacman.checkDirectionChange();
-			pacman.checkCollisions(); // has to be the LAST method called on pacman
-
-			blinky.move();
-			inky.move();
-			pinky.move();
-			clyde.move();
-
-			game.checkGhostMode();
-
-
-			// All dots collected?
-			game.checkForLevelUp();
-		}
-
-		//requestAnimationFrame(animationLoop);
-		setTimeout(animationLoop, game.refreshRate);
-
-	}
-
-
-
-	function doKeyDown(evt) {
-
-		switch (evt.keyCode) {
-			case 38: // UP Arrow Key pressed
-				evt.preventDefault();
-			case 87: // W pressed
-				pacman.directionWatcher.set(up);
-				break;
-			case 40: // DOWN Arrow Key pressed
-				evt.preventDefault();
-			case 83: // S pressed 
-				pacman.directionWatcher.set(down);
-				break;
-			case 37: // LEFT Arrow Key pressed
-				evt.preventDefault();
-			case 65: // A pressed
-				pacman.directionWatcher.set(left);
-				break;
-			case 39: // RIGHT Arrow Key pressed
-				evt.preventDefault();
-			case 68: // D pressed
-				pacman.directionWatcher.set(right);
-				break;
-			case 78: // N pressed
-				if (!$('#playerName').is(':focus')) {
-					game.pause = 1;
-					game.newGame();
-				}
-				break;
-			case 77: // M pressed
-				game.toggleSound();
-				break;
-			case 8: // Backspace pressed -> show Game Content
-			case 27: // ESC pressed -> show Game Content
-				if (!$('#playerName').is(':focus')) {
-					evt.preventDefault();
-					game.showContent('game-content');
-				}
-				break;
-			case 32: // SPACE pressed -> pause Game
-				evt.preventDefault();
-				if (!(game.gameOver == true) &&
-					$('#game-content').is(':visible')
-				) game.pauseResume();
-				break;
-		}
-	}
-}
-
-geronimo();
-</script>
-
-<script>
-// Патчим score/level/lives отображение в наш упрощённый DOM
-(function() {
-    var orig = $.fn.text;
-    // Синхронизируем .score/.lives/.level с нашими span'ами
-    setInterval(function() {
-        var s = document.querySelector('.score');
-        var l = document.querySelector('.lives');
-        var lv = document.querySelector('.level');
-        if (s) { var m = s.textContent.match(/\d+/); if(m) document.getElementById('scoreVal') && (document.getElementById('scoreVal').textContent = m[0]); }
-        if (l) { var m = l.textContent.match(/\d+/); if(m) document.getElementById('livesVal') && (document.getElementById('livesVal').textContent = m[0]); }
-        if (lv) { var m = lv.textContent.match(/\d+/); if(m) document.getElementById('lvlVal') && (document.getElementById('lvlVal').textContent = m[0]); }
-    }, 200);
 })();
+
+Pacman.WALL    = 0;
+Pacman.BISCUIT = 1;
+Pacman.EMPTY   = 2;
+Pacman.BLOCK   = 3;
+Pacman.PILL    = 4;
+
+Pacman.MAP = [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+	[0, 4, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 4, 0],
+	[0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+	[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+	[0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0],
+	[0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0],
+	[0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+	[2, 2, 2, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 2, 2, 2],
+	[0, 0, 0, 0, 1, 0, 1, 0, 0, 3, 0, 0, 1, 0, 1, 0, 0, 0, 0],
+	[2, 2, 2, 2, 1, 1, 1, 0, 3, 3, 3, 0, 1, 1, 1, 2, 2, 2, 2],
+	[0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
+	[2, 2, 2, 0, 1, 0, 1, 1, 1, 2, 1, 1, 1, 0, 1, 0, 2, 2, 2],
+	[0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
+	[0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+	[0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+	[0, 4, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 4, 0],
+	[0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0],
+	[0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0],
+	[0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0],
+	[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+];
+
+Pacman.WALLS = [
+    
+    [{"move": [0, 9.5]}, {"line": [3, 9.5]},
+     {"curve": [3.5, 9.5, 3.5, 9]}, {"line": [3.5, 8]},
+     {"curve": [3.5, 7.5, 3, 7.5]}, {"line": [1, 7.5]},
+     {"curve": [0.5, 7.5, 0.5, 7]}, {"line": [0.5, 1]},
+     {"curve": [0.5, 0.5, 1, 0.5]}, {"line": [9, 0.5]},
+     {"curve": [9.5, 0.5, 9.5, 1]}, {"line": [9.5, 3.5]}],
+
+    [{"move": [9.5, 1]},
+     {"curve": [9.5, 0.5, 10, 0.5]}, {"line": [18, 0.5]},
+     {"curve": [18.5, 0.5, 18.5, 1]}, {"line": [18.5, 7]},
+     {"curve": [18.5, 7.5, 18, 7.5]}, {"line": [16, 7.5]},
+     {"curve": [15.5, 7.5, 15.5, 8]}, {"line": [15.5, 9]},
+     {"curve": [15.5, 9.5, 16, 9.5]}, {"line": [19, 9.5]}],
+
+    [{"move": [2.5, 5.5]}, {"line": [3.5, 5.5]}],
+
+    [{"move": [3, 2.5]},
+     {"curve": [3.5, 2.5, 3.5, 3]},
+     {"curve": [3.5, 3.5, 3, 3.5]},
+     {"curve": [2.5, 3.5, 2.5, 3]},
+     {"curve": [2.5, 2.5, 3, 2.5]}],
+
+    [{"move": [15.5, 5.5]}, {"line": [16.5, 5.5]}],
+
+    [{"move": [16, 2.5]}, {"curve": [16.5, 2.5, 16.5, 3]},
+     {"curve": [16.5, 3.5, 16, 3.5]}, {"curve": [15.5, 3.5, 15.5, 3]},
+     {"curve": [15.5, 2.5, 16, 2.5]}],
+
+    [{"move": [6, 2.5]}, {"line": [7, 2.5]}, {"curve": [7.5, 2.5, 7.5, 3]},
+     {"curve": [7.5, 3.5, 7, 3.5]}, {"line": [6, 3.5]},
+     {"curve": [5.5, 3.5, 5.5, 3]}, {"curve": [5.5, 2.5, 6, 2.5]}],
+
+    [{"move": [12, 2.5]}, {"line": [13, 2.5]}, {"curve": [13.5, 2.5, 13.5, 3]},
+     {"curve": [13.5, 3.5, 13, 3.5]}, {"line": [12, 3.5]},
+     {"curve": [11.5, 3.5, 11.5, 3]}, {"curve": [11.5, 2.5, 12, 2.5]}],
+
+    [{"move": [7.5, 5.5]}, {"line": [9, 5.5]}, {"curve": [9.5, 5.5, 9.5, 6]},
+     {"line": [9.5, 7.5]}],
+    [{"move": [9.5, 6]}, {"curve": [9.5, 5.5, 10.5, 5.5]},
+     {"line": [11.5, 5.5]}],
+
+
+    [{"move": [5.5, 5.5]}, {"line": [5.5, 7]}, {"curve": [5.5, 7.5, 6, 7.5]},
+     {"line": [7.5, 7.5]}],
+    [{"move": [6, 7.5]}, {"curve": [5.5, 7.5, 5.5, 8]}, {"line": [5.5, 9.5]}],
+
+    [{"move": [13.5, 5.5]}, {"line": [13.5, 7]},
+     {"curve": [13.5, 7.5, 13, 7.5]}, {"line": [11.5, 7.5]}],
+    [{"move": [13, 7.5]}, {"curve": [13.5, 7.5, 13.5, 8]},
+     {"line": [13.5, 9.5]}],
+
+    [{"move": [0, 11.5]}, {"line": [3, 11.5]}, {"curve": [3.5, 11.5, 3.5, 12]},
+     {"line": [3.5, 13]}, {"curve": [3.5, 13.5, 3, 13.5]}, {"line": [1, 13.5]},
+     {"curve": [0.5, 13.5, 0.5, 14]}, {"line": [0.5, 17]},
+     {"curve": [0.5, 17.5, 1, 17.5]}, {"line": [1.5, 17.5]}],
+    [{"move": [1, 17.5]}, {"curve": [0.5, 17.5, 0.5, 18]}, {"line": [0.5, 21]},
+     {"curve": [0.5, 21.5, 1, 21.5]}, {"line": [18, 21.5]},
+     {"curve": [18.5, 21.5, 18.5, 21]}, {"line": [18.5, 18]},
+     {"curve": [18.5, 17.5, 18, 17.5]}, {"line": [17.5, 17.5]}],
+    [{"move": [18, 17.5]}, {"curve": [18.5, 17.5, 18.5, 17]},
+     {"line": [18.5, 14]}, {"curve": [18.5, 13.5, 18, 13.5]},
+     {"line": [16, 13.5]}, {"curve": [15.5, 13.5, 15.5, 13]},
+     {"line": [15.5, 12]}, {"curve": [15.5, 11.5, 16, 11.5]},
+     {"line": [19, 11.5]}],
+
+    [{"move": [5.5, 11.5]}, {"line": [5.5, 13.5]}],
+    [{"move": [13.5, 11.5]}, {"line": [13.5, 13.5]}],
+
+    [{"move": [2.5, 15.5]}, {"line": [3, 15.5]},
+     {"curve": [3.5, 15.5, 3.5, 16]}, {"line": [3.5, 17.5]}],
+    [{"move": [16.5, 15.5]}, {"line": [16, 15.5]},
+     {"curve": [15.5, 15.5, 15.5, 16]}, {"line": [15.5, 17.5]}],
+
+    [{"move": [5.5, 15.5]}, {"line": [7.5, 15.5]}],
+    [{"move": [11.5, 15.5]}, {"line": [13.5, 15.5]}],
+    
+    [{"move": [2.5, 19.5]}, {"line": [5, 19.5]},
+     {"curve": [5.5, 19.5, 5.5, 19]}, {"line": [5.5, 17.5]}],
+    [{"move": [5.5, 19]}, {"curve": [5.5, 19.5, 6, 19.5]},
+     {"line": [7.5, 19.5]}],
+
+    [{"move": [11.5, 19.5]}, {"line": [13, 19.5]},
+     {"curve": [13.5, 19.5, 13.5, 19]}, {"line": [13.5, 17.5]}],
+    [{"move": [13.5, 19]}, {"curve": [13.5, 19.5, 14, 19.5]},
+     {"line": [16.5, 19.5]}],
+
+    [{"move": [7.5, 13.5]}, {"line": [9, 13.5]},
+     {"curve": [9.5, 13.5, 9.5, 14]}, {"line": [9.5, 15.5]}],
+    [{"move": [9.5, 14]}, {"curve": [9.5, 13.5, 10, 13.5]},
+     {"line": [11.5, 13.5]}],
+
+    [{"move": [7.5, 17.5]}, {"line": [9, 17.5]},
+     {"curve": [9.5, 17.5, 9.5, 18]}, {"line": [9.5, 19.5]}],
+    [{"move": [9.5, 18]}, {"curve": [9.5, 17.5, 10, 17.5]},
+     {"line": [11.5, 17.5]}],
+
+    [{"move": [8.5, 9.5]}, {"line": [8, 9.5]}, {"curve": [7.5, 9.5, 7.5, 10]},
+     {"line": [7.5, 11]}, {"curve": [7.5, 11.5, 8, 11.5]},
+     {"line": [11, 11.5]}, {"curve": [11.5, 11.5, 11.5, 11]},
+     {"line": [11.5, 10]}, {"curve": [11.5, 9.5, 11, 9.5]},
+     {"line": [10.5, 9.5]}]
+];
+
+Object.prototype.clone = function () {
+    var i, newObj = (this instanceof Array) ? [] : {};
+    for (i in this) {
+        if (i === 'clone') {
+            continue;
+        }
+        if (this[i] && typeof this[i] === "object") {
+            newObj[i] = this[i].clone();
+        } else {
+            newObj[i] = this[i];
+        }
+    }
+    return newObj;
+};
+
+</script>
+<script>
+window.addEventListener('load', function() {
+    PACMAN.init(document.getElementById('pacman-game'), '');
+});
 </script>
 </body>
 </html>
