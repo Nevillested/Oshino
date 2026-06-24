@@ -190,131 +190,6 @@
             transition: background 0.3s;
         }
 
-        /* ── Основной layout (десктоп: левая + правая панель) ─────────────── */
-        #app-layout {
-            display: flex;
-            flex: 1;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        /* ── Левая панель (десктоп) ───────────────────────────────────────── */
-        #left-panel {
-            display: flex;
-            flex-direction: column;
-            background: var(--color-sidebar);
-            color: var(--color-sidebar-text);
-            flex-shrink: 0;
-            width: 30%;
-            min-width: 220px;
-            max-width: 480px;
-            overflow: hidden;
-            transition: background 0.3s;
-        }
-
-        #left-panel-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
-            background: var(--color-topbar);
-            flex-shrink: 0;
-        }
-
-        #left-panel-title {
-            font-size: 17px;
-            font-weight: 700;
-            color: var(--color-sidebar-text);
-            flex: 1;
-        }
-
-        #left-panel-search {
-            padding: 8px 12px;
-            flex-shrink: 0;
-        }
-
-        #left-panel-search input {
-            width: 100%;
-            background: var(--color-search-bg);
-            border: none;
-            border-radius: 20px;
-            padding: 8px 14px;
-            font-size: 14px;
-            color: var(--color-search-text);
-            outline: none;
-        }
-
-        #left-panel-dialogs {
-            flex: 1;
-            overflow-y: auto;
-            padding: 4px 0;
-        }
-
-        #left-panel-footer {
-            padding: 10px 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            border-top: 1px solid rgba(255,255,255,0.08);
-            flex-shrink: 0;
-        }
-
-        #left-panel-footer .lp-btn {
-            background: none;
-            border: none;
-            color: var(--color-sidebar-text);
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 8px;
-            font-size: 18px;
-            opacity: 0.75;
-            transition: opacity 0.15s, background 0.15s;
-            display: flex;
-            align-items: center;
-        }
-
-        #left-panel-footer .lp-btn:hover { opacity: 1; background: rgba(255,255,255,0.1); }
-
-        #left-panel-footer .lp-btn.logout {
-            margin-left: auto;
-            font-size: 13px;
-            opacity: 0.6;
-        }
-
-        /* Разделитель */
-        #resize-handle {
-            width: 4px;
-            background: transparent;
-            cursor: col-resize;
-            flex-shrink: 0;
-            position: relative;
-            transition: background 0.15s;
-            z-index: 2;
-        }
-
-        #resize-handle:hover,
-        #resize-handle.dragging {
-            background: #4a90e2;
-        }
-
-        #resize-handle::after {
-            content: '';
-            position: absolute;
-            top: 0; bottom: 0;
-            left: -4px; right: -4px;
-        }
-
-        /* ── Правая панель (десктоп) ──────────────────────────────────────── */
-        #right-panel {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-            overflow: hidden;
-            background: var(--color-messages-bg);
-            transition: background 0.3s;
-        }
-
         #topbar {
             height: auto;
             background: var(--color-topbar);
@@ -422,7 +297,6 @@
             display: block;
         }
 
-        /* Мобиль: sidebar = весь экран, уезжает влево при открытом чате */
         #sidebar {
             position: fixed;
             top: 0;
@@ -432,7 +306,7 @@
             background: var(--color-sidebar);
             color: var(--color-sidebar-text);
             z-index: 15;
-            transform: translateX(0);
+            transform: translateX(-100%);
             transition: transform 0.3s ease, background 0.3s;
             padding: 16px;
             overflow-y: auto;
@@ -440,16 +314,8 @@
             flex-direction: column;
         }
 
-        /* Когда чат открыт — sidebar уезжает влево */
-        #sidebar.chat-open {
-            transform: translateX(-100%);
-        }
-
-        /* Десктоп: sidebar скрыт, используем #left-panel */
-        @media (min-width: 768px) {
-            #sidebar { display: none !important; }
-            #overlay { display: none !important; }
-            #menu-btn { display: none !important; }
+        #sidebar.open {
+            transform: translateX(0);
         }
 
         #close-menu-btn {
@@ -604,35 +470,13 @@
             background: #357abd;
         }
 
-        /* Мобиль: chat = весь экран, изначально скрыт (за правым краем) */
         #chat {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
+            flex: 1;
             display: flex;
             flex-direction: column;
             min-height: 0;
+            width: 100%;
             background: var(--color-messages-bg);
-            transform: translateX(100%);
-            transition: transform 0.3s ease, background 0.3s;
-            z-index: 14;
-        }
-
-        /* Когда чат открыт — выезжает справа */
-        #chat.chat-visible {
-            transform: translateX(0);
-        }
-
-        /* Десктоп: chat внутри #right-panel, нет fixed/transform */
-        @media (min-width: 768px) {
-            #chat {
-                position: static;
-                transform: none !important;
-                transition: none;
-                flex: 1;
-                width: auto;
-                height: auto;
-            }
         }
 
         #offline-notice {
@@ -1920,19 +1764,52 @@
                 padding: 12px 16px;
             }
 
-            #topbar span { font-size: 18px; }
+            #topbar span {
+                font-size: 18px;
+            }
 
-            .message-wrap { max-width: 60%; }
+            #sidebar {
+                position: fixed;
+                width: 300px;
+                transform: translateX(-100%);
+                height: 100%;
+            }
 
-            .message {
-                font-size: 15px;
-                padding: 10px 16px;
+            #sidebar.open {
+                transform: translateX(0);
+            }
+
+            #overlay.open {
+                display: block;
+            }
+
+            #chat {
+                width: 100%;
             }
 
             #users li {
                 padding: 12px 10px;
                 font-size: 15px;
                 margin-bottom: 4px;
+            }
+            
+            .message-wrap {
+                max-width: 60%;
+            }
+
+            .message {
+                font-size: 15px;
+                padding: 10px 16px;
+            }
+
+            #search-input {
+                font-size: 15px;
+                padding: 10px;
+            }
+
+            #logout-btn-sidebar {
+                font-size: 15px;
+                padding: 12px;
             }
         }
 
@@ -2292,151 +2169,6 @@
             border: none;
             display: block;
         }
-
-        /* ── app-layout: desktop flexbox row ─────────────────────────────── */
-        @media (min-width: 768px) {
-            body { flex-direction: row; }
-
-            #topbar { display: none; } /* на десктопе топбара нет */
-
-            #app-layout {
-                /* left-panel + resize-handle + right-panel уже flex row */
-            }
-
-            /* left-panel занимает сохранённую ширину */
-            #left-panel { display: flex; }
-
-            /* right-panel показываем всегда на десктопе */
-            #right-panel {
-                display: flex;
-                flex-direction: column;
-            }
-
-            /* welcome-screen — только правая панель на десктопе */
-            #welcome-screen {
-                display: flex;
-            }
-        }
-
-        @media (max-width: 767px) {
-            /* Мобиль: left/right panel скрыты, используем sidebar/chat */
-            #left-panel  { display: none !important; }
-            #right-panel { display: none !important; }
-            #resize-handle { display: none !important; }
-            #app-layout { display: none !important; }
-
-            /* welcome-screen на мобиле — внутри sidebar */
-            #mobile-welcome {
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-                position: relative;
-                overflow: hidden;
-            }
-        }
-
-        /* ── Стили диалогов в левой панели (десктоп) ─────────────────────── */
-        #lp-users {
-            list-style: none;
-            padding: 0;
-        }
-
-        #lp-users li {
-            padding: 12px 16px;
-            cursor: pointer;
-            border-radius: 8px;
-            margin: 2px 8px;
-            transition: background 0.15s;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        #lp-users li:hover { background: var(--color-user-hover); }
-        #lp-users li.active { background: var(--color-user-hover); }
-
-        #lp-search-input {
-            width: 100%;
-            background: var(--color-search-bg);
-            border: none;
-            border-radius: 20px;
-            padding: 8px 14px;
-            font-size: 14px;
-            color: var(--color-search-text);
-            outline: none;
-        }
-
-        #lp-search-results {
-            list-style: none;
-            padding: 0 8px;
-        }
-
-        #lp-search-results li {
-            padding: 10px 12px;
-            cursor: pointer;
-            border-radius: 6px;
-            font-size: 14px;
-            color: var(--color-sidebar-text);
-        }
-
-        #lp-search-results li:hover { background: var(--color-user-hover); }
-
-        /* Топбар чата на десктопе */
-        @media (min-width: 768px) {
-            #topbar {
-                display: flex !important;
-                background: var(--color-topbar);
-            }
-            #menu-btn { display: none !important; }
-        }
-
-        /* Переключатель анимированного фона — обычный checkbox-toggle */
-        .bg-toggle-wrap {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-top: 8px;
-        }
-
-        .bg-toggle-label {
-            font-size: 14px;
-            color: var(--color-settings-item-text);
-        }
-
-        .bg-toggle {
-            position: relative;
-            width: 44px;
-            height: 24px;
-            flex-shrink: 0;
-        }
-
-        .bg-toggle input {
-            opacity: 0;
-            width: 0; height: 0;
-        }
-
-        .bg-toggle-slider {
-            position: absolute;
-            inset: 0;
-            background: #555;
-            border-radius: 24px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .bg-toggle-slider::before {
-            content: '';
-            position: absolute;
-            width: 18px; height: 18px;
-            left: 3px; top: 3px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.2s;
-        }
-
-        .bg-toggle input:checked + .bg-toggle-slider { background: #4a90e2; }
-        .bg-toggle input:checked + .bg-toggle-slider::before { transform: translateX(20px); }
-
     </style>
 </head>
 <body>
@@ -2467,41 +2199,9 @@
 
     <div id="overlay"></div>
 
-    <!-- Десктоп: левая панель (дублирует контент sidebar для ≥768px) -->
-    <div id="left-panel">
-        <div id="left-panel-header">
-            <span id="left-panel-title">Oshino</span>
-            <div class="theme-switch-wrap" style="margin:0;">
-                <label class="theme-switch">
-                    <input id="theme-toggle-desktop" class="theme-switch__input" type="checkbox" role="switch" data-pristine="true" />
-                    <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
-                </label>
-            </div>
-            <button class="lp-btn" id="lp-settings-btn" title="Настройки">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            </button>
-            <button class="lp-btn logout" id="lp-logout-btn" title="Выход">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            </button>
-        </div>
-        <div id="left-panel-search">
-            <input type="text" id="lp-search-input" placeholder="Найти пользователя...">
-            <ul id="lp-search-results" style="list-style:none;"></ul>
-        </div>
-        <div id="left-panel-dialogs">
-            <ul id="lp-users"></ul>
-        </div>
-    </div>
-    <div id="resize-handle"></div>
-    <div id="right-panel">
-    </div><!-- /#right-panel placeholder, content added by JS on desktop -->
-
     <div id="sidebar">
         <!-- Главный экран сайдбара -->
         <div id="sidebar-main">
-            <!-- Мобильный welcome — анимация на фоне + поиск + диалоги -->
-            <div id="mobile-canvas-wrap" style="position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;"></div>
-            <div style="position:relative;z-index:1;display:flex;flex-direction:column;flex:1;">
             <div id="search-container">
                 <button id="close-menu-btn">☰</button>
                 <input type="text" id="search-input" placeholder="Найти пользователя...">
@@ -2511,7 +2211,6 @@
             <h3>Диалоги</h3>
             <ul id="users"></ul>
 
-            </div><!-- /z-index wrapper -->
             <div class="theme-switch-wrap">
                 <label class="theme-switch">
                     <input id="theme-toggle" class="theme-switch__input" type="checkbox" role="switch" data-pristine="true" />
@@ -2533,10 +2232,6 @@
             </button>
             <button class="settings-menu-item" id="open-reactions-submenu">
                 <span>😊 Реакции по умолчанию</span>
-                <span class="chevron">›</span>
-            </button>
-            <button class="settings-menu-item" id="open-bg-submenu">
-                <span>🌀 Анимированный фон</span>
                 <span class="chevron">›</span>
             </button>
             <button class="settings-menu-item" id="open-display-name-submenu">
@@ -2601,25 +2296,6 @@
             <div id="display-name-status" class="pwd-status"></div>
         </div>
 
-        <!-- Подменю: анимированный фон -->
-        <div id="bg-submenu" class="settings-submenu">
-            <button id="bg-back-btn" class="settings-back-btn">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-                Анимированный фон
-            </button>
-            <p class="settings-section-title" style="margin-bottom: 16px;">Анимированный фон</p>
-            <p style="font-size: 13px; color: #aaa; margin-bottom: 20px; text-align: center;">наркомания на фоне</p>
-            <div class="bg-toggle-wrap">
-                <span class="bg-toggle-label">Включить анимацию</span>
-                <label class="bg-toggle">
-                    <input type="checkbox" id="bg-anim-toggle" checked>
-                    <span class="bg-toggle-slider"></span>
-                </label>
-            </div>
-        </div>
-
         <!-- Подменю: реакции по умолчанию -->
         <div id="reactions-submenu" class="settings-submenu">
             <button id="reactions-back-btn" class="settings-back-btn">
@@ -2674,7 +2350,7 @@
             <div id="welcome-canvas-wrap"></div>
             <div id="welcome-content">
                 <div id="welcome-greeting"></div>
-                
+                <div id="welcome-subtitle">Выберите пользователя для начала диалога</div>
                 <ul id="welcome-dialogs"></ul>
                 <div id="welcome-empty-hint">Пока нет ни одного диалога — найдите собеседника через поиск в меню</div>
             </div>
@@ -2740,8 +2416,6 @@
             </div>
         </div>
     </div>
-
-    </div><!-- /#chat -->
 
     <!-- Backdrop + контекстное меню сообщения (long-press / right-click) -->
     <div id="ctx-backdrop"></div>
@@ -4438,30 +4112,20 @@
         // ── Состояние формы ──────────────────────────────────────────────────────
 
         function updateFormState() {
-            // Всегда прячем Pac-Man при возврате
+            // Всегда прячем Pac-Man при возврате в чат
             pacmanBlock.style.display = 'none';
+            // Если был загружен iframe — выгружаем
             const frame = pacmanBlock.querySelector('iframe');
             if (frame) frame.src = 'about:blank';
 
-            const desktop = isDesktop ? isDesktop() : window.innerWidth >= 768;
-
             if (!currentUser) {
                 inputArea.style.display = 'none';
-                if (desktop) {
-                    welcomeScreen.style.display = 'flex';
-                    messagesDiv.style.display = 'none';
-                }
+                welcomeScreen.style.display = 'flex';
+                messagesDiv.style.display = 'none';
                 offlineNotice.style.display = 'none';
                 topbarTitle.textContent = 'Oshino';
                 callBtn.style.display = 'none';
                 videoCallBtn.style.display = 'none';
-                // Мобиль: возвращаемся к контактам
-                if (!desktop) {
-                    const chatEl = document.getElementById('chat');
-                    const sidebarEl = document.getElementById('sidebar');
-                    if (chatEl) chatEl.classList.remove('chat-visible');
-                    if (sidebarEl) sidebarEl.classList.remove('chat-open');
-                }
                 return;
             }
 
@@ -5945,226 +5609,6 @@
             showPacman();
         });
 
-        // ── Desktop left-panel ──────────────────────────────────────────────
-
-        const isDesktop = () => window.innerWidth >= 768;
-
-        // Левая панель: поиск
-        const lpSearchInput = document.getElementById('lp-search-input');
-        const lpSearchResults = document.getElementById('lp-search-results');
-        const lpUsers = document.getElementById('lp-users');
-
-        if (lpSearchInput) {
-            lpSearchInput.addEventListener('input', async () => {
-                const q = lpSearchInput.value.trim();
-                lpSearchResults.innerHTML = '';
-                if (!q) return;
-                try {
-                    const r = await fetch(`/search?q=${encodeURIComponent(q)}`);
-                    const results = await r.json();
-                    results.forEach(user => {
-                        const li = document.createElement('li');
-                        li.textContent = user.toLowerCase();
-                        li.addEventListener('click', () => {
-                            addDialog(user);
-                            lpSearchInput.value = '';
-                            lpSearchResults.innerHTML = '';
-                        });
-                        lpSearchResults.appendChild(li);
-                    });
-                } catch(e) {}
-            });
-        }
-
-        // Синхронизируем тему-переключатель десктопа
-        const themeToggleDesktop = document.getElementById('theme-toggle-desktop');
-        if (themeToggleDesktop) {
-            const savedTheme = localStorage.getItem('oshino-theme');
-            if (savedTheme === 'light') themeToggleDesktop.checked = true;
-            requestAnimationFrame(() => themeToggleDesktop.removeAttribute('data-pristine'));
-            themeToggleDesktop.addEventListener('change', () => {
-                const isLight = themeToggleDesktop.checked;
-                applyTheme(isLight);
-                // Синхронизируем мобильный тоггл
-                const mobileToggle = document.getElementById('theme-toggle');
-                if (mobileToggle) mobileToggle.checked = isLight;
-                localStorage.setItem('oshino-theme', isLight ? 'light' : 'dark');
-            });
-        }
-
-        // Синхронизируем мобильный тоггл → десктоп
-        const origThemeToggle = document.getElementById('theme-toggle');
-        if (origThemeToggle) {
-            origThemeToggle.addEventListener('change', () => {
-                if (themeToggleDesktop) themeToggleDesktop.checked = origThemeToggle.checked;
-            });
-        }
-
-        // Кнопки в хедере левой панели
-        const lpSettingsBtn = document.getElementById('lp-settings-btn');
-        const lpLogoutBtn = document.getElementById('lp-logout-btn');
-        if (lpSettingsBtn) lpSettingsBtn.addEventListener('click', () => settingsOpenBtn.click());
-        if (lpLogoutBtn) lpLogoutBtn.addEventListener('click', () => {
-            localStorage.removeItem('oshino_session');
-            window.location.href = '/logout';
-        });
-
-        // Рендерим диалоги и в левой панели
-        function renderLeftPanelDialogs() {
-            if (!lpUsers) return;
-            lpUsers.innerHTML = '';
-            const logins = Object.keys(historyState);
-            logins.forEach(user => {
-                const count = unreadCount[user] || 0;
-                const isOnline = onlineUsers.includes(user);
-                const li = document.createElement('li');
-                li.setAttribute('data-user', user);
-                if (user === currentUser) li.classList.add('active');
-
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'dialog-name';
-                nameSpan.textContent = getDisplayName(user);
-                const statusSpan = document.createElement('span');
-                statusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
-                statusSpan.textContent = isOnline ? '(в сети)' : '(' + formatLastSeen(user) + ')';
-                nameSpan.appendChild(statusSpan);
-                li.appendChild(nameSpan);
-
-                if (count > 0) {
-                    const badge = document.createElement('span');
-                    badge.className = 'unread-badge';
-                    badge.textContent = count;
-                    li.appendChild(badge);
-                }
-
-                li.addEventListener('click', () => {
-                    document.querySelectorAll('#lp-users li').forEach(el => el.classList.remove('active'));
-                    li.classList.add('active');
-                    openDialog(user);
-                });
-                lpUsers.appendChild(li);
-            });
-        }
-
-        // Патчим renderDialogList чтобы обновлял и левую панель
-        const _origRenderDialogList = renderDialogList;
-        renderDialogList = function() {
-            _origRenderDialogList();
-            renderLeftPanelDialogs();
-        };
-
-        // ── Resize handle ────────────────────────────────────────────────────
-        const resizeHandle = document.getElementById('resize-handle');
-        const leftPanel    = document.getElementById('left-panel');
-        if (resizeHandle && leftPanel) {
-            let resizing = false, startX = 0, startW = 0;
-            resizeHandle.addEventListener('mousedown', e => {
-                resizing = true; startX = e.clientX; startW = leftPanel.offsetWidth;
-                resizeHandle.classList.add('dragging');
-                document.body.style.userSelect = 'none';
-            });
-            document.addEventListener('mousemove', e => {
-                if (!resizing) return;
-                const w = Math.max(220, Math.min(480, startW + e.clientX - startX));
-                leftPanel.style.width = w + 'px';
-                localStorage.setItem('oshino-left-width', w);
-            });
-            document.addEventListener('mouseup', () => {
-                resizing = false;
-                resizeHandle.classList.remove('dragging');
-                document.body.style.userSelect = '';
-            });
-            // Восстанавливаем ширину
-            const savedW = localStorage.getItem('oshino-left-width');
-            if (savedW) leftPanel.style.width = savedW + 'px';
-        }
-
-        // ── Mobile swipe to go back to contacts ─────────────────────────────
-        let swipeStartX = 0, swipeStartY = 0;
-        document.addEventListener('touchstart', e => {
-            swipeStartX = e.touches[0].clientX;
-            swipeStartY = e.touches[0].clientY;
-        }, { passive: true });
-        document.addEventListener('touchend', e => {
-            if (!currentUser) return;
-            if (isDesktop()) return;
-            const dx = e.changedTouches[0].clientX - swipeStartX;
-            const dy = Math.abs(e.changedTouches[0].clientY - swipeStartY);
-            // Свайп вправо, не от края (>30px), горизонтальный
-            if (swipeStartX > 30 && dx > 60 && dy < 80) {
-                goBackToContacts();
-            }
-        }, { passive: true });
-
-        function goBackToContacts() {
-            if (isDesktop()) return;
-            const chatEl = document.getElementById('chat');
-            const sidebarEl = document.getElementById('sidebar');
-            chatEl.classList.remove('chat-visible');
-            sidebarEl.classList.remove('chat-open');
-        }
-
-        // Патчим openDialog для мобильного слайда
-        const _origOpenDialog = openDialog;
-        openDialog = async function(user) {
-            await _origOpenDialog(user);
-            if (!isDesktop()) {
-                const chatEl = document.getElementById('chat');
-                const sidebarEl = document.getElementById('sidebar');
-                chatEl.classList.add('chat-visible');
-                sidebarEl.classList.add('chat-open');
-            }
-        };
-
-        // Кнопка назад в топбаре на мобиле (menu-btn → назад к контактам)
-        const menuBtn = document.getElementById('menu-btn');
-        if (menuBtn) {
-            menuBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
-            menuBtn.addEventListener('click', () => {
-                if (!isDesktop() && currentUser) {
-                    goBackToContacts();
-                } else {
-                    sidebar.classList.toggle('open');
-                    overlay.classList.toggle('open');
-                }
-            });
-        }
-
-        // ── Анимированный фон ────────────────────────────────────────────────
-        let bgAnimEnabled = localStorage.getItem('oshino-bg-anim') !== 'off';
-
-        const bgToggleInput = document.getElementById('bg-anim-toggle');
-        const bgOpenBtn = document.getElementById('open-bg-submenu');
-        const bgBackBtn = document.getElementById('bg-back-btn');
-        const bgSubmenu  = document.getElementById('bg-submenu');
-
-        function applyBgAnim(enabled) {
-            bgAnimEnabled = enabled;
-            localStorage.setItem('oshino-bg-anim', enabled ? 'on' : 'off');
-            if (p5inst) {
-                if (enabled) p5inst.loop();
-                else { p5inst.noLoop(); p5inst.clear(); }
-            }
-            if (mobilep5inst) {
-                if (enabled) mobilep5inst.loop();
-                else { mobilep5inst.noLoop(); mobilep5inst.clear(); }
-            }
-        }
-
-        if (bgToggleInput) {
-            bgToggleInput.checked = bgAnimEnabled;
-            bgToggleInput.addEventListener('change', () => applyBgAnim(bgToggleInput.checked));
-        }
-
-        if (bgOpenBtn) bgOpenBtn.addEventListener('click', () => {
-            settingsPanel.classList.remove('open');
-            bgSubmenu.classList.add('open');
-        });
-        if (bgBackBtn) bgBackBtn.addEventListener('click', () => {
-            bgSubmenu.classList.remove('open');
-            settingsPanel.classList.add('open');
-        });
-
         // Загружаем настройки и пин при инициализации
         loadSettings();
 
@@ -6331,126 +5775,13 @@
         const observer = new MutationObserver(() => {
             const visible = welcomeScreen && getComputedStyle(welcomeScreen).display !== 'none';
             if (p5inst) {
-                if (bgAnimEnabled) { visible ? p5inst.loop() : p5inst.noLoop(); }
-                else p5inst.noLoop();
+                visible ? p5inst.loop() : p5inst.noLoop();
             }
         });
         if (welcomeScreen) {
             observer.observe(welcomeScreen, { attributes: true, attributeFilter: ['style', 'class'] });
         }
-
-        // Если анимация выключена при загрузке — останавливаем
-        if (!bgAnimEnabled && p5inst) p5inst.noLoop();
     })();
     </script>
-
-    <script>
-    // ── Мобильный p5 canvas (в #mobile-canvas-wrap внутри sidebar) ──────────
-    let mobilep5inst = null;
-    (function() {
-        const mobileWrap = document.getElementById('mobile-canvas-wrap');
-        if (!mobileWrap) return;
-        if (window.innerWidth >= 768) return; // только мобиль
-
-        const pDeg  = (a) => Math.PI / 180 * a;
-        const pRand = (v1, v2) => Math.floor(v1 + Math.random() * (v2 - v1));
-        const PRESETS = {
-            dark:  () => ({ h1:pRand(0,360), h2:pRand(0,360), s1:pRand(20,90), s2:pRand(20,90), l1:pRand(30,80), l2:pRand(30,80), bgR:0, bgG:0, bgB:0 }),
-            light: () => ({ h1:pRand(0,360), h2:pRand(0,360), s1:pRand(30,70), s2:pRand(30,70), l1:pRand(35,65), l2:pRand(35,65), bgR:244, bgG:248, bgB:252 }),
-        };
-        const initP = document.body.classList.contains('light') ? PRESETS.light() : PRESETS.dark();
-        const mopt = { particles:500, noiseScale:0.009, angle:pDeg(-90), strokeWeight:1.2, tail:82,
-            h1:initP.h1, h2:initP.h2, s1:initP.s1, s2:initP.s2, l1:initP.l1, l2:initP.l2,
-            bgR:initP.bgR, bgG:initP.bgG, bgB:initP.bgB };
-        const mParticles = [];
-        let mTime = 0;
-
-        window.applyParticleTheme = (function(orig) {
-            return function(isLight) {
-                if (orig) orig(isLight);
-                const p = isLight ? PRESETS.light() : PRESETS.dark();
-                Object.assign(mopt, p);
-                mParticles.forEach(pt => pt && pt.randomize && pt.randomize());
-            };
-        })(window.applyParticleTheme);
-
-        mobilep5inst = new p5(function(p) {
-            class MP {
-                constructor(x, y) {
-                    this.x=x; this.y=y; this.lx=x; this.ly=y;
-                    this.vx=0; this.vy=0; this.ax=0; this.ay=0;
-                    this.hs = Math.random();
-                    this._apply();
-                }
-                _apply() {
-                    this.hue  = this.hs>.5 ? 20+mopt.h1 : 20+mopt.h2;
-                    this.sat  = this.hs>.5 ? mopt.s1 : mopt.s2;
-                    this.light= this.hs>.5 ? mopt.l1 : mopt.l2;
-                    this.maxSpeed = this.hs>.5 ? 3 : 2;
-                }
-                randomize() { this.hs=Math.random(); this._apply(); }
-                follow() {
-                    const a = p.noise(this.x*mopt.noiseScale, this.y*mopt.noiseScale, mTime*mopt.noiseScale)*Math.PI*0.5+mopt.angle;
-                    this.ax+=Math.cos(a); this.ay+=Math.sin(a);
-                }
-                update() {
-                    this.follow();
-                    this.vx+=this.ax; this.vy+=this.ay;
-                    const sp=Math.sqrt(this.vx*this.vx+this.vy*this.vy);
-                    const an=Math.atan2(this.vy,this.vx);
-                    const m=Math.min(this.maxSpeed,sp);
-                    this.vx=Math.cos(an)*m; this.vy=Math.sin(an)*m;
-                    this.x+=this.vx; this.y+=this.vy;
-                    this.ax=0; this.ay=0;
-                    if(this.x<0){this.x=p.width;this.lx=p.width;this.ly=this.y;}
-                    if(this.x>p.width){this.x=0;this.lx=0;this.ly=this.y;}
-                    if(this.y<0){this.y=p.height;this.ly=p.height;this.lx=this.x;}
-                    if(this.y>p.height){this.y=0;this.ly=0;this.lx=this.x;}
-                }
-                render() {
-                    p.stroke(`hsla(${this.hue},${this.sat}%,${this.light}%,.5)`);
-                    p.line(this.x,this.y,this.lx,this.ly);
-                    this.lx=this.x; this.ly=this.y;
-                }
-            }
-            p.setup = function() {
-                const cnv = p.createCanvas(mobileWrap.offsetWidth, mobileWrap.offsetHeight);
-                cnv.parent(mobileWrap);
-                p.strokeWeight(mopt.strokeWeight); p.noFill();
-                for (let i=0;i<mopt.particles;i++) mParticles.push(new MP(Math.random()*p.width, Math.random()*p.height));
-                if (!bgAnimEnabled) p.noLoop();
-            };
-            p.draw = function() {
-                mTime++;
-                p.background(mopt.bgR, mopt.bgG, mopt.bgB, 100-mopt.tail);
-                mParticles.forEach(pt => { pt.update(); pt.render(); });
-            };
-            p.windowResized = function() { p.resizeCanvas(mobileWrap.offsetWidth, mobileWrap.offsetHeight); };
-        });
-    })();
-    </script>
-
-    <script>
-    // ── Инициализация app-layout (десктоп) ───────────────────────────────────
-    (function() {
-        if (window.innerWidth < 768) return;
-
-        const appLayout = document.getElementById('app-layout');
-        const rightPanel = document.getElementById('right-panel');
-        const chat = document.getElementById('chat');
-        const welcomeScreen = document.getElementById('welcome-screen');
-        const topbar = document.getElementById('topbar');
-
-        // Перемещаем topbar и chat в right-panel
-        if (rightPanel && chat) {
-            if (topbar && !rightPanel.contains(topbar)) rightPanel.appendChild(topbar);
-            if (!rightPanel.contains(chat)) rightPanel.appendChild(chat);
-            if (welcomeScreen && !rightPanel.contains(welcomeScreen)) {
-                rightPanel.insertBefore(welcomeScreen, chat);
-            }
-        }
-
-        // Показываем welcome screen на десктопе если нет currentUser
-        if (welcomeScreen) welcomeScreen.style.display = 'flex';
-    })();
-    </script>
+</body>
+</html>
