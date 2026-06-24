@@ -217,15 +217,12 @@
     <!-- Форма -->
     <div class="login-box">
         <h1>Oshino</h1>
-        <form id="login-form" autocomplete="off">
-            <!-- Honeypot: перехватывают автозаполнение Chrome на себя -->
-            <input type="text"     name="fake_user" style="display:none" tabindex="-1" autocomplete="username">
-            <input type="password" name="fake_pass" style="display:none" tabindex="-1" autocomplete="current-password">
+        <form id="login-form" autocomplete="on">
             <div class="input-wrap">
-                <input type="text" name="login" id="login-input" placeholder="Логин" required autocomplete="new-password" inputmode="text">
+                <input type="text" name="login" id="login-input" placeholder="Логин" required autocomplete="username">
             </div>
             <div class="input-wrap">
-                <input type="password" name="password" id="pwd-input" placeholder="Пароль" required autocomplete="current-password">
+                <input type="password" name="password" id="pwd-input" placeholder="Пароль" required autocomplete="off">
                 <button type="button" class="eye-btn closed" id="eye-btn" aria-label="Показать пароль">
                     <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path class="eye-top" d="M10,50 Q50,-10 90,50"
