@@ -85,7 +85,10 @@
 
             /* Offline / welcome */
             --color-offline-text: #4a4f60;
-            --color-welcome-text: #4a4f60;
+            --color-welcome-text: #b0b8d0;
+            --color-welcome-greeting: #e8ecf8;
+            --color-welcome-card-bg:   rgba(20, 22, 30, 0.72);
+            --color-welcome-card-hover:rgba(30, 33, 44, 0.82);
         }
 
         /* ── Светлая тема ──────────────────────────────────────────────────── */
@@ -156,7 +159,10 @@
 
             /* Offline / welcome */
             --color-offline-text: #7a9ab8;
-            --color-welcome-text: #7a9ab8;
+            --color-welcome-text: #4a6a8a;
+            --color-welcome-greeting: #1a2a3a;
+            --color-welcome-card-bg:   rgba(255, 255, 255, 0.72);
+            --color-welcome-card-hover:rgba(234, 243, 252, 0.88);
         }
 
         * {
@@ -1007,25 +1013,50 @@
             text-align: center;
             padding: 24px;
             overflow-y: auto;
+            position: relative; /* для canvas-подложки */
+        }
+
+        /* p5.js canvas — фоновая анимация welcome-экрана */
+        #welcome-canvas-wrap {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        #welcome-canvas-wrap canvas {
+            display: block;
+        }
+
+        /* Контент поверх анимации */
+        #welcome-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
         }
 
         #welcome-greeting {
             font-size: 22px;
             font-weight: 700;
-            color: #2c2c2c;
+            color: var(--color-welcome-greeting);
             margin-bottom: 6px;
+            text-shadow: 0 1px 8px rgba(0,0,0,0.35);
         }
 
         #welcome-subtitle {
             font-size: 15px;
-            color: #999;
+            color: var(--color-welcome-text);
             margin-bottom: 24px;
+            text-shadow: 0 1px 6px rgba(0,0,0,0.3);
         }
 
         #welcome-empty-hint {
             display: none;
             font-size: 14px;
-            color: #aaa;
+            color: var(--color-welcome-text);
             margin-top: 4px;
         }
 
@@ -1040,23 +1071,25 @@
             align-items: center;
             justify-content: space-between;
             padding: 14px 16px;
-            background: var(--color-bubble-other);
+            background: var(--color-welcome-card-bg);
             border-radius: 8px;
             margin-bottom: 8px;
             cursor: pointer;
             font-size: 16px;
             font-weight: 600;
             color: var(--color-bubble-text);
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
             transition: background 0.15s;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
         }
 
         #welcome-dialogs li:hover {
-            background: var(--color-ctx-hover);
+            background: var(--color-welcome-card-hover);
         }
 
         #welcome-dialogs li:active {
-            background: #e8e8e8;
+            background: var(--color-welcome-card-hover);
         }
 
         #input-area {
@@ -2222,10 +2255,13 @@
         </div>
 
         <div id="welcome-screen">
-            <div id="welcome-greeting"></div>
-            <div id="welcome-subtitle">Выберите пользователя для начала диалога</div>
-            <ul id="welcome-dialogs"></ul>
-            <div id="welcome-empty-hint">Пока нет ни одного диалога — найдите собеседника через поиск в меню</div>
+            <div id="welcome-canvas-wrap"></div>
+            <div id="welcome-content">
+                <div id="welcome-greeting"></div>
+                <div id="welcome-subtitle">Выберите пользователя для начала диалога</div>
+                <ul id="welcome-dialogs"></ul>
+                <div id="welcome-empty-hint">Пока нет ни одного диалога — найдите собеседника через поиск в меню</div>
+            </div>
         </div>
         <div id="offline-notice">Пользователь не в сети</div>
         <div id="messages" style="display: none;">
@@ -5146,6 +5182,147 @@
         // Загружаем настройки и пин при инициализации
         loadSettings();
 
+    </script>
+
+    <!-- p5.js для фоновой анимации welcome-экрана -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script>
+    (function() {
+        const canvasWrap = document.getElementById('welcome-canvas-wrap');
+        if (!canvasWrap) return;
+
+        const pDeg  = (a) => Math.PI / 180 * a;
+        const pRand = (v1, v2) => Math.floor(v1 + Math.random() * (v2 - v1));
+
+        const opt = {
+            particles:   700,
+            noiseScale:  0.009,
+            angle:       pDeg(-90),
+            h1: pRand(0, 360), h2: pRand(0, 360),
+            s1: pRand(20, 90), s2: pRand(20, 90),
+            l1: pRand(30, 80), l2: pRand(30, 80),
+            strokeWeight: 1.2,
+            tail: 82,
+        };
+
+        // По клику на welcome-экран — перекрасить частицы
+        const welcomeScreen = document.getElementById('welcome-screen');
+        if (welcomeScreen) {
+            welcomeScreen.addEventListener('click', () => {
+                opt.h1 = pRand(0, 360); opt.h2 = pRand(0, 360);
+                opt.s1 = pRand(20, 90); opt.s2 = pRand(20, 90);
+                opt.l1 = pRand(30, 80); opt.l2 = pRand(30, 80);
+                opt.angle += pDeg(p5inst.random(30, 60)) * (Math.random() > .5 ? 1 : -1);
+                for (let p of pParticles) p.randomize();
+            });
+        }
+
+        const pParticles = [];
+        let pTime = 0;
+        let p5inst = null;
+
+        class PParticle {
+            constructor(x, y, p) {
+                this.p = p;
+                this.x = x; this.y = y;
+                this.lx = x; this.ly = y;
+                this.vx = 0; this.vy = 0;
+                this.ax = 0; this.ay = 0;
+                this.hueSeed = Math.random();
+                this._applyOpt();
+            }
+
+            _applyOpt() {
+                this.hue      = this.hueSeed > .5 ? 20 + opt.h1 : 20 + opt.h2;
+                this.sat      = this.hueSeed > .5 ? opt.s1 : opt.s2;
+                this.light    = this.hueSeed > .5 ? opt.l1 : opt.l2;
+                this.maxSpeed = this.hueSeed > .5 ? 3 : 2;
+            }
+
+            randomize() {
+                this.hueSeed = Math.random();
+                this._applyOpt();
+            }
+
+            follow() {
+                const angle = this.p.noise(
+                    this.x * opt.noiseScale,
+                    this.y * opt.noiseScale,
+                    pTime * opt.noiseScale
+                ) * Math.PI * 0.5 + opt.angle;
+                this.ax += Math.cos(angle);
+                this.ay += Math.sin(angle);
+            }
+
+            update() {
+                this.follow();
+                this.vx += this.ax; this.vy += this.ay;
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const ang   = Math.atan2(this.vy, this.vx);
+                const m     = Math.min(this.maxSpeed, speed);
+                this.vx = Math.cos(ang) * m;
+                this.vy = Math.sin(ang) * m;
+                this.x += this.vx; this.y += this.vy;
+                this.ax = 0; this.ay = 0;
+                this.edges();
+            }
+
+            edges() {
+                const w = this.p.width, h = this.p.height;
+                if (this.x < 0)  { this.x = w; this.lx = w; this.ly = this.y; }
+                if (this.x > w)  { this.x = 0; this.lx = 0; this.ly = this.y; }
+                if (this.y < 0)  { this.y = h; this.ly = h; this.lx = this.x; }
+                if (this.y > h)  { this.y = 0; this.ly = 0; this.lx = this.x; }
+            }
+
+            render() {
+                this.p.stroke(`hsla(${this.hue},${this.sat}%,${this.light}%,.5)`);
+                this.p.line(this.x, this.y, this.lx, this.ly);
+                this.lx = this.x; this.ly = this.y;
+            }
+        }
+
+        // p5 в instance mode — не загрязняет глобальный scope
+        p5inst = new p5(function(p) {
+            p.setup = function() {
+                const cnv = p.createCanvas(canvasWrap.offsetWidth, canvasWrap.offsetHeight);
+                cnv.parent(canvasWrap);
+                p.strokeWeight(opt.strokeWeight);
+                p.noFill();
+                for (let i = 0; i < opt.particles; i++) {
+                    pParticles.push(new PParticle(
+                        Math.random() * p.width,
+                        Math.random() * p.height,
+                        p
+                    ));
+                }
+            };
+
+            p.draw = function() {
+                pTime++;
+                p.background(0, 100 - opt.tail);
+                for (let pt of pParticles) {
+                    pt.update();
+                    pt.render();
+                }
+            };
+
+            p.windowResized = function() {
+                p.resizeCanvas(canvasWrap.offsetWidth, canvasWrap.offsetHeight);
+            };
+        });
+
+        // Останавливаем анимацию когда welcome-экран скрыт — экономим CPU
+        const observer = new MutationObserver(() => {
+            const visible = welcomeScreen && getComputedStyle(welcomeScreen).display !== 'none';
+            if (p5inst) {
+                visible ? p5inst.loop() : p5inst.noLoop();
+            }
+        });
+        if (welcomeScreen) {
+            observer.observe(welcomeScreen, { attributes: true, attributeFilter: ['style', 'class'] });
+        }
+    })();
     </script>
 </body>
 </html>
