@@ -5160,6 +5160,9 @@
             } else {
                 document.body.classList.remove('light');
             }
+            if (typeof window.applyParticleTheme === 'function') {
+                window.applyParticleTheme(isLight);
+            }
         }
 
         // Восстанавливаем тему из localStorage
@@ -5194,25 +5197,55 @@
         const pDeg  = (a) => Math.PI / 180 * a;
         const pRand = (v1, v2) => Math.floor(v1 + Math.random() * (v2 - v1));
 
+        // Пресеты цветов частиц для каждой темы.
+        // dark:  насыщенные случайные цвета на чёрном фоне — как в оригинале.
+        // light: тёплые/холодные пастельные оттенки на белом фоне —
+        //        lightness выше (60-90), насыщенность чуть ниже (30-70).
+        const THEME_PRESETS = {
+            dark: () => ({
+                h1: pRand(0, 360),   h2: pRand(0, 360),
+                s1: pRand(20, 90),   s2: pRand(20, 90),
+                l1: pRand(30, 80),   l2: pRand(30, 80),
+                bgR: 0, bgG: 0, bgB: 0,
+            }),
+            light: () => ({
+                h1: pRand(0, 360),   h2: pRand(0, 360),
+                s1: pRand(30, 70),   s2: pRand(30, 70),
+                l1: pRand(35, 65),   l2: pRand(35, 65),
+                bgR: 244, bgG: 248, bgB: 252,
+            }),
+        };
+
+        const initPreset = document.body.classList.contains('light')
+            ? THEME_PRESETS.light()
+            : THEME_PRESETS.dark();
         const opt = {
             particles:   700,
             noiseScale:  0.009,
             angle:       pDeg(-90),
-            h1: pRand(0, 360), h2: pRand(0, 360),
-            s1: pRand(20, 90), s2: pRand(20, 90),
-            l1: pRand(30, 80), l2: pRand(30, 80),
+            h1: initPreset.h1, h2: initPreset.h2,
+            s1: initPreset.s1, s2: initPreset.s2,
+            l1: initPreset.l1, l2: initPreset.l2,
+            bgR: initPreset.bgR, bgG: initPreset.bgG, bgB: initPreset.bgB,
             strokeWeight: 1.2,
             tail: 82,
         };
 
-        // По клику на welcome-экран — перекрасить частицы
+        // Экспортируем функцию смены темы — вызывается из applyTheme()
+        window.applyParticleTheme = function(isLight) {
+            const preset = isLight ? THEME_PRESETS.light() : THEME_PRESETS.dark();
+            Object.assign(opt, preset);
+            for (let p of pParticles) p.randomize();
+        };
+
+        // По клику на welcome-экран — перекрасить частицы (в рамках текущей темы)
         const welcomeScreen = document.getElementById('welcome-screen');
         if (welcomeScreen) {
             welcomeScreen.addEventListener('click', () => {
-                opt.h1 = pRand(0, 360); opt.h2 = pRand(0, 360);
-                opt.s1 = pRand(20, 90); opt.s2 = pRand(20, 90);
-                opt.l1 = pRand(30, 80); opt.l2 = pRand(30, 80);
-                opt.angle += pDeg(p5inst.random(30, 60)) * (Math.random() > .5 ? 1 : -1);
+                const isLight = document.body.classList.contains('light');
+                const preset  = isLight ? THEME_PRESETS.light() : THEME_PRESETS.dark();
+                Object.assign(opt, preset);
+                opt.angle += pDeg(p5inst ? p5inst.random(30, 60) : 45) * (Math.random() > .5 ? 1 : -1);
                 for (let p of pParticles) p.randomize();
             });
         }
@@ -5300,7 +5333,7 @@
 
             p.draw = function() {
                 pTime++;
-                p.background(0, 100 - opt.tail);
+                p.background(opt.bgR, opt.bgG, opt.bgB, 100 - opt.tail);
                 for (let pt of pParticles) {
                     pt.update();
                     pt.render();
