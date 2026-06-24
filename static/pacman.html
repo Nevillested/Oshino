@@ -70,10 +70,37 @@ html, body {
     font-size: 11px;
     color: #555;
     text-align: center;
-    padding: 4px 0 6px;
+    padding: 4px 0 2px;
     flex-shrink: 0;
     letter-spacing: 1px;
 }
+/* D-pad */
+#dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    gap: 4px;
+    justify-content: center;
+    padding: 6px 0 10px;
+    flex-shrink: 0;
+}
+.dp {
+    background: #1a1a1a;
+    color: #ffe000;
+    border: 1px solid #333;
+    border-radius: 8px;
+    font-size: 22px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.dp:active { background: #ffe000; color: #000; }
+@media (min-width: 768px) { #dpad { display: none; } }
 </style>
 </head>
 <body>
@@ -85,7 +112,18 @@ html, body {
 <div id="game-wrap">
     <div id="pacman-game"></div>
 </div>
-<div id="hint">СТРЕЛКИ или WASD · N — новая игра · ПРОБЕЛ — пауза</div>
+<div id="hint">СТРЕЛКИ или WASD · ПРОБЕЛ — пауза</div>
+<div id="dpad">
+    <div></div>
+    <button class="dp" id="dp-up">▲</button>
+    <div></div>
+    <button class="dp" id="dp-left">◀</button>
+    <div></div>
+    <button class="dp" id="dp-right">▶</button>
+    <div></div>
+    <button class="dp" id="dp-down">▼</button>
+    <div></div>
+</div>
 
 <script>
 /*jslint browser: true, undef: true, eqeqeq: true, nomen: true, white: true */
@@ -1356,9 +1394,28 @@ window.addEventListener('load', function() {
     
     // Тап по игровой области — пауза/продолжение
     document.getElementById('pacman-game').addEventListener('click', function() {
-        // эмулируем нажатие P
         var e = new KeyboardEvent('keydown', { keyCode: 80, which: 80, bubbles: true });
         document.dispatchEvent(e);
+    });
+
+    // D-pad
+    var dpMap = {
+        'dp-up':    38,  // UP
+        'dp-down':  40,  // DOWN
+        'dp-left':  37,  // LEFT
+        'dp-right': 39   // RIGHT
+    };
+    Object.keys(dpMap).forEach(function(id) {
+        var btn = document.getElementById(id);
+        if (!btn) return;
+        var keyCode = dpMap[id];
+        function fire(e) {
+            e.preventDefault();
+            var ev = new KeyboardEvent('keydown', { keyCode: keyCode, which: keyCode, bubbles: true });
+            document.dispatchEvent(ev);
+        }
+        btn.addEventListener('touchstart', fire, { passive: false });
+        btn.addEventListener('mousedown', fire);
     });
 });
 </script>
