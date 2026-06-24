@@ -1855,28 +1855,6 @@
                 position: static;
                 transform: none;
                 overflow: hidden;
-                background: transparent;
-            }
-
-            /* Welcome screen занимает всю правую часть */
-            #welcome-screen {
-                position: fixed;
-                top: 0;
-                right: 0;
-                bottom: 0;
-                left: var(--sidebar-w, 28%);
-                z-index: 0;
-            }
-
-            /* Чат поверх welcome-screen */
-            #messages,
-            #input-area,
-            #pin-bar,
-            #reply-bar,
-            #recording-bar,
-            #chat-topbar {
-                position: relative;
-                z-index: 1;
             }
 
             #users li {
