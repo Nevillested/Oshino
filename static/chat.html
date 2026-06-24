@@ -16,137 +16,145 @@
     <meta name="apple-mobile-web-app-title" content="Oshino">
     <style>
         /* ── Темы ──────────────────────────────────────────────────────────────
-           Тёмная тема (default) использует текущие хардкод-цвета,
-           светлая — чистые, тёплые оттенки. Все цвета вынесены в CSS-переменные
-           на :root и переопределяются классом body.light на нужных элементах.    */
+           :root — тёмная тема (дефолт): угольно-тёмная, без белых мест.
+           body.light — светлая: чисто-белая с голубыми акцентами.             */
         :root {
             /* Основные поверхности */
-            --color-bg:           #f5f5f5;
-            --color-topbar:       #2c2c2c;
-            --color-sidebar:      #2c2c2c;
-            --color-sidebar-text: #ffffff;
-            --color-input-bg:     #ffffff;
+            --color-bg:           #0d0d0d;
+            --color-topbar:       #111318;
+            --color-sidebar:      #111318;
+            --color-sidebar-text: #d8dce6;
+            --color-input-bg:     #1a1d24;
 
             /* Область сообщений */
-            --color-messages-bg:  #f5f5f5;
-            --color-bubble-other: #ffffff;
-            --color-bubble-text:  #1a1a1a;
-            --color-time:         #999;
+            --color-messages-bg:  #0d0d0d;
+            --color-bubble-other: #1e2128;
+            --color-bubble-text:  #d8dce6;
+            --color-time:         #5a5f70;
 
             /* Элементы сайдбара */
-            --color-search-bg:    #ffffff;
-            --color-search-text:  #1a1a1a;
-            --color-results-bg:   #1a1a1a;
-            --color-results-text: #ffffff;
-            --color-results-sep:  #444;
-            --color-results-hover:#333;
-            --color-user-hover:   #444;
-            --color-section-title:#aaa;
+            --color-search-bg:    #1a1d24;
+            --color-search-text:  #d8dce6;
+            --color-results-bg:   #161820;
+            --color-results-text: #d8dce6;
+            --color-results-sep:  #2a2d38;
+            --color-results-hover:#1e2128;
+            --color-user-hover:   #1e2128;
+            --color-section-title:#4a4f60;
 
             /* UI-элементы */
-            --color-pin-bar-bg:   #ffffff;
-            --color-pin-sep:      #e5e5e5;
-            --color-pin-text:     #555;
-            --color-reply-bar-bg: #f8f9fa;
-            --color-reply-sep:    #e5e5e5;
-            --color-reply-text:   #666;
-            --color-ctx-bg:       #ffffff;
-            --color-ctx-text:     #2c2c2c;
-            --color-ctx-hover:    #f5f5f5;
-            --color-ctx-active:   #eeeeee;
-            --color-ctx-sep:      #f0f0f0;
-            --color-ctx-icon:     #666;
-            --color-reaction-bg:  #ffffff;
-            --color-reaction-sep: #e5e5e5;
-            --color-reaction-own-bg: #e8f0fe;
+            --color-pin-bar-bg:   #111318;
+            --color-pin-sep:      #2a2d38;
+            --color-pin-text:     #8a90a8;
+            --color-reply-bar-bg: #111318;
+            --color-reply-sep:    #2a2d38;
+            --color-reply-text:   #7a80a0;
+            --color-ctx-bg:       #1a1d24;
+            --color-ctx-text:     #d8dce6;
+            --color-ctx-hover:    #22262f;
+            --color-ctx-active:   #2a2d38;
+            --color-ctx-sep:      #2a2d38;
+            --color-ctx-icon:     #6a70a0;
+            --color-reaction-bg:  #1e2128;
+            --color-reaction-sep: #2a2d38;
+            --color-reaction-own-bg: #1a2a40;
 
             /* Settings */
-            --color-settings-item-bg:   #3a3a3a;
-            --color-settings-item-text: #dddddd;
-            --color-settings-item-hover:#4a4a4a;
-            --color-pwd-input-bg:       #3a3a3a;
-            --color-pwd-input-border:   #555555;
-            --color-pwd-input-text:     #eeeeee;
-            --color-react-btn-bg:       #3a3a3a;
-            --color-react-btn-sel-bg:   #1a2a3a;
+            --color-settings-item-bg:   #1e2128;
+            --color-settings-item-text: #c8ccd8;
+            --color-settings-item-hover:#2a2d38;
+            --color-pwd-input-bg:       #1a1d24;
+            --color-pwd-input-border:   #2a2d38;
+            --color-pwd-input-text:     #d8dce6;
+            --color-react-btn-bg:       #1e2128;
+            --color-react-btn-sel-bg:   #1a2a40;
 
             /* Input bar */
-            --color-input-bar-bg:   #ffffff;
-            --color-input-bar-sep:  #e5e5e5;
-            --color-input-text:     #1a1a1a;
-            --color-input-border:   #ddd;
+            --color-input-bar-bg:   #111318;
+            --color-input-bar-sep:  #2a2d38;
+            --color-input-text:     #d8dce6;
+            --color-input-border:   #2a2d38;
             --color-input-focus:    #4a90e2;
-            --color-attach-btn:     #666;
-            --color-cancel-btn:     #999;
-            --color-cancel-hover:   #eeeeee;
+            --color-attach-btn:     #6a70a0;
+            --color-cancel-btn:     #5a5f70;
+            --color-cancel-hover:   #1e2128;
 
             /* Call overlay */
-            --color-call-bg:      rgba(30,30,30,0.97);
-            --color-call-text:    #ffffff;
+            --color-call-bg:      rgba(10,10,15,0.97);
+            --color-call-text:    #d8dce6;
 
             /* Offline / welcome */
-            --color-offline-text: #999;
-            --color-welcome-text: #aaa;
+            --color-offline-text: #4a4f60;
+            --color-welcome-text: #4a4f60;
         }
 
         /* ── Светлая тема ──────────────────────────────────────────────────── */
         body.light {
-            --color-bg:           #f0f2f5;
-            --color-topbar:       #5b7fa6;
-            --color-sidebar:      #4a6a8a;
-            --color-sidebar-text: #f0f4f8;
+            /* Основные поверхности */
+            --color-bg:           #ffffff;
+            --color-topbar:       #c8dcf0;
+            --color-sidebar:      #d8ecff;
+            --color-sidebar-text: #1a2a3a;
+            --color-input-bg:     #ffffff;
 
-            --color-messages-bg:  #e8ecf0;
+            /* Область сообщений */
+            --color-messages-bg:  #f4f8fc;
             --color-bubble-other: #ffffff;
             --color-bubble-text:  #1a1a1a;
-            --color-time:         #888;
+            --color-time:         #9aacbc;
 
-            --color-search-bg:    rgba(255,255,255,0.2);
-            --color-search-text:  #f0f4f8;
-            --color-results-bg:   #3a5a7a;
-            --color-results-text: #f0f4f8;
-            --color-results-sep:  rgba(255,255,255,0.15);
-            --color-results-hover:rgba(255,255,255,0.12);
-            --color-user-hover:   rgba(255,255,255,0.15);
-            --color-section-title:rgba(240,244,248,0.6);
+            /* Элементы сайдбара */
+            --color-search-bg:    #ffffff;
+            --color-search-text:  #1a2a3a;
+            --color-results-bg:   #eaf3fc;
+            --color-results-text: #1a2a3a;
+            --color-results-sep:  #c8dcf0;
+            --color-results-hover:#dceefa;
+            --color-user-hover:   #dceefa;
+            --color-section-title:#7a9ab8;
 
-            --color-pin-bar-bg:   #d8e4f0;
-            --color-pin-sep:      #c0cfde;
-            --color-pin-text:     #3a5a7a;
-            --color-reply-bar-bg: #dce8f4;
-            --color-reply-sep:    #c0cfde;
-            --color-reply-text:   #4a6a8a;
+            /* UI-элементы */
+            --color-pin-bar-bg:   #eaf3fc;
+            --color-pin-sep:      #c8dcf0;
+            --color-pin-text:     #3a6a9a;
+            --color-reply-bar-bg: #eaf3fc;
+            --color-reply-sep:    #c8dcf0;
+            --color-reply-text:   #4a7aaa;
             --color-ctx-bg:       #ffffff;
             --color-ctx-text:     #1a1a1a;
-            --color-ctx-hover:    #f0f4f8;
-            --color-ctx-active:   #e4ecf4;
-            --color-ctx-sep:      #e8ecf0;
-            --color-ctx-icon:     #5b7fa6;
+            --color-ctx-hover:    #eaf3fc;
+            --color-ctx-active:   #d8ecff;
+            --color-ctx-sep:      #e0edf8;
+            --color-ctx-icon:     #4a7aaa;
             --color-reaction-bg:  #ffffff;
-            --color-reaction-sep: #d0dce8;
-            --color-reaction-own-bg: #dce8f8;
+            --color-reaction-sep: #c8dcf0;
+            --color-reaction-own-bg: #dceefa;
 
-            --color-settings-item-bg:   rgba(255,255,255,0.18);
-            --color-settings-item-text: #f0f4f8;
-            --color-settings-item-hover:rgba(255,255,255,0.28);
-            --color-pwd-input-bg:       rgba(255,255,255,0.15);
-            --color-pwd-input-border:   rgba(255,255,255,0.35);
-            --color-pwd-input-text:     #f0f4f8;
-            --color-react-btn-bg:       rgba(255,255,255,0.15);
-            --color-react-btn-sel-bg:   rgba(255,255,255,0.35);
+            /* Settings */
+            --color-settings-item-bg:   #eaf3fc;
+            --color-settings-item-text: #1a2a3a;
+            --color-settings-item-hover:#d8ecff;
+            --color-pwd-input-bg:       #ffffff;
+            --color-pwd-input-border:   #b8ccde;
+            --color-pwd-input-text:     #1a2a3a;
+            --color-react-btn-bg:       #eaf3fc;
+            --color-react-btn-sel-bg:   #d8ecff;
 
-            --color-input-bar-bg:   #dce8f4;
-            --color-input-bar-sep:  #c0cfde;
+            /* Input bar */
+            --color-input-bar-bg:   #eaf3fc;
+            --color-input-bar-sep:  #c8dcf0;
             --color-input-text:     #1a1a1a;
-            --color-input-border:   #b0c4d8;
-            --color-input-focus:    #5b7fa6;
-            --color-attach-btn:     #5b7fa6;
+            --color-input-border:   #b8ccde;
+            --color-input-focus:    #4a90e2;
+            --color-attach-btn:     #4a7aaa;
             --color-cancel-btn:     #7a9ab8;
-            --color-cancel-hover:   #c8d8e8;
+            --color-cancel-hover:   #d8ecff;
 
-            --color-call-bg:      rgba(50,80,110,0.97);
+            /* Call overlay */
+            --color-call-bg:      rgba(20,50,80,0.97);
             --color-call-text:    #ffffff;
 
+            /* Offline / welcome */
             --color-offline-text: #7a9ab8;
             --color-welcome-text: #7a9ab8;
         }
