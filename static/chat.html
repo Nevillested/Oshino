@@ -2253,9 +2253,52 @@
             #sidebar #settings-panel,
             #sidebar .settings-submenu { position: fixed; inset: 0; z-index: 50; }
 
-            /* При открытии из мобильного меню (mob-menu) — настройки поверх pg-menu */
-            body.mob-menu #settings-panel,
-            body.mob-menu .settings-submenu { position: fixed; inset: 0; z-index: 40; background: var(--color-sidebar); }
+            /* ── Внутренние экраны pg-menu ── */
+            #pgm-main {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                min-height: 0;
+                overflow: hidden;
+            }
+            /* Когда открыт слот настроек или Pac-Man — скрываем основной экран */
+            #pg-menu.pgm-settings #pgm-main,
+            #pg-menu.pgm-pacman  #pgm-main  { display: none; }
+
+            #pgm-settings-slot {
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto;
+                display: none;
+                flex-direction: column;
+            }
+            #pg-menu.pgm-settings #pgm-settings-slot { display: flex; }
+
+            /* Настройки телепортированы в slot — нужны свои стили внутри pg-menu */
+            #pgm-settings-slot #settings-panel,
+            #pgm-settings-slot .settings-submenu {
+                position: static !important;
+                inset: auto !important;
+                z-index: auto !important;
+                background: transparent !important;
+                padding: 12px;
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto;
+                display: none;
+                flex-direction: column;
+            }
+            #pgm-settings-slot #settings-panel.open,
+            #pgm-settings-slot .settings-submenu.open { display: flex; }
+
+            #pgm-pacman-wrap {
+                flex: 1;
+                min-height: 0;
+                display: none;
+                flex-direction: column;
+                background: #000;
+            }
+            #pg-menu.pgm-pacman #pgm-pacman-wrap { display: flex; }
 
             /* ── СТРАНИЦА 3: диалог ── */
             /* #chat выезжает справа */
@@ -2641,20 +2684,35 @@
     <!-- Страница 1: меню (мобайл) — прямой дочерний элемент body,
          чтобы position:fixed + z-index:35 работал без влияния stacking context родителей -->
     <div id="pg-menu">
-        <div id="pgm-search-wrap">
-            <input type="text" id="pgm-search" placeholder="Найти пользователя..." autocomplete="off">
-        </div>
-        <ul id="pgm-search-results"></ul>
-        <div id="pgm-bottom">
-            <div class="theme-switch-wrap" style="margin-bottom: 8px; margin-top: 0;">
-                <label class="theme-switch">
-                    <input id="theme-toggle-pgm" class="theme-switch__input" type="checkbox" role="switch" />
-                    <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
-                </label>
+        <!-- Основной экран меню -->
+        <div id="pgm-main">
+            <div id="pgm-search-wrap">
+                <input type="text" id="pgm-search" placeholder="Найти пользователя..." autocomplete="off">
             </div>
-            <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
-            <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
-            <button id="pgm-logout-btn">Выход</button>
+            <ul id="pgm-search-results"></ul>
+            <div id="pgm-bottom">
+                <div class="theme-switch-wrap" style="margin-bottom: 8px; margin-top: 0;">
+                    <label class="theme-switch">
+                        <input id="theme-toggle-pgm" class="theme-switch__input" type="checkbox" role="switch" />
+                        <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
+                    </label>
+                </div>
+                <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
+                <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
+                <button id="pgm-logout-btn">Выход</button>
+            </div>
+        </div>
+        <!-- Слот для настроек (JS телепортирует сюда #settings-panel и submenus) -->
+        <div id="pgm-settings-slot" style="display:none; flex-direction:column; flex:1; overflow-y:auto;"></div>
+        <!-- Pac-Man внутри меню -->
+        <div id="pgm-pacman-wrap" style="display:none; flex-direction:column; flex:1; background:#000;">
+            <button id="pgm-pacman-back-btn" class="settings-back-btn" style="padding: 12px 16px; flex-shrink:0; background: #111318;">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Pac-Man
+            </button>
+            <iframe id="pgm-pacman-iframe" src="about:blank" style="flex:1; border:none; display:block;"></iframe>
         </div>
     </div>
 
@@ -5829,13 +5887,14 @@
         // Настройки → главный сайдбар
         // Настройки → главный сайдбар
         settingsBackBtn.addEventListener('click', () => {
-            const fromMenu = settingsPanel.dataset.fromMenu === '1';
+            const slot = document.getElementById('pgm-settings-slot');
+            const pgMenuEl = document.getElementById('pg-menu');
+            const fromMenu = slot && slot.contains(settingsPanel);
             settingsPanel.classList.remove('open');
             delete settingsPanel.dataset.fromMenu;
-            if (fromMenu && window.innerWidth < 768) {
-                // Открыто из мобильного меню — просто закрываем panel, mob-menu остаётся
-                const sMain = document.getElementById('sidebar-main');
-                if (sMain) sMain.style.display = '';
+            if (fromMenu && pgMenuEl) {
+                // Открыто из мобильного меню — возвращаемся к основному экрану pg-menu
+                pgMenuEl.classList.remove('pgm-settings');
             } else {
                 sidebarMain.style.display = 'flex';
             }
@@ -6238,16 +6297,61 @@
             const tmPgm       = document.getElementById('theme-toggle-pgm');
             const tmMain      = document.getElementById('theme-toggle');
 
+            // Элементы для телепортации настроек
+            const sidebar         = document.getElementById('sidebar');
+            const settingsSlot    = document.getElementById('pgm-settings-slot');
+            const settingsPanel   = document.getElementById('settings-panel');
+            const settingsSubmenus = Array.from(document.querySelectorAll('.settings-submenu'));
+            // Якорь для возврата настроек в sidebar (элемент, перед которым они стояли)
+            // — это первый элемент после sidebar-main, т.е. settings-panel сам
+            // Запоминаем следующий sibling в sidebar до первой телепортации
+            let settingsOrigNextSibling = settingsPanel.nextSibling;
+
+            function teleportSettingsTo(target) {
+                if (!target.contains(settingsPanel)) {
+                    target.appendChild(settingsPanel);
+                    settingsSubmenus.forEach(s => target.appendChild(s));
+                }
+            }
+            function teleportSettingsBack() {
+                if (!sidebar.contains(settingsPanel)) {
+                    // Возвращаем перед якорным элементом, или в конец sidebar
+                    if (settingsOrigNextSibling && sidebar.contains(settingsOrigNextSibling)) {
+                        sidebar.insertBefore(settingsPanel, settingsOrigNextSibling);
+                        settingsSubmenus.forEach(s => sidebar.insertBefore(s, settingsOrigNextSibling));
+                    } else {
+                        sidebar.appendChild(settingsPanel);
+                        settingsSubmenus.forEach(s => sidebar.appendChild(s));
+                    }
+                }
+            }
+
             // ── переключение страниц ──────────────────────────────────
-            function showMenu()     { body.classList.add('mob-menu'); body.classList.remove('mob-chat'); }
+            function showMenu() {
+                body.classList.add('mob-menu');
+                body.classList.remove('mob-chat');
+            }
             function showContacts() {
+                // Закрываем все панели настроек перед уходом
+                if (settingsPanel) { settingsPanel.classList.remove('open'); delete settingsPanel.dataset.fromMenu; }
+                settingsSubmenus.forEach(s => s.classList.remove('open'));
+                // Возвращаем настройки в sidebar
+                teleportSettingsBack();
+                // Сбрасываем экраны pg-menu
+                if (pgMenu) { pgMenu.classList.remove('pgm-settings', 'pgm-pacman'); }
+                // Pac-Man — выгружаем iframe
+                const pIframe = document.getElementById('pgm-pacman-iframe');
+                if (pIframe) pIframe.src = 'about:blank';
+
                 body.classList.remove('mob-menu');
                 body.classList.remove('mob-chat');
-                // Сброс шапки → стр.2
                 if (topbarTitle) topbarTitle.textContent = 'Oshino';
                 if (topbarSub)   { topbarSub.textContent = ''; topbarSub.className = ''; }
             }
-            function showChat()     { body.classList.remove('mob-menu'); body.classList.add('mob-chat'); }
+            function showChat() {
+                body.classList.remove('mob-menu');
+                body.classList.add('mob-chat');
+            }
 
             // ── кнопка ☰ (стр.2) ──────────────────────────────────────
             if (menuBtn) menuBtn.addEventListener('click', () => {
@@ -6279,19 +6383,36 @@
                 tmMain.addEventListener('change', () => { tmPgm.checked = tmMain.checked; });
             }
 
-            // ── кнопки в меню ─────────────────────────────────────────
-            if (pgmPacman) pgmPacman.addEventListener('click', () => {
-                showContacts();
-                document.getElementById('pacman-sidebar-btn').click();
-                showChat();
-            });
+            // ── Настройки из pg-menu ─────────────────────────────────
             if (pgmSettings) pgmSettings.addEventListener('click', () => {
-                // Остаёмся на стр.1 (mob-menu), открываем settings-panel поверх pg-menu
-                const sMain = document.getElementById('sidebar-main');
-                const sPanel = document.getElementById('settings-panel');
-                if (sMain)  sMain.style.display = 'none';
-                if (sPanel) { sPanel.classList.add('open'); sPanel.dataset.fromMenu = '1'; }
+                // Телепортируем настройки в slot внутри pg-menu
+                teleportSettingsTo(settingsSlot);
+                // Закрываем все submenus, открываем главную панель настроек
+                settingsSubmenus.forEach(s => s.classList.remove('open'));
+                settingsPanel.classList.add('open');
+                settingsPanel.dataset.fromMenu = '1';
+                // Скрываем основной экран pg-menu, показываем слот настроек
+                pgMenu.classList.add('pgm-settings');
+                pgMenu.classList.remove('pgm-pacman');
             });
+
+            // ── Pac-Man из pg-menu ───────────────────────────────────
+            if (pgmPacman) pgmPacman.addEventListener('click', () => {
+                pgMenu.classList.add('pgm-pacman');
+                pgMenu.classList.remove('pgm-settings');
+                const pIframe = document.getElementById('pgm-pacman-iframe');
+                if (pIframe && pIframe.src === 'about:blank') pIframe.src = '/pacman';
+            });
+
+            // ── Назад из Pac-Man в pg-menu ───────────────────────────
+            const pgmPacmanBack = document.getElementById('pgm-pacman-back-btn');
+            if (pgmPacmanBack) pgmPacmanBack.addEventListener('click', () => {
+                pgMenu.classList.remove('pgm-pacman');
+                const pIframe = document.getElementById('pgm-pacman-iframe');
+                if (pIframe) pIframe.src = 'about:blank';
+            });
+
+            // ── Logout ───────────────────────────────────────────────
             if (pgmLogout) pgmLogout.addEventListener('click', () => {
                 showContacts();
                 document.getElementById('logout-btn-sidebar').click();
