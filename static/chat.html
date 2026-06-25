@@ -3707,7 +3707,13 @@
             usersList.innerHTML = '';
             welcomeDialogsList.innerHTML = '';
 
-            const logins = Object.keys(historyState);
+            const logins = Object.keys(historyState).sort((a, b) => {
+                const msgsA = historyState[a].messages;
+                const msgsB = historyState[b].messages;
+                const lastA = msgsA.length ? new Date(msgsA[msgsA.length - 1].created_at).getTime() : 0;
+                const lastB = msgsB.length ? new Date(msgsB[msgsB.length - 1].created_at).getTime() : 0;
+                return lastB - lastA;
+            });
 
             logins.forEach(user => {
                 const count = unreadCount[user] || 0;
