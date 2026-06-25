@@ -282,6 +282,8 @@ func main() {
 	// директорией: иконка вкладки, главного экрана iOS/Android и push-уведомлений — один
 	// и тот же файл, используемый сразу в нескольких местах разметки и в sw.js.
 	http.Handle("/icons/", http.StripPrefix("/icons/", http.FileServer(http.Dir("icons"))))
+	// sounds/ — звуковые файлы для уведомлений (например, income_msg.mp3).
+	http.Handle("/sounds/", http.StripPrefix("/sounds/", http.FileServer(http.Dir("static/sounds"))))
 	http.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
 		http.ServeFile(w, r, "static/manifest.json")
