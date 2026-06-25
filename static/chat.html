@@ -2634,6 +2634,26 @@
 
     <div id="pg-menu-backdrop"></div>
 
+    <!-- Страница 1: меню (мобайл) — прямой дочерний элемент body,
+         чтобы position:fixed + z-index:35 работал без влияния stacking context родителей -->
+    <div id="pg-menu">
+        <div id="pgm-search-wrap">
+            <input type="text" id="pgm-search" placeholder="Найти пользователя..." autocomplete="off">
+        </div>
+        <ul id="pgm-search-results"></ul>
+        <div id="pgm-bottom">
+            <div class="theme-switch-wrap" style="margin-bottom: 8px; margin-top: 0;">
+                <label class="theme-switch">
+                    <input id="theme-toggle-pgm" class="theme-switch__input" type="checkbox" role="switch" />
+                    <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
+                </label>
+            </div>
+            <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
+            <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
+            <button id="pgm-logout-btn">Выход</button>
+        </div>
+    </div>
+
     <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
     <div id="app-layout">
     <!-- ── Левая панель (desktop) ─────────────────────────────────────────── -->
@@ -2659,25 +2679,6 @@
             <button id="pacman-sidebar-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
             <button id="settings-open-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
             <button id="logout-btn-sidebar">Выход</button>
-        </div>
-
-        <!-- Страница 1: меню (мобайл) -->
-        <div id="pg-menu">
-            <div id="pgm-search-wrap">
-                <input type="text" id="pgm-search" placeholder="Найти пользователя..." autocomplete="off">
-            </div>
-            <ul id="pgm-search-results"></ul>
-            <div id="pgm-bottom">
-                <div class="theme-switch-wrap" style="margin-bottom: 8px; margin-top: 0;">
-                    <label class="theme-switch">
-                        <input id="theme-toggle-pgm" class="theme-switch__input" type="checkbox" role="switch" />
-                        <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
-                    </label>
-                </div>
-                <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
-                <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
-                <button id="pgm-logout-btn">Выход</button>
-            </div>
         </div>
 
         <!-- Панель настроек (сменяет главный экран сайдбара) -->
