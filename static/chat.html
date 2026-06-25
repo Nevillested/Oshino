@@ -89,6 +89,9 @@
             --color-welcome-greeting: #e8ecf8;
             --color-welcome-card-bg:   rgba(20, 22, 30, 0.72);
             --color-welcome-card-hover:rgba(30, 33, 44, 0.82);
+
+            /* Подсветка сообщения при jump-to */
+            --color-msg-highlight: rgba(200, 210, 255, 0.18);
         }
 
         /* ── Светлая тема ──────────────────────────────────────────────────── */
@@ -163,6 +166,9 @@
             --color-welcome-greeting: #1a2a3a;
             --color-welcome-card-bg:   rgba(255, 255, 255, 0.72);
             --color-welcome-card-hover:rgba(234, 243, 252, 0.88);
+
+            /* Подсветка сообщения при jump-to */
+            --color-msg-highlight: rgba(30, 60, 100, 0.15);
         }
 
         * {
@@ -585,6 +591,17 @@
             display: flex;
             flex-direction: column;
             max-width: 80%;
+        }
+
+        .message-wrap.highlighted {
+            border-radius: 8px;
+            animation: msg-highlight-fade 1.6s ease forwards;
+        }
+
+        @keyframes msg-highlight-fade {
+            0%   { background: var(--color-msg-highlight); }
+            70%  { background: var(--color-msg-highlight); }
+            100% { background: transparent; }
         }
 
         .message-wrap.own {
@@ -6213,14 +6230,15 @@
             const el = messagesDiv.querySelector(`[data-msg-id="${msgId}"]`);
             if (el) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // Кратко подсвечиваем
-                el.style.transition = 'background 0.3s';
-                el.style.background = 'rgba(74,144,226,0.15)';
-                setTimeout(() => { el.style.background = ''; }, 1200);
+                // Подсветка через CSS-анимацию (цвет берётся из CSS-переменной темы)
+                el.classList.remove('highlighted');
+                // Форсируем reflow чтобы анимация рестартовала если кликнули дважды
+                void el.offsetWidth;
+                el.classList.add('highlighted');
+                el.addEventListener('animationend', () => el.classList.remove('highlighted'), { once: true });
                 return;
             }
             // Сообщение не найдено в DOM — возможно ещё не подгружено
-            // (не реализуем глубокую прокрутку, просто сообщаем)
             console.log('Сообщение', msgId, 'не найдено в текущем окне');
         }
 
