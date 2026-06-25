@@ -2057,11 +2057,11 @@
             body.bg-anim-off #rp-canvas-wrap canvas { display: none; }
             #welcome-canvas-wrap { display: none; }
 
-            /* topbar: шапка поверх всего, непрозрачная */
+            /* topbar: шапка поверх ВСЕГО включая меню */
             #topbar {
                 position: fixed;
                 top: 0; left: 0; right: 0;
-                z-index: 20;
+                z-index: 50;
                 height: 56px;
                 padding: 0 16px;
                 padding-top: max(0px, env(safe-area-inset-top));
@@ -2145,10 +2145,9 @@
             #form-area textarea { font-size: 16px; padding: 10px 12px; }
             #send-btn     { font-size: 15px; padding: 10px 14px; }
 
-            /* mobile-menu-panel: FIX 2 — right: 50px */
             #mobile-menu-panel {
                 position: fixed;
-                top: 0; left: 0; bottom: 0;
+                top: 56px; left: 0; bottom: 0;
                 right: 50px;
                 z-index: 40;
                 background: var(--color-sidebar);
@@ -2157,14 +2156,14 @@
                 transform: translateX(-100%);
                 transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
                 will-change: transform;
-                overflow: hidden;
+                overflow-y: auto;
+                overflow-x: hidden;
             }
             #mobile-menu-panel.open { transform: translateX(0); }
 
             /* FIX 3: поиск вплотную к верху (без пустого места) */
             #mmenu-search-wrap {
                 padding: 12px;
-                padding-top: max(12px, env(safe-area-inset-top));
                 border-bottom: 1px solid var(--color-results-sep);
                 flex-shrink: 0;
             }
@@ -2204,7 +2203,9 @@
 
             /* затемнение за меню */
             #mmenu-backdrop {
-                position: fixed; inset: 0; z-index: 39;
+                position: fixed;
+                top: 56px; left: 0; right: 0; bottom: 0;
+                z-index: 39;
                 background: rgba(0,0,0,0.45); display: none;
             }
             #mmenu-backdrop.open { display: block; }
@@ -6118,13 +6119,15 @@
                 backdrop.classList.remove('open');
             }
 
-            // ── FIX 5: сброс topbar при закрытии чата ─────────────────
             function openChat()  { body.classList.add('chat-open'); }
             function closeChat() {
                 body.classList.remove('chat-open');
-                // Восстанавливаем шапку: кнопка ☰ + "Oshino"
+                // FIX 5: явно сбрасываем шапку независимо от currentUser
                 if (topbarTitle) topbarTitle.textContent = 'Oshino';
-                // Скрываем кнопки звонка — они видны только в чате (через CSS)
+                const cb = document.getElementById('call-btn');
+                const vb = document.getElementById('video-call-btn');
+                if (cb) cb.style.display = 'none';
+                if (vb) vb.style.display = 'none';
             }
 
             // кнопка ☰ — toggle меню
@@ -6195,37 +6198,36 @@
                 });
             }
 
-            // ── FIX 4: свайп по меню такой же механикой как свайп по чату ──
-            // Свайп ВЛЕВО (dx < -60) по menu-panel → закрыть меню
-            // Начинаем от x >= 30px (не системный edge)
-            let mTsX = 0, mTsY = 0, mSwipe = false;
+            // ── Свайп влево по меню → закрыть ──
+            // Слушаем на document чтобы overflow не блокировал
+            let mTsX = 0, mTsY = 0, mSwipe = false, mTracking = false;
             menuPanel.addEventListener('touchstart', (e) => {
                 const t = e.touches[0];
                 mTsX = t.clientX; mTsY = t.clientY;
-                mSwipe = (mTsX >= 30);
+                mSwipe = false; mTracking = true;
             }, { passive: true });
-            menuPanel.addEventListener('touchmove', (e) => {
-                if (!mSwipe) return;
+            document.addEventListener('touchmove', (e) => {
+                if (!mTracking || !menuPanel.classList.contains('open')) return;
                 const t = e.touches[0];
-                const dx = t.clientX - mTsX; // отрицательный = влево
-                const dy = Math.abs(t.clientY - mTsY);
-                // Визуальная отзывчивость: сдвигаем меню вслед за пальцем влево
-                if (dx < 0 && dy < Math.abs(dx) * 0.8) {
-                    menuPanel.style.transform = `translateX(${dx}px)`;
-                }
-            }, { passive: true });
-            menuPanel.addEventListener('touchend', (e) => {
-                if (!mSwipe) { return; }
-                const t = e.changedTouches[0];
                 const dx = mTsX - t.clientX; // влево = положительный
                 const dy = Math.abs(t.clientY - mTsY);
-                menuPanel.style.transform = ''; // сбрасываем инлайн
-                if (dx > 60 && dy < dx * 0.6) {
-                    closeMenu();
-                } else {
-                    // Не достаточно — возвращаем на место
-                    menuPanel.classList.add('open'); // на случай если transition сбросился
+                if (!mSwipe && dx > 8 && dy < dx * 0.8) mSwipe = true;
+                if (mSwipe) {
+                    const shift = Math.max(-dx, -menuPanel.offsetWidth);
+                    menuPanel.style.transition = 'none';
+                    menuPanel.style.transform = `translateX(${Math.min(0, -dx)}px)`;
                 }
+            }, { passive: true });
+            document.addEventListener('touchend', (e) => {
+                if (!mTracking) return;
+                mTracking = false;
+                menuPanel.style.transition = '';
+                menuPanel.style.transform = '';
+                if (!mSwipe) return;
+                const t = e.changedTouches[0];
+                const dx = mTsX - t.clientX;
+                const dy = Math.abs(t.clientY - mTsY);
+                if (dx > 60 && dy < dx * 0.8) closeMenu();
                 mSwipe = false;
             }, { passive: true });
 
