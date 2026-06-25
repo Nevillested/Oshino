@@ -171,6 +171,36 @@
             --color-msg-highlight: rgba(30, 80, 160, 0.22);
         }
 
+        /* ── Скроллбар (только десктоп, webkit + Firefox) ──────────────────────── */
+        @media (min-width: 768px) {
+            ::-webkit-scrollbar {
+                width: 6px;
+            }
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: #2e3140;
+                border-radius: 3px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: #3d4258;
+            }
+            body.light ::-webkit-scrollbar-thumb {
+                background: #b8ccde;
+            }
+            body.light ::-webkit-scrollbar-thumb:hover {
+                background: #90aac4;
+            }
+            * {
+                scrollbar-width: thin;
+                scrollbar-color: #2e3140 transparent;
+            }
+            body.light * {
+                scrollbar-color: #b8ccde transparent;
+            }
+        }
+
         * {
             margin: 0;
             padding: 0;
