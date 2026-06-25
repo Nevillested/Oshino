@@ -3658,10 +3658,18 @@
             }
         }
 
-        function mergeDialogs(users) {
-            users.forEach(u => {
-                if (!historyState[u]) {
-                    historyState[u] = { oldestId: 0, allLoaded: false, messages: [] };
+        function mergeDialogs(entries) {
+            // entries может быть []string (старый формат) или [{login, last_msg}] (новый)
+            entries.forEach(e => {
+                const login = typeof e === 'string' ? e : e.login;
+                const lastMsg = typeof e === 'string' ? '' : (e.last_msg || '');
+                if (!historyState[login]) {
+                    historyState[login] = { oldestId: 0, allLoaded: false, messages: [], lastMsg };
+                } else if (lastMsg) {
+                    // Обновляем lastMsg только если новое значение свежее
+                    if (!historyState[login].lastMsg || lastMsg > historyState[login].lastMsg) {
+                        historyState[login].lastMsg = lastMsg;
+                    }
                 }
             });
             renderDialogList();
@@ -3708,11 +3716,18 @@
             welcomeDialogsList.innerHTML = '';
 
             const logins = Object.keys(historyState).sort((a, b) => {
-                const msgsA = historyState[a].messages;
-                const msgsB = historyState[b].messages;
-                const lastA = msgsA.length ? new Date(msgsA[msgsA.length - 1].created_at).getTime() : 0;
-                const lastB = msgsB.length ? new Date(msgsB[msgsB.length - 1].created_at).getTime() : 0;
-                return lastB - lastA;
+                // Приоритет: lastMsg из БД (пришёл при инициализации),
+                // fallback — последнее загруженное сообщение в памяти
+                const stA = historyState[a], stB = historyState[b];
+                const msgsA = stA.messages, msgsB = stB.messages;
+                const tsA = stA.lastMsg ||
+                    (msgsA.length ? msgsA[msgsA.length - 1].created_at : '');
+                const tsB = stB.lastMsg ||
+                    (msgsB.length ? msgsB[msgsB.length - 1].created_at : '');
+                if (tsA && tsB) return tsB.localeCompare(tsA);
+                if (tsA) return -1;
+                if (tsB) return  1;
+                return a.localeCompare(b);
             });
 
             logins.forEach(user => {
@@ -4363,6 +4378,8 @@
             if (currentUser === msg.to) {
                 renderMessages(state.messages);
             }
+            // Обновляем lastMsg для корректной сортировки списка
+            if (msg.created_at) historyState[msg.to].lastMsg = msg.created_at;
         }
 
         function receiveMessage(msg) {
@@ -4423,6 +4440,9 @@
             if (currentUser !== msg.from) {
                 unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;
             }
+
+            // Обновляем lastMsg для корректной сортировки списка
+            if (msg.created_at) historyState[msg.from].lastMsg = msg.created_at;
 
             renderDialogList();
 

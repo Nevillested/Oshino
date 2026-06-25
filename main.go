@@ -141,6 +141,12 @@ type HistoryMessage struct {
 	Own  bool   `json:"own"`
 }
 
+// DialogEntry — один диалог с датой последнего сообщения для сортировки на фронте.
+type DialogEntry struct {
+	Login   string `json:"login"`
+	LastMsg string `json:"last_msg"` // ISO8601 или "" если сообщений нет
+}
+
 // CallSignal — конверт сигналинга звонков (offer/answer/ice/end/reject).
 // Сервер не интерпретирует SDP/ICE содержимое, только маршрутизирует между
 // устройствами from/to — ровно так же, как Message, но без сохранения в БД.
@@ -478,25 +484,28 @@ func (a *App) handleWS(w http.ResponseWriter, r *http.Request) {
 	go client.writePump()
 }
 
-func (a *App) loadDialogsFromDB(login string) ([]string, error) {
+func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 	rows, err := a.db.Query(`
-		SELECT DISTINCT
-			CASE WHEN u1.login = $1 THEN u2.login ELSE u1.login END AS other_login
+		SELECT
+			CASE WHEN u1.login = $1 THEN u2.login ELSE u1.login END AS other_login,
+			COALESCE(MAX(m.created_at)::text, '') AS last_msg
 		FROM messenger.conversations c
 		JOIN messenger.users u1 ON u1.id = c.user1_id
 		JOIN messenger.users u2 ON u2.id = c.user2_id
+		LEFT JOIN messenger.messages m ON m.conversation_id = c.id
 		WHERE LOWER(u1.login) = LOWER($1) OR LOWER(u2.login) = LOWER($1)
+		GROUP BY other_login
 	`, login)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var dialogs []string
+	var dialogs []DialogEntry
 	for rows.Next() {
-		var other string
-		rows.Scan(&other)
-		dialogs = append(dialogs, other)
+		var e DialogEntry
+		rows.Scan(&e.Login, &e.LastMsg)
+		dialogs = append(dialogs, e)
 	}
 	return dialogs, nil
 }
@@ -1850,27 +1859,29 @@ func (a *App) sendDialogsTo(c *Client) {
 		log.Println("Ошибка загрузки диалогов:", err)
 	}
 
-	set := make(map[string]bool, len(dialogs)+1)
+	// Дедупликация через map, defaultContact добавляем без last_msg если его ещё нет
+	set := make(map[string]DialogEntry, len(dialogs)+1)
 	for _, d := range dialogs {
-		set[d] = true
+		set[strings.ToLower(d.Login)] = d
 	}
-
 	if a.defaultContact != "" && !strings.EqualFold(a.defaultContact, c.login) {
-		set[a.defaultContact] = true
-	}
-
-	userList := "["
-	first := true
-	for user := range set {
-		if !first {
-			userList += ","
+		key := strings.ToLower(a.defaultContact)
+		if _, exists := set[key]; !exists {
+			set[key] = DialogEntry{Login: a.defaultContact, LastMsg: ""}
 		}
-		userList += "\"" + user + "\""
-		first = false
 	}
-	userList += "]"
 
-	c.trySend([]byte("dialogs:" + userList))
+	list := make([]DialogEntry, 0, len(set))
+	for _, d := range set {
+		list = append(list, d)
+	}
+
+	data, err := json.Marshal(list)
+	if err != nil {
+		log.Println("Ошибка сериализации диалогов:", err)
+		return
+	}
+	c.trySend([]byte("dialogs:" + string(data)))
 }
 
 // deliverRealtime — общая часть доставки: рассылает payload на все активные
