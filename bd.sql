@@ -236,3 +236,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_login
 
 ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS display_name varchar;
 
+-- active — флаг активности пользователя. 1 — может войти, 0 — заблокирован.
+-- DEFAULT 1: все существующие пользователи остаются активными после миграции.
+ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS active smallint NOT NULL DEFAULT 1;
+

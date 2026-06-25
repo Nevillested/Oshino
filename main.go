@@ -316,6 +316,8 @@ func main() {
 	http.HandleFunc("/display-name", app.handleDisplayName)
 	http.HandleFunc("/admin/add-user", app.handleAdminAddUser)
 	http.HandleFunc("/admin/change-user-password", app.handleAdminChangeUserPassword)
+	http.HandleFunc("/admin/kill-all-sessions", app.handleAdminKillAllSessions)
+	http.HandleFunc("/admin/disable-user", app.handleAdminDisableUser)
 	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/pacman.html")
 	})
@@ -352,14 +354,21 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	var dbPassword string
+	var active int
 	err := a.db.QueryRow(
-		"SELECT password FROM messenger.users WHERE LOWER(login) = $1",
+		"SELECT password, active FROM messenger.users WHERE LOWER(login) = $1",
 		login,
-	).Scan(&dbPassword)
+	).Scan(&dbPassword, &active)
 
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"error": "Неправильный логин или пароль"})
+		return
+	}
+
+	if active == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Аккаунт отключён"})
 		return
 	}
 
@@ -2845,6 +2854,129 @@ func (a *App) handleAdminAddUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"success": "Пользователь создан"})
+}
+
+// forceDisconnectLogin закрывает все активные WebSocket-соединения для указанного
+// логина. readPump у каждого Client получит ошибку чтения и самостоятельно
+// почистит a.clients, обновит last_seen и сделает broadcastOnlineUsers — как при
+// штатном отключении.
+func (a *App) forceDisconnectLogin(login string) {
+	a.mu.Lock()
+	conns := make([]*Client, 0)
+	for c := range a.clients[strings.ToLower(login)] {
+		conns = append(conns, c)
+	}
+	a.mu.Unlock()
+
+	for _, c := range conns {
+		c.conn.Close()
+	}
+}
+
+// handleAdminKillAllSessions — POST /admin/kill-all-sessions — только id=0.
+// Удаляет ВСЕ записи из messenger.sessions, после чего принудительно закрывает
+// все активные WebSocket-соединения. Все пользователи немедленно выбрасываются.
+func (a *App) handleAdminKillAllSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var id int
+	if err := a.db.QueryRow(
+		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login,
+	).Scan(&id); err != nil || id != 0 {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	a.mu.Lock()
+	logins := make([]string, 0, len(a.clients))
+	for l := range a.clients {
+		logins = append(logins, l)
+	}
+	a.mu.Unlock()
+
+	if _, err := a.db.Exec("DELETE FROM messenger.sessions"); err != nil {
+		log.Printf("handleAdminKillAllSessions: DELETE sessions: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	for _, l := range logins {
+		a.forceDisconnectLogin(l)
+	}
+
+	log.Printf("Admin [%s]: kill-all-sessions выполнено", login)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"success": "Все сессии уничтожены"})
+}
+
+// handleAdminDisableUser — POST /admin/disable-user (form: target_login) — только id=0.
+// Ставит active=0, удаляет сессии пользователя из БД, закрывает его WS.
+func (a *App) handleAdminDisableUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var id int
+	if err := a.db.QueryRow(
+		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login,
+	).Scan(&id); err != nil || id != 0 {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	targetLogin := strings.TrimSpace(r.FormValue("target_login"))
+	if targetLogin == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Укажите логин пользователя"})
+		return
+	}
+
+	if strings.EqualFold(targetLogin, login) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя отключить самого себя"})
+		return
+	}
+
+	var targetID int
+	if err := a.db.QueryRow(
+		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", targetLogin,
+	).Scan(&targetID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Пользователь не найден"})
+		return
+	}
+
+	if _, err := a.db.Exec(
+		"UPDATE messenger.users SET active = 0 WHERE id = $1", targetID,
+	); err != nil {
+		log.Printf("handleAdminDisableUser: UPDATE active: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := a.db.Exec(
+		"DELETE FROM messenger.sessions WHERE LOWER(login) = LOWER($1)", targetLogin,
+	); err != nil {
+		log.Printf("handleAdminDisableUser: DELETE sessions: %v", err)
+	}
+
+	a.forceDisconnectLogin(targetLogin)
+
+	log.Printf("Admin [%s]: пользователь [%s] отключён (active=0)", login, targetLogin)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"success": "Пользователь отключён"})
 }
 
 // handleDisplayName — GET/POST /display-name

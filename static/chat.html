@@ -1030,6 +1030,13 @@
 
         .pwd-save-btn:hover { background: #3a7bd5; }
 
+        .admin-danger-btn {
+            color: #e05555 !important;
+        }
+        .admin-danger-btn:hover {
+            background: #2a1515 !important;
+        }
+
         .pwd-status {
             font-size: 13px;
             margin-top: 10px;
@@ -2815,6 +2822,13 @@
                 <span>🔐 Изменить пароль пользователю</span>
                 <span class="chevron">›</span>
             </button>
+            <button class="settings-menu-item" id="open-disable-user-submenu" style="display:none;">
+                <span>🚫 Отключить пользователя</span>
+                <span class="chevron">›</span>
+            </button>
+            <button class="settings-menu-item admin-danger-btn" id="btn-kill-all-sessions" style="display:none;">
+                <span>⚡ Завершить все сессии</span>
+            </button>
             <!-- Анимированный фон -->
             <button class="settings-menu-item" id="open-bg-anim-submenu">
                 <span>🎨 Анимированный фон</span>
@@ -2849,6 +2863,21 @@
             <input type="password" id="add-user-password" class="pwd-input" placeholder="Пароль" autocomplete="new-password">
             <button id="add-user-save-btn" class="pwd-save-btn">Создать</button>
             <div id="add-user-status" class="pwd-status"></div>
+        </div>
+
+        <!-- Подменю: отключить пользователя (только admin) -->
+        <div id="disable-user-submenu" class="settings-submenu">
+            <button id="disable-user-back-btn" class="settings-back-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Отключить пользователя
+            </button>
+            <p class="settings-section-title">Отключить пользователя</p>
+            <p style="font-size: 13px; color: #aaa; margin-bottom: 14px;">Пользователь будет немедленно выброшен из системы и не сможет войти снова.</p>
+            <input type="text" id="disable-user-login" class="pwd-input" placeholder="Логин пользователя" autocomplete="off">
+            <button id="disable-user-save-btn" class="pwd-save-btn" style="background:#c0392b;">Отключить</button>
+            <div id="disable-user-status" class="pwd-status"></div>
         </div>
 
         <!-- Подменю: отображаемое имя -->
@@ -3259,7 +3288,14 @@
         const chpwdUserPassword = document.getElementById('chpwd-user-password');
         const chpwdUserConfirm  = document.getElementById('chpwd-user-confirm');
         const chpwdUserSaveBtn  = document.getElementById('chpwd-user-save-btn');
-        const chpwdUserStatus   = document.getElementById('chpwd-user-status');
+                const chpwdUserStatus   = document.getElementById('chpwd-user-status');
+        const disableUserSubmenu  = document.getElementById('disable-user-submenu');
+        const openDisableUserBtn  = document.getElementById('open-disable-user-submenu');
+        const disableUserBackBtn  = document.getElementById('disable-user-back-btn');
+        const disableUserLogin    = document.getElementById('disable-user-login');
+        const disableUserSaveBtn  = document.getElementById('disable-user-save-btn');
+        const disableUserStatus   = document.getElementById('disable-user-status');
+        const btnKillAllSessions  = document.getElementById('btn-kill-all-sessions');
         const openChangePwdBtn = document.getElementById('open-change-password-submenu');
         const changePwdSubmenu = document.getElementById('change-password-submenu');
         const changePwdBackBtn = document.getElementById('change-password-back-btn');
@@ -6108,8 +6144,10 @@
         // Показываем пункты меню только для admin
         function updateAdminUI() {
             const isAdmin = currentLogin && currentLogin.toLowerCase() === 'admin';
-            openAddUserBtn.style.display   = isAdmin ? 'flex' : 'none';
-            openChpwdUserBtn.style.display = isAdmin ? 'flex' : 'none';
+            openAddUserBtn.style.display      = isAdmin ? 'flex' : 'none';
+            openChpwdUserBtn.style.display    = isAdmin ? 'flex' : 'none';
+            openDisableUserBtn.style.display  = isAdmin ? 'flex' : 'none';
+            btnKillAllSessions.style.display  = isAdmin ? 'flex' : 'none';
         }
 
         // Настройки → подменю изменения пароля пользователю
@@ -6171,6 +6209,76 @@
                 chpwdUserStatus.textContent = 'Ошибка соединения';
             } finally {
                 chpwdUserSaveBtn.disabled = false;
+            }
+        });
+
+        // ── Отключить пользователя (admin) ────────────────────────────────────
+
+        openDisableUserBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('open');
+            disableUserSubmenu.classList.add('open');
+            disableUserLogin.value = '';
+            disableUserStatus.textContent = '';
+            disableUserStatus.className = 'pwd-status';
+        });
+
+        disableUserBackBtn.addEventListener('click', () => {
+            disableUserSubmenu.classList.remove('open');
+            settingsPanel.classList.add('open');
+        });
+
+        disableUserSaveBtn.addEventListener('click', async () => {
+            const target = disableUserLogin.value.trim();
+            disableUserStatus.className = 'pwd-status';
+            disableUserStatus.textContent = '';
+            if (!target) {
+                disableUserStatus.className = 'pwd-status err';
+                disableUserStatus.textContent = 'Введите логин пользователя';
+                return;
+            }
+            if (!confirm(`Отключить пользователя «${target}»? Он будет немедленно выброшен из системы.`)) return;
+            disableUserSaveBtn.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append('target_login', target);
+                const resp = await fetch('/admin/disable-user', { method: 'POST', body: fd });
+                let data;
+                try { data = await resp.json(); } catch { data = { error: `Ошибка сервера (${resp.status})` }; }
+                if (data.error) {
+                    disableUserStatus.className = 'pwd-status err';
+                    disableUserStatus.textContent = data.error;
+                } else {
+                    disableUserStatus.className = 'pwd-status ok';
+                    disableUserStatus.textContent = `Пользователь «${target}» отключён`;
+                    disableUserLogin.value = '';
+                }
+            } catch {
+                disableUserStatus.className = 'pwd-status err';
+                disableUserStatus.textContent = 'Ошибка соединения';
+            } finally {
+                disableUserSaveBtn.disabled = false;
+            }
+        });
+
+        // ── Завершить все сессии (admin) ────────────────────────────────────────
+
+        btnKillAllSessions.addEventListener('click', async () => {
+            if (!confirm('Завершить ВСЕ активные сессии? Все пользователи будут немедленно выброшены из системы.')) return;
+            btnKillAllSessions.disabled = true;
+            try {
+                const resp = await fetch('/admin/kill-all-sessions', { method: 'POST' });
+                let data;
+                try { data = await resp.json(); } catch { data = { error: `Ошибка сервера (${resp.status})` }; }
+                if (data.error) {
+                    alert('Ошибка: ' + data.error);
+                } else {
+                    alert('Все сессии завершены. Страница перезагрузится.');
+                    window.location.href = '/index';
+                }
+            } catch {
+                alert('Ошибка соединения');
+            } finally {
+                btnKillAllSessions.disabled = false;
             }
         });
 
