@@ -2031,205 +2031,21 @@
         }
 
         /* Mobile стили - полная ширина */
-        @media (max-width: 767px) {
-            #topbar {
-                height: 56px;
-                padding: 12px 16px;
-                gap: 16px;
-            }
-
-            #menu-btn {
-                font-size: 28px;
-                padding: 8px;
-            }
-
-            #topbar span {
-                font-size: 18px;
-                font-weight: 700;
-            }
-
-            #sidebar {
-                width: 100vw;
-                padding: 20px;
-            }
-
-            #search-container {
-                display: flex;
-                gap: 12px;
-                align-items: center;
-                margin-bottom: 16px;
-            }
-
-            #close-menu-btn {
-                font-size: 28px;
-                padding: 8px;
-            }
-
-            #search-input {
-                flex: 1;
-                font-size: 18px;
-                padding: 16px;
-            }
-
-            #search-results li {
-                font-size: 17px;
-                padding: 16px;
-            }
-
-            #sidebar h3 {
-                font-size: 14px;
-                margin-bottom: 18px;
-                margin-top: 20px;
-            }
-
-            #users li {
-                padding: 18px;
-                font-size: 20px;
-                margin-bottom: 10px;
-            }
-
-            #users li.active {
-                font-size: 20px;
-            }
-
-            #logout-btn-sidebar {
-                font-size: 18px;
-                padding: 16px;
-            }
-
-            .message-wrap {
-                max-width: 85%;
-            }
-
-            .message {
-                font-size: 18px;
-                padding: 12px 16px;
-            }
-
-            .call-log-badge {
-                font-size: 15px;
-                padding: 8px 16px;
-            }
-            
-            #messages {
-                padding: 20px;
-                gap: 12px;
-            }
-            
-            #form-area {
-                gap: 8px;
-            }
-
-            #form-area textarea {
-                font-size: 16px;
-                padding: 12px;
-            }
-
-            #send-btn {
-                font-size: 15px;
-                padding: 11px 16px;
-            }
-
-            #attach-btn,
-            #mic-btn {
-                padding: 11px;
-            }
-
-            #attach-btn svg,
-            #mic-btn svg {
-                width: 22px;
-                height: 22px;
-            }
-
-            #welcome-greeting {
-                font-size: 24px;
-            }
-
-            #welcome-subtitle {
-                font-size: 18px;
-            }
-
-            #welcome-dialogs li {
-                font-size: 18px;
-                padding: 16px;
-            }
-
-            #offline-notice {
-                font-size: 20px;
-            }
-        }
-
-        /* #app-layout на desktop занимает весь оставшийся body-space */
-        @media (min-width: 768px) {
-            body {
-                /* flex-direction остаётся column — topbar скрыт через display:none,
-                   app-layout занимает оставшееся место по flex: 1 */
-            }
-            #app-layout {
-                flex: 1;
-                min-height: 0;
-                min-width: 0;
-            }
-            /* ios-push-banner на desktop — поверх, без влияния на layout */
-            #ios-push-banner {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                z-index: 100;
-            }
-        }
-
-        /* ── bg-anim toggle (простой iOS-style, отличается от theme-switch) ── */
-        .bg-anim-toggle-wrap {
-            position: relative;
-            display: inline-block;
-            width: 44px;
-            height: 24px;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-        .bg-anim-toggle-wrap input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-            position: absolute;
-        }
-        .bg-anim-slider {
-            position: absolute;
-            inset: 0;
-            background: #444;
-            border-radius: 24px;
-            transition: background 0.25s;
-        }
-        .bg-anim-slider::before {
-            content: '';
-            position: absolute;
-            width: 18px;
-            height: 18px;
-            left: 3px;
-            top: 3px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.25s;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        }
-        .bg-anim-toggle-wrap input:checked + .bg-anim-slider { background: #4a90e2; }
-        .bg-anim-toggle-wrap input:checked + .bg-anim-slider::before { transform: translateX(20px); }
-
-        /* ── Mobile: app-layout не мешает (просто block) ─────────────────── */
-        /* ══ MOBILE LAYOUT <768px ════════════════════════════════════════ */
+        /* ════════════════════════════════════════════════════════════════
+           MOBILE  <768px  —  написано с нуля, десктоп не затрагивает
+           ════════════════════════════════════════════════════════════════ */
         @media (max-width: 767px) {
 
-            /* layout-wrappers не мешают потоку */
-            #app-layout    { display: contents; }
-            #left-panel    { display: contents; }
-            #panel-divider { display: none; }
-            #right-panel   { display: contents; }
-            #desktop-chat-header { display: none !important; }
-            #dh-call-btn, #dh-video-btn { display: none; }
+            /* ── layout-wrappers не мешают потоку ── */
+            #app-layout            { display: contents; }
+            #left-panel            { display: contents; }
+            #panel-divider         { display: none; }
+            #right-panel           { display: contents; }
+            #desktop-chat-header   { display: none !important; }
+            #dh-call-btn,
+            #dh-video-btn          { display: none; }
 
-            /* canvas — фиксированный фон на весь экран */
+            /* ── canvas: фиксированный фон на весь экран, самый нижний слой ── */
             #rp-canvas-wrap {
                 display: block;
                 position: fixed;
@@ -2238,55 +2054,69 @@
                 pointer-events: none;
             }
             #rp-canvas-wrap canvas {
-                width: 100% !important;
+                width:  100% !important;
                 height: 100% !important;
             }
             body.bg-anim-off #rp-canvas-wrap canvas { display: none; }
             #welcome-canvas-wrap { display: none; }
 
-            /* ── sidebar = экран контактов ─────────────────────────── */
+            /* ── topbar: шапка поверх всего, непрозрачная ── */
+            #topbar {
+                position: fixed;
+                top: 0; left: 0; right: 0;
+                z-index: 20;
+                height: 56px;
+                padding: 0 16px;
+                padding-top: max(0px, env(safe-area-inset-top));
+                background: var(--color-topbar);
+                display: flex !important;
+                align-items: center;
+                gap: 14px;
+                flex-shrink: 0;
+                border-bottom: 1px solid var(--color-results-sep);
+            }
+            #topbar-title {
+                font-size: 18px;
+                font-weight: 700;
+                flex: 1;
+            }
+            #menu-btn {
+                font-size: 24px;
+                padding: 6px;
+                order: -1;
+            }
+
+            /* ── sidebar: список контактов, от topbar до низа экрана ── */
             #sidebar {
                 position: fixed;
-                inset: 0;
+                top: 56px;   /* сразу под topbar */
+                left: 0; right: 0; bottom: 0;
                 z-index: 10;
-                background: var(--color-sidebar);
+                background: transparent;   /* прозрачный — виден анимированный фон */
                 padding: 0;
-                overflow: hidden;
+                overflow-y: auto;
                 display: flex !important;
                 flex-direction: column;
                 transform: translateX(0) !important;
-                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+                transition: none;
             }
-            body.chat-open #sidebar {
-                transform: translateX(-100%) !important;
-                pointer-events: none;
-            }
-            #sidebar-main {
-                display: flex;
-                flex-direction: column;
-                flex: 1;
-                min-height: 0;
-                overflow: hidden;
-            }
-            /* search-container */
-            #search-container {
-                padding: 10px 12px;
-                border-bottom: 1px solid var(--color-results-sep);
-                flex-shrink: 0;
-            }
-            #close-menu-btn { display: none !important; }
-            /* contacts list */
+            /* search-container внутри sidebar скрываем — поиск только в меню */
+            #sidebar #search-container { display: none; }
+            #sidebar #search-results   { display: none; }
+            /* заголовок ДИАЛОГИ */
             #sidebar h3 {
-                font-size: 12px;
-                padding: 8px 20px 4px;
+                font-size: 11px;
+                letter-spacing: 0.08em;
+                padding: 12px 16px 6px;
                 margin: 0;
+                color: var(--color-section-title);
             }
+            /* список контактов */
             #users {
                 display: block !important;
-                flex: 1;
-                overflow-y: auto;
                 padding: 4px 0;
                 margin: 0;
+                flex: 1;
             }
             #users li {
                 padding: 14px 20px;
@@ -2298,11 +2128,16 @@
             #sidebar-main .theme-switch-wrap,
             #pacman-sidebar-btn,
             #settings-open-btn,
-            #logout-btn-sidebar {
-                display: none !important;
+            #logout-btn-sidebar { display: none !important; }
+            /* settings-panel и submenus — в рамках mobile-menu-panel */
+            #sidebar #settings-panel,
+            #sidebar .settings-submenu {
+                position: fixed;
+                inset: 0;
+                z-index: 35;
             }
 
-            /* ── chat = поверх контактов ───────────────────────────── */
+            /* ── chat: поверх всего, прозрачный фон ── */
             #chat {
                 position: fixed;
                 inset: 0;
@@ -2311,87 +2146,80 @@
                 display: flex;
                 flex-direction: column;
                 transform: translateX(100%);
-                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
                 will-change: transform;
             }
-            body.chat-open #chat {
-                transform: translateX(0);
-            }
-            /* topbar поверх чата */
-            #topbar {
-                position: fixed;
-                top: 0; left: 0; right: 0;
-                z-index: 20;
-            }
-            /* отступ под topbar */
-            #messages { padding-top: 56px; background: transparent !important; }
-            #pin-bar  { margin-top: 56px; }
-            #welcome-screen { display: none !important; }
-            #overlay { display: none !important; }
+            body.chat-open #chat { transform: translateX(0); }
 
-            /* ── mobile-menu-panel ─────────────────────────────────── */
+            /* отступ под topbar */
+            #messages {
+                background: transparent !important;
+                padding-top: 56px;
+            }
+            #pin-bar   { margin-top: 56px; }
+            #reply-bar { margin-top: 56px; }
+
+            /* футер — непрозрачный */
+            #input-area {
+                background: var(--color-input-bar-bg) !important;
+                padding-bottom: max(8px, env(safe-area-inset-bottom));
+            }
+
+            /* welcome, overlay — скрываем */
+            #welcome-screen  { display: none !important; }
+            #overlay         { display: none !important; }
+
+            /* font sizes */
+            .message         { font-size: 17px; padding: 10px 14px; }
+            .message-wrap    { max-width: 85%; }
+            .call-log-badge  { font-size: 15px; padding: 8px 14px; }
+            #messages        { padding: 20px; padding-top: 56px; gap: 10px; }
+            #offline-notice  { font-size: 18px; }
+            #form-area textarea { font-size: 16px; padding: 10px 12px; }
+            #send-btn        { font-size: 15px; padding: 10px 14px; }
+            #attach-btn svg,
+            #mic-btn svg     { width: 22px; height: 22px; }
+
+            /* ── mobile-menu-panel: меню ☰ ── */
             #mobile-menu-panel {
                 position: fixed;
-                inset: 0;
-                z-index: 30;
+                top: 0; left: 0; bottom: 0;
+                right: 15px;          /* не до конца — 15px до края */
+                z-index: 40;
                 background: var(--color-sidebar);
                 display: flex;
                 flex-direction: column;
                 transform: translateX(-100%);
-                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
                 will-change: transform;
+                overflow: hidden;
             }
-            #mobile-menu-panel.open {
-                transform: translateX(0);
-            }
-            #mmenu-header {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 0 16px;
-                padding-top: max(0px, env(safe-area-inset-top));
-                background: var(--color-topbar);
-                border-bottom: 1px solid var(--color-results-sep);
-                min-height: 56px;
-                flex-shrink: 0;
-            }
-            #mmenu-header span {
-                font-size: 18px;
-                font-weight: 700;
-                color: var(--color-sidebar-text);
-            }
-            #mmenu-close-btn {
-                background: none;
-                border: none;
-                color: var(--color-sidebar-text);
-                cursor: pointer;
-                padding: 6px;
-                display: flex;
-                align-items: center;
-                border-radius: 8px;
-                flex-shrink: 0;
-            }
+            #mobile-menu-panel.open { transform: translateX(0); }
+
+            /* поиск вверху меню */
             #mmenu-search-wrap {
-                padding: 10px 12px;
+                padding: 12px;
+                padding-top: max(12px, env(safe-area-inset-top));
                 border-bottom: 1px solid var(--color-results-sep);
                 flex-shrink: 0;
             }
             #mmenu-search {
                 width: 100%;
-                padding: 10px 12px;
-                border-radius: 8px;
+                padding: 10px 14px;
+                border-radius: 10px;
                 border: 1px solid var(--color-input-border);
                 background: var(--color-input-bg);
                 color: var(--color-text);
                 font-size: 16px;
                 box-sizing: border-box;
             }
+            /* результаты поиска — занимают оставшееся место */
             #mmenu-search-results {
                 list-style: none;
                 padding: 4px 0;
                 margin: 0;
-                overflow-y: auto;
                 flex: 1;
+                overflow-y: auto;
                 min-height: 0;
             }
             #mmenu-search-results li {
@@ -2403,9 +2231,11 @@
                 margin: 2px 8px;
             }
             #mmenu-search-results li:active { background: var(--color-active-item); }
+
+            /* кнопки внизу меню */
             #mmenu-bottom {
                 padding: 12px;
-                padding-bottom: max(12px, env(safe-area-inset-bottom));
+                padding-bottom: max(16px, env(safe-area-inset-bottom));
                 border-top: 1px solid var(--color-results-sep);
                 flex-shrink: 0;
             }
@@ -2421,10 +2251,25 @@
                 cursor: pointer;
                 margin-top: 4px;
             }
+
+            /* затемнение за меню */
+            #mmenu-backdrop {
+                position: fixed;
+                inset: 0;
+                z-index: 39;
+                background: rgba(0,0,0,0.45);
+                display: none;
+            }
+            #mmenu-backdrop.open { display: block; }
         }
+
+        /* на десктопе mobile-menu-panel не отображается */
         @media (min-width: 768px) {
             #mobile-menu-panel { display: none !important; }
+            #mmenu-backdrop    { display: none !important; }
         }
+
+        /* #app-layout на desktop занимает весь оставшийся body-space */
 
         /* ── Переключатель темы (theme-toggle) ──────────────────────────────
            CSS взят из присланного style.css без изменений, только
@@ -2683,6 +2528,9 @@
 
     <div id="overlay"></div>
 
+    <!-- Мобайл: затемнение за меню -->
+    <div id="mmenu-backdrop"></div>
+
     <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
     <div id="app-layout">
     <!-- ── Левая панель (desktop) ─────────────────────────────────────────── -->
@@ -2710,17 +2558,8 @@
             <button id="logout-btn-sidebar">Выход</button>
         </div>
 
-        <!-- Мобайл: меню ☰ (поверх всего, без списка контактов) -->
+        <!-- Мобайл: меню (открывается кнопкой ☰) -->
         <div id="mobile-menu-panel">
-            <div id="mmenu-header">
-                <button id="mmenu-close-btn">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                </button>
-                <span>Меню</span>
-            </div>
             <div id="mmenu-search-wrap">
                 <input type="text" id="mmenu-search" placeholder="Найти пользователя..." autocomplete="off">
             </div>
@@ -6246,15 +6085,17 @@
         })();
 
         // ── bg-anim toggle (settings) ────────────────────────────────────────
-        // ══ MOBILE NAVIGATION <768px ══════════════════════════════════════
+        // ════════════════════════════════════════════════════════════════
+        // MOBILE NAV  <768px
+        // ════════════════════════════════════════════════════════════════
         (function setupMobileNav() {
             if (window.innerWidth >= 768) return;
 
             const body         = document.body;
             const chatEl       = document.getElementById('chat');
             const menuPanel    = document.getElementById('mobile-menu-panel');
+            const backdrop     = document.getElementById('mmenu-backdrop');
             const mmenuBtn     = document.getElementById('menu-btn');
-            const mmenuClose   = document.getElementById('mmenu-close-btn');
             const mmenuSearch  = document.getElementById('mmenu-search');
             const mmenuResults = document.getElementById('mmenu-search-results');
             const mmenuPacman  = document.getElementById('mmenu-pacman-btn');
@@ -6263,16 +6104,30 @@
             const tmMenu       = document.getElementById('theme-toggle-mmenu');
             const tmMain       = document.getElementById('theme-toggle');
 
-            function openMenu()  { menuPanel.classList.add('open'); }
-            function closeMenu() { menuPanel.classList.remove('open'); }
+            // ── открыть/закрыть меню ──────────────────────────────────
+            function openMenu() {
+                menuPanel.classList.add('open');
+                backdrop.classList.add('open');
+            }
+            function closeMenu() {
+                menuPanel.classList.remove('open');
+                backdrop.classList.remove('open');
+            }
+
+            // ── открыть/закрыть чат ───────────────────────────────────
             function openChat()  { body.classList.add('chat-open'); }
             function closeChat() { body.classList.remove('chat-open'); }
 
-            // кнопка ☰ в topbar
-            if (mmenuBtn)  mmenuBtn.addEventListener('click',  openMenu);
-            if (mmenuClose) mmenuClose.addEventListener('click', closeMenu);
+            // кнопка ☰
+            if (mmenuBtn) mmenuBtn.addEventListener('click', () => {
+                if (menuPanel.classList.contains('open')) closeMenu();
+                else openMenu();
+            });
 
-            // синхронизация темы
+            // закрытие по затемнению
+            if (backdrop) backdrop.addEventListener('click', closeMenu);
+
+            // ── тема ──────────────────────────────────────────────────
             if (tmMenu && tmMain) {
                 tmMenu.checked = tmMain.checked;
                 tmMenu.addEventListener('change', () => {
@@ -6282,7 +6137,7 @@
                 tmMain.addEventListener('change', () => { tmMenu.checked = tmMain.checked; });
             }
 
-            // кнопки в меню
+            // ── кнопки меню ───────────────────────────────────────────
             if (mmenuPacman) mmenuPacman.addEventListener('click', () => {
                 closeMenu();
                 document.getElementById('pacman-sidebar-btn').click();
@@ -6298,7 +6153,7 @@
                 document.getElementById('logout-btn-sidebar').click();
             });
 
-            // поиск в меню — прокидываем в основной search-input
+            // ── поиск в меню ──────────────────────────────────────────
             if (mmenuSearch) {
                 const mainSearch  = document.getElementById('search-input');
                 const mainResults = document.getElementById('search-results');
@@ -6314,7 +6169,7 @@
                         mmenuResults.querySelectorAll('li').forEach((li, i) => {
                             li.addEventListener('click', () => {
                                 const orig = mainResults.querySelectorAll('li')[i];
-                                if (orig) orig.click();
+                                if (orig) { orig.click(); }
                                 closeMenu();
                                 openChat();
                             });
@@ -6323,7 +6178,7 @@
                 }
             }
 
-            // клик на контакт в #users → открыть чат
+            // ── клик на контакт в #users → открыть чат ───────────────
             const usersEl = document.getElementById('users');
             if (usersEl) {
                 usersEl.addEventListener('click', (e) => {
@@ -6331,26 +6186,45 @@
                 });
             }
 
-            // свайп вправо → назад к контактам
-            // начинаем только от x>=30px (не системный edge-gesture)
-            let tsX = 0, tsY = 0, swipeOk = false;
+            // ── свайп вправо по чату → закрыть чат ───────────────────
+            // начинаем только от x >= 30px (не системный edge)
+            let tsX = 0, tsY = 0, swipeChat = false;
             chatEl.addEventListener('touchstart', (e) => {
                 const t = e.touches[0];
                 tsX = t.clientX; tsY = t.clientY;
-                swipeOk = (tsX >= 30);
+                swipeChat = (tsX >= 30);
             }, { passive: true });
             chatEl.addEventListener('touchend', (e) => {
-                if (!swipeOk) return;
+                if (!swipeChat) return;
                 const t = e.changedTouches[0];
                 const dx = t.clientX - tsX;
                 const dy = Math.abs(t.clientY - tsY);
                 if (dx > 60 && dy < dx * 0.6) closeChat();
-                swipeOk = false;
+                swipeChat = false;
+            }, { passive: true });
+
+            // ── свайп влево по меню → закрыть меню ───────────────────
+            // начинаем только если touch начался внутри меню (x < ширина меню)
+            let tmX = 0, tmY = 0, swipeMenu = false;
+            menuPanel.addEventListener('touchstart', (e) => {
+                const t = e.touches[0];
+                tmX = t.clientX; tmY = t.clientY;
+                // не от самого правого края меню — иначе может быть системный жест
+                const menuW = menuPanel.offsetWidth;
+                swipeMenu = (tmX < menuW - 20);
+            }, { passive: true });
+            menuPanel.addEventListener('touchend', (e) => {
+                if (!swipeMenu) return;
+                const t = e.changedTouches[0];
+                const dx = tmX - t.clientX;  // влево = положительный dx
+                const dy = Math.abs(t.clientY - tmY);
+                if (dx > 60 && dy < dx * 0.6) closeMenu();
+                swipeMenu = false;
             }, { passive: true });
 
         })();
 
-                const bgAnimToggle    = document.getElementById('bg-anim-toggle');
+        const bgAnimToggle    = document.getElementById('bg-anim-toggle');
         const bgAnimOpenBtn   = document.getElementById('open-bg-anim-submenu');
         const bgAnimBackBtn   = document.getElementById('bg-anim-back-btn');
         const bgAnimSubmenu   = document.getElementById('bg-anim-submenu');
@@ -6401,7 +6275,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <script>
     (function() {
-        // canvas всегда в rp-canvas-wrap (fixed, на весь экран)
+        // На desktop — canvas в правой панели, на мобайл — в welcome-экране
+        // canvas всегда в rp-canvas-wrap (fixed на весь экран)
         const canvasWrap = document.getElementById('rp-canvas-wrap');
         if (!canvasWrap) return;
 
