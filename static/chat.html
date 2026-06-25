@@ -4079,6 +4079,10 @@
             });
 
             welcomeEmptyHint.style.display = logins.length === 0 ? 'block' : 'none';
+
+            // Обновляем заголовок вкладки
+            const totalUnread = Object.values(unreadCount).reduce((s, n) => s + n, 0);
+            document.title = totalUnread > 0 ? 'Oshino — новое сообщение' : 'Oshino';
         }
 
         // ── История сообщений ────────────────────────────────────────────────────
