@@ -4515,8 +4515,18 @@
         }
 
         function applyMessageAck(msg) {
+            if (!historyState[msg.to]) {
+                historyState[msg.to] = { oldestId: 0, allLoaded: false, messages: [] };
+            }
             const state = historyState[msg.to];
-            if (!state) return;
+
+            // Дедупликация: если сообщение с таким msg_id уже есть — ничего не делаем.
+            // Защищает от двойной вставки если msgack пришёл на то же устройство, которое
+            // уже подтвердило плейсхолдер, и от гонок при быстрой отправке.
+            if (msg.msg_id && state.messages.some(m => m.id === msg.msg_id)) {
+                if (msg.created_at) historyState[msg.to].lastMsg = msg.created_at;
+                return;
+            }
 
             if (msg.forwarded_from) {
                 // Пересланное сообщение никогда не рисуется оптимистично заранее —
@@ -4536,7 +4546,10 @@
                     forwarded_from: msg.forwarded_from
                 });
             } else if (msg.image_id) {
-                // Сопоставляем с самым старым ожидающим подтверждения сообщением-картинкой
+                // Сопоставляем с самым старым ожидающим подтверждения сообщением-картинкой.
+                // Если плейсхолдер не найден — это второе устройство того же отправителя,
+                // вставляем как новое сообщение (own: true).
+                let matched = false;
                 for (let i = 0; i < state.messages.length; i++) {
                     const m = state.messages[i];
                     if (m.pending && m.own && m.isImage && !m.image_id) {
@@ -4551,11 +4564,27 @@
                             delete m.local_preview;
                         }
                         delete m.pending;
+                        matched = true;
                         break;
                     }
                 }
+                if (!matched) {
+                    state.messages.push({
+                        id: msg.msg_id,
+                        from: msg.from,
+                        own: true,
+                        created_at: msg.created_at,
+                        image_id: msg.image_id,
+                        image_name: msg.image_name,
+                        image_mime: msg.image_mime,
+                        reply_to_id: msg.reply_to_id || undefined,
+                        reply_preview: msg.reply_preview || undefined
+                    });
+                }
             } else if (msg.audio_id) {
-                // Сопоставляем с самым старым ожидающим аудио-сообщением
+                // Сопоставляем с самым старым ожидающим аудио-сообщением.
+                // Если плейсхолдер не найден — второе устройство, вставляем как новое.
+                let matched = false;
                 for (let i = 0; i < state.messages.length; i++) {
                     const m = state.messages[i];
                     if (m.pending && m.own && m.isAudio && !m.audio_id) {
@@ -4572,8 +4601,21 @@
                             }, 5000);
                         }
                         delete m.pending;
+                        matched = true;
                         break;
                     }
+                }
+                if (!matched) {
+                    state.messages.push({
+                        id: msg.msg_id,
+                        from: msg.from,
+                        own: true,
+                        created_at: msg.created_at,
+                        audio_id: msg.audio_id,
+                        audio_duration: msg.audio_duration,
+                        reply_to_id: msg.reply_to_id || undefined,
+                        reply_preview: msg.reply_preview || undefined
+                    });
                 }
             } else if (msg.call_type) {
                 // Запись о звонке не рисуется оптимистично заранее (в отличие от
@@ -4590,7 +4632,10 @@
                     call_duration: msg.call_duration
                 });
             } else {
-                // Находим самое последнее своё непроверенное текстовое сообщение с тем же текстом
+                // Находим самое последнее своё непроверенное текстовое сообщение с тем же текстом.
+                // Если плейсхолдер не найден — это второе устройство того же отправителя,
+                // вставляем сообщение как новое (own: true).
+                let matched = false;
                 for (let i = state.messages.length - 1; i >= 0; i--) {
                     const m = state.messages[i];
                     if (m.pending && m.own && !m.isImage && m.text === msg.text) {
@@ -4599,16 +4644,30 @@
                         m.reply_to_id = msg.reply_to_id;
                         m.reply_preview = msg.reply_preview;
                         delete m.pending;
+                        matched = true;
                         break;
                     }
+                }
+                if (!matched) {
+                    state.messages.push({
+                        id: msg.msg_id,
+                        from: msg.from,
+                        text: msg.text,
+                        own: true,
+                        created_at: msg.created_at,
+                        reply_to_id: msg.reply_to_id || undefined,
+                        reply_preview: msg.reply_preview || undefined
+                    });
                 }
             }
 
             if (currentUser === msg.to) {
                 renderMessages(state.messages);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
             // Обновляем lastMsg для корректной сортировки списка
             if (msg.created_at) historyState[msg.to].lastMsg = msg.created_at;
+            renderDialogList();
         }
 
         function receiveMessage(msg) {
@@ -4618,6 +4677,11 @@
 
             const state = historyState[msg.from];
             const realId = msg.msg_id || -(Date.now());
+
+            // Дедупликация: если сообщение с таким id уже есть — игнорируем.
+            if (msg.msg_id && state.messages.some(m => m.id === msg.msg_id)) {
+                return;
+            }
 
             if (msg.image_id) {
                 state.messages.push({
