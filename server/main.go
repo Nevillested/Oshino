@@ -265,10 +265,10 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		http.ServeFile(w, r, "static/index.html")
+		http.ServeFile(w, r, "../web-app/index.html")
 	})
 	http.HandleFunc("/index", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/index.html")
+		http.ServeFile(w, r, "../web-app/index.html")
 	})
 	http.HandleFunc("/sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Service Worker обязательно должен отдаваться с корневого пути (не из /static/),
@@ -277,17 +277,17 @@ func main() {
 		// Service-Worker-Allowed на всякий случай — явное расширение scope, хотя при
 		// раздаче с корня браузер и так выберет scope "/" по умолчанию.
 		w.Header().Set("Service-Worker-Allowed", "/")
-		http.ServeFile(w, r, "static/sw.js")
+		http.ServeFile(w, r, "../web-app/sw.js")
 	})
 	// icons/ — лежит на верхнем уровне проекта (не внутри static/), раздаём отдельной
 	// директорией: иконка вкладки, главного экрана iOS/Android и push-уведомлений — один
 	// и тот же файл, используемый сразу в нескольких местах разметки и в sw.js.
-	http.Handle("/icons/", http.StripPrefix("/icons/", http.FileServer(http.Dir("icons"))))
+	http.Handle("/icons/", http.StripPrefix("/icons/", http.FileServer(http.Dir("../web-app/assets/icons"))))
 	// sounds/ — звуковые файлы для уведомлений (например, income_msg.mp3).
-	http.Handle("/sounds/", http.StripPrefix("/sounds/", http.FileServer(http.Dir("static/sounds"))))
+	http.Handle("/sounds/", http.StripPrefix("/sounds/", http.FileServer(http.Dir("../web-app/assets/sounds"))))
 	http.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
-		http.ServeFile(w, r, "static/manifest.json")
+		http.ServeFile(w, r, "../web-app/manifest.json")
 	})
 	http.HandleFunc("/login", app.handleLogin)
 	http.HandleFunc("/set-session", app.handleSetSession)
@@ -323,7 +323,7 @@ func main() {
 	http.HandleFunc("/admin/disable-user", app.handleAdminDisableUser)
 	http.HandleFunc("/admin/enable-user", app.handleAdminEnableUser)
 	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/pacman.html")
+		http.ServeFile(w, r, "../web-app/pacman.html")
 	})
 
 	fmt.Println("Сервер слушает порт 8080...")
@@ -449,10 +449,10 @@ func (a *App) handleMain(w http.ResponseWriter, r *http.Request) {
 	if login == "" {
 		// Для iOS PWA: отдаём страницу, JS восстановит сессию через localStorage
 		// и перенаправит на /index если токен невалиден
-		http.ServeFile(w, r, "static/chat.html")
+		http.ServeFile(w, r, "../web-app/chat.html")
 		return
 	}
-	http.ServeFile(w, r, "static/chat.html")
+	http.ServeFile(w, r, "../web-app/chat.html")
 }
 
 func (a *App) handleChat(w http.ResponseWriter, r *http.Request) {
