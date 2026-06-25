@@ -2230,8 +2230,9 @@
                 overflow-y: auto;
                 display: flex !important;
                 flex-direction: column;
-                transform: none !important;
-                transition: none !important;
+                transform: translateX(0);
+                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+                will-change: transform;
             }
             /* в сайдбаре на мобайл — только h3 + #users */
             #sidebar #search-container,
@@ -2324,8 +2325,8 @@
             }
             body.mob-chat #chat { transform: translateX(0); }
 
-            /* стр.2 контакты — скрываем когда открыт чат */
-            body.mob-chat #sidebar { display: none !important; }
+            /* стр.2 контакты — уезжают влево синхронно с появлением чата */
+            body.mob-chat #sidebar { transform: translateX(-100%); }
 
             /* отступ под topbar внутри чата */
             #messages {
