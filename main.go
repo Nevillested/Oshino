@@ -1822,6 +1822,30 @@ func (c *Client) readPump(a *App) {
 				}
 			}
 			a.routeMessage(msg)
+		} else if strings.HasPrefix(msgStr, "typing:") {
+			// typing:{"to":"login"} — пересылаем получателю typing:{"from":"..."}
+			var payload struct{ To string `json:"to"` }
+			if err := json.Unmarshal([]byte(msgStr[7:]), &payload); err == nil && payload.To != "" {
+				toLogin := strings.ToLower(payload.To)
+				notif, _ := json.Marshal(map[string]string{"from": c.login})
+				a.mu.Lock()
+				for rc := range a.clients[toLogin] {
+					rc.trySend(append([]byte("typing:"), notif...))
+				}
+				a.mu.Unlock()
+			}
+		} else if strings.HasPrefix(msgStr, "typingstop:") {
+			// typingstop:{"to":"login"} — пересылаем получателю typingstop:{"from":"..."}
+			var payload struct{ To string `json:"to"` }
+			if err := json.Unmarshal([]byte(msgStr[11:]), &payload); err == nil && payload.To != "" {
+				toLogin := strings.ToLower(payload.To)
+				notif, _ := json.Marshal(map[string]string{"from": c.login})
+				a.mu.Lock()
+				for rc := range a.clients[toLogin] {
+					rc.trySend(append([]byte("typingstop:"), notif...))
+				}
+				a.mu.Unlock()
+			}
 		} else if prefix, rest, ok := cutCallPrefix(msgStr); ok {
 			var sig CallSignal
 			if err := json.Unmarshal([]byte(rest), &sig); err != nil {

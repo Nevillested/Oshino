@@ -250,6 +250,22 @@
             display: none;
         }
         #topbar-subtitle.online { color: #2ecc71; }
+        #topbar-subtitle.typing { color: var(--color-section-title); font-style: italic; }
+
+        /* Анимация трёх точек: точки появляются по очереди */
+        .typing-dots::after {
+            content: '';
+            display: inline-block;
+            animation: typing-dots 1.2s steps(3, end) infinite;
+            min-width: 1.2em;
+            text-align: left;
+        }
+        @keyframes typing-dots {
+            0%   { content: '.'; }
+            33%  { content: '..'; }
+            66%  { content: '...'; }
+            100% { content: '.'; }
+        }
 
         #back-btn {
             background: none;
@@ -473,6 +489,11 @@
 
         .dialog-status.online {
             color: #2ecc71;
+        }
+
+        .dialog-status.typing {
+            color: #4a90e2;
+            font-style: italic;
         }
 
         .unread-badge {
@@ -1967,6 +1988,7 @@
                 white-space: nowrap;
             }
             #dh-status.online { color: #2ecc71; }
+            #dh-status.typing { color: #4a90e2; font-style: italic; }
 
             #dh-actions {
                 display: flex;
@@ -3231,6 +3253,15 @@
         let pinnedByUser = {};
         let defaultReaction = '👍';
 
+        // ── Typing indicators ────────────────────────────────────────────────────
+        // typingUsers — set логинов, которые сейчас печатают (по данным от сервера)
+        // typingTimers — таймеры автосброса (если typingstop не пришёл)
+        // myTypingTimer — debounce-таймер отправки нашего typing/typingstop
+        const typingUsers = new Set();
+        const typingTimers = {};
+        let myTypingTimer = null;
+        let myTypingSent = false; // отправили ли уже typing: без последующего typingstop:
+
         const menuBtn = document.getElementById('menu-btn');
         const closeMenuBtn = document.getElementById('close-menu-btn');
         const sidebar = document.getElementById('sidebar');
@@ -3423,6 +3454,12 @@
                 } else if (message.startsWith('read:')) {
                     const data = JSON.parse(message.substring(5));
                     applyReadReceipt(data.by, data.with);
+                } else if (message.startsWith('typing:')) {
+                    const data = JSON.parse(message.substring(7));
+                    if (data.from) setTypingIndicator(data.from);
+                } else if (message.startsWith('typingstop:')) {
+                    const data = JSON.parse(message.substring(11));
+                    if (data.from) clearTypingIndicator(data.from);
                 }
             };
 
@@ -3450,6 +3487,106 @@
                 }
                 connectWS();
             }, 3000);
+        }
+
+        // ── Typing indicator helpers ─────────────────────────────────────────────
+
+        function setTypingIndicator(fromLogin) {
+            typingUsers.add(fromLogin);
+
+            // Автосброс через 4 сек — если typingstop потерялся
+            clearTimeout(typingTimers[fromLogin]);
+            typingTimers[fromLogin] = setTimeout(() => clearTypingIndicator(fromLogin), 4000);
+
+            // Обновляем список диалогов
+            updateDialogTyping(fromLogin, true);
+
+            // Обновляем шапку открытого чата, если это наш собеседник
+            if (fromLogin === currentUser) updateTopbarTyping(true);
+        }
+
+        function clearTypingIndicator(fromLogin) {
+            typingUsers.delete(fromLogin);
+            clearTimeout(typingTimers[fromLogin]);
+            delete typingTimers[fromLogin];
+
+            updateDialogTyping(fromLogin, false);
+            if (fromLogin === currentUser) updateTopbarTyping(false);
+        }
+
+        function updateDialogTyping(login, isTyping) {
+            // Обновляем статус в sidebar #users
+            const li = usersList.querySelector(`[data-user="${login}"]`);
+            if (li) {
+                const statusSpan = li.querySelector('.dialog-status');
+                if (statusSpan) {
+                    if (isTyping) {
+                        statusSpan.className = 'dialog-status typing';
+                        statusSpan.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                    } else {
+                        const isOnline = onlineUsers.includes(login);
+                        statusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
+                        statusSpan.textContent = isOnline ? 'в сети' : formatLastSeen(login);
+                    }
+                }
+            }
+            // Обновляем и в welcomeDialogsList
+            const welcomeLi = welcomeDialogsList.querySelector(`[data-user="${login}"]`);
+            if (welcomeLi) {
+                const statusSpan = welcomeLi.querySelector('.dialog-status');
+                if (statusSpan) {
+                    if (isTyping) {
+                        statusSpan.className = 'dialog-status typing';
+                        statusSpan.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                    } else {
+                        const isOnline = onlineUsers.includes(login);
+                        statusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
+                        statusSpan.textContent = isOnline ? 'в сети' : formatLastSeen(login);
+                    }
+                }
+            }
+        }
+
+        function updateTopbarTyping(isTyping) {
+            const topbarSub = document.getElementById('topbar-subtitle');
+            const dhStatus  = document.getElementById('dh-status');
+            if (isTyping) {
+                if (topbarSub) {
+                    topbarSub.className = 'typing';
+                    topbarSub.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                }
+                if (dhStatus) {
+                    dhStatus.className = 'typing';
+                    dhStatus.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                }
+            } else {
+                const isOnline = onlineUsers.includes(currentUser);
+                const statusStr = isOnline ? 'в сети' : formatLastSeen(currentUser);
+                if (topbarSub) {
+                    topbarSub.className = isOnline ? 'online' : '';
+                    topbarSub.textContent = statusStr;
+                }
+                if (dhStatus) {
+                    dhStatus.className = isOnline ? 'online' : '';
+                    dhStatus.textContent = statusStr;
+                }
+            }
+        }
+
+        // Отправляем typing: при наборе текста (debounce 2.5 сек до typingstop)
+        function handleInputTyping() {
+            if (!currentUser || !wsReady) return;
+            if (!myTypingSent) {
+                myTypingSent = true;
+                ws.send('typing:' + JSON.stringify({ to: currentUser }));
+            }
+            clearTimeout(myTypingTimer);
+            myTypingTimer = setTimeout(() => {
+                if (myTypingSent) {
+                    myTypingSent = false;
+                    ws.send('typingstop:' + JSON.stringify({ to: currentUser }));
+                }
+            }, 2500);
         }
 
         document.addEventListener('visibilitychange', () => {
@@ -3794,7 +3931,8 @@
             logins.forEach(user => {
                 const count = unreadCount[user] || 0;
                 const isOnline = onlineUsers.includes(user);
-                const statusText = isOnline ? 'в сети' : formatLastSeen(user);
+                const isTyping = typingUsers.has(user);
+                const statusText = isTyping ? null : (isOnline ? 'в сети' : formatLastSeen(user));
 
                 // Пункт в боковом меню
                 const li = document.createElement('li');
@@ -3805,8 +3943,13 @@
                 nameSpan.className = 'dialog-name';
                 nameSpan.textContent = getDisplayName(user);
                 const statusSpan = document.createElement('span');
-                statusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
-                statusSpan.textContent = statusText;
+                if (isTyping) {
+                    statusSpan.className = 'dialog-status typing';
+                    statusSpan.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                } else {
+                    statusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
+                    statusSpan.textContent = statusText;
+                }
                 nameSpan.appendChild(statusSpan);
                 li.appendChild(nameSpan);
 
@@ -3827,8 +3970,13 @@
                 welcomeNameSpan.className = 'dialog-name';
                 welcomeNameSpan.textContent = getDisplayName(user);
                 const welcomeStatusSpan = document.createElement('span');
-                welcomeStatusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
-                welcomeStatusSpan.textContent = statusText;
+                if (isTyping) {
+                    welcomeStatusSpan.className = 'dialog-status typing';
+                    welcomeStatusSpan.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                } else {
+                    welcomeStatusSpan.className = 'dialog-status' + (isOnline ? ' online' : '');
+                    welcomeStatusSpan.textContent = statusText;
+                }
                 welcomeNameSpan.appendChild(welcomeStatusSpan);
                 welcomeLi.appendChild(welcomeNameSpan);
 
@@ -3848,6 +3996,14 @@
         // ── История сообщений ────────────────────────────────────────────────────
 
         async function openDialog(user) {
+            // Сбрасываем typing-флаг предыдущего диалога перед сменой
+            if (myTypingSent && currentUser && wsReady) {
+                myTypingSent = false;
+                ws.send('typingstop:' + JSON.stringify({ to: currentUser }));
+            }
+            clearTimeout(myTypingTimer);
+            myTypingSent = false;
+
             currentUser = user;
             fetch(`/mark-read?with=${encodeURIComponent(user)}`);
             // Обновляем is_read в памяти для входящих сообщений
@@ -4264,6 +4420,8 @@
             }
         });
 
+        inputField.addEventListener('input', handleInputTyping);
+
         sendBtn.addEventListener('click', sendMessage);
 
         function sendMessage() {
@@ -4304,6 +4462,12 @@
             }
 
             inputField.value = '';
+            // Сбрасываем typing indicator при отправке
+            clearTimeout(myTypingTimer);
+            if (myTypingSent && wsReady) {
+                myTypingSent = false;
+                ws.send('typingstop:' + JSON.stringify({ to: currentUser }));
+            }
             cancelReply();
             renderMessages(historyState[currentUser].messages);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -4857,13 +5021,19 @@
             messagesDiv.style.display = 'flex';
             offlineNotice.style.display = 'none';
             const isOnline = onlineUsers.includes(currentUser);
+            const isTyping = typingUsers.has(currentUser);
             const statusStr = isOnline ? 'в сети' : formatLastSeen(currentUser);
 
             // На мобайле: title = имя, subtitle = статус (две строки в топбаре стр.3)
             topbarTitle.textContent = getDisplayName(currentUser);
             if (topbarSub) {
-                topbarSub.textContent = statusStr;
-                topbarSub.className = isOnline ? 'online' : '';
+                if (isTyping) {
+                    topbarSub.className = 'typing';
+                    topbarSub.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                } else {
+                    topbarSub.className = isOnline ? 'online' : '';
+                    topbarSub.textContent = statusStr;
+                }
             }
             callBtn.style.display = 'flex';
             videoCallBtn.style.display = 'flex';
@@ -4873,8 +5043,13 @@
                 desktopHeader.classList.remove('hidden');
                 if (dhUsername) dhUsername.textContent = getDisplayName(currentUser);
                 if (dhStatus) {
-                    dhStatus.textContent = statusStr;
-                    dhStatus.className = isOnline ? 'online' : '';
+                    if (isTyping) {
+                        dhStatus.className = 'typing';
+                        dhStatus.innerHTML = 'Печатает<span class="typing-dots"></span>';
+                    } else {
+                        dhStatus.className = isOnline ? 'online' : '';
+                        dhStatus.textContent = statusStr;
+                    }
                 }
             }
         }
