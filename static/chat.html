@@ -2031,189 +2031,7 @@
         }
 
         /* Mobile стили - полная ширина */
-        /* ════════════════════════════════════════════════════════════════
-           MOBILE  <768px
-           ════════════════════════════════════════════════════════════════ */
-        @media (max-width: 767px) {
 
-            /* layout-wrappers не мешают */
-            #app-layout          { display: contents; }
-            #left-panel          { display: contents; }
-            #panel-divider       { display: none; }
-            #right-panel         { display: contents; }
-            #desktop-chat-header { display: none !important; }
-            #dh-call-btn,
-            #dh-video-btn        { display: none; }
-
-            /* canvas — фиксированный фон, самый нижний слой */
-            #rp-canvas-wrap {
-                display: block;
-                position: fixed;
-                inset: 0;
-                z-index: 0;
-                pointer-events: none;
-            }
-            #rp-canvas-wrap canvas { width: 100% !important; height: 100% !important; }
-            body.bg-anim-off #rp-canvas-wrap canvas { display: none; }
-            #welcome-canvas-wrap { display: none; }
-
-            /* topbar: шапка поверх ВСЕГО включая меню */
-            #topbar {
-                position: fixed;
-                top: 0; left: 0; right: 0;
-                z-index: 50;
-                height: 56px;
-                padding: 0 16px;
-                padding-top: max(0px, env(safe-area-inset-top));
-                background: var(--color-topbar);
-                display: flex !important;
-                align-items: center;
-                gap: 14px;
-                border-bottom: 1px solid var(--color-results-sep);
-            }
-            #topbar-title { font-size: 18px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            #menu-btn     { font-size: 24px; padding: 6px; order: -1; flex-shrink: 0; }
-            /* кнопки звонка в topbar — скрываем когда список контактов */
-            #call-btn, #video-call-btn { display: none; }
-            body.chat-open #call-btn,
-            body.chat-open #video-call-btn { display: flex; }
-
-            /* sidebar: список контактов — от topbar до низа, прозрачный */
-            #sidebar {
-                position: fixed;
-                top: 56px; left: 0; right: 0; bottom: 0;
-                z-index: 10;
-                background: transparent;
-                padding: 0;
-                overflow-y: auto;
-                display: flex !important;
-                flex-direction: column;
-                transform: none !important;
-                transition: none !important;
-            }
-            /* search-container и нижние кнопки скрываем — они в меню */
-            #sidebar #search-container,
-            #sidebar #search-results,
-            #sidebar-main .theme-switch-wrap,
-            #pacman-sidebar-btn,
-            #settings-open-btn,
-            #logout-btn-sidebar    { display: none !important; }
-            #close-menu-btn        { display: none !important; }
-            #sidebar h3 { font-size: 11px; letter-spacing: 0.08em; padding: 10px 16px 4px; margin: 0; color: var(--color-section-title); }
-            #users { display: block !important; padding: 4px 0; margin: 0; }
-            #users li { padding: 14px 20px; font-size: 17px; margin: 2px 8px; border-radius: 10px; }
-
-            /* settings-panel и submenus из sidebar — fixed поверх меню */
-            #sidebar #settings-panel,
-            #sidebar .settings-submenu {
-                position: fixed;
-                inset: 0;
-                z-index: 45;
-            }
-
-            /* chat: поверх всего, прозрачный — по умолчанию за правым краем */
-            #chat {
-                position: fixed;
-                inset: 0;
-                z-index: 15;
-                background: transparent;
-                display: flex;
-                flex-direction: column;
-                transform: translateX(100%);
-                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
-                will-change: transform;
-            }
-            body.chat-open #chat { transform: translateX(0); }
-
-            /* FIX 1: список контактов скрыт когда открыт чат */
-            body.chat-open #sidebar { display: none !important; }
-
-            /* отступ под topbar */
-            #messages    { background: transparent !important; padding-top: 56px; }
-            #pin-bar     { margin-top: 56px; }
-            #reply-bar   { }
-            #input-area  { background: var(--color-input-bar-bg) !important; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-
-            #welcome-screen { display: none !important; }
-            #overlay        { display: none !important; }
-
-            /* шрифты и размеры */
-            .message      { font-size: 17px; padding: 10px 14px; }
-            .message-wrap { max-width: 85%; }
-            #messages     { padding: 20px; padding-top: 56px; gap: 10px; }
-            #offline-notice { font-size: 18px; }
-            #form-area textarea { font-size: 16px; padding: 10px 12px; }
-            #send-btn     { font-size: 15px; padding: 10px 14px; }
-
-            #mobile-menu-panel {
-                position: fixed;
-                top: 56px; left: 0; bottom: 0;
-                right: 50px;
-                z-index: 40;
-                background: var(--color-sidebar);
-                display: flex;
-                flex-direction: column;
-                transform: translateX(-100%);
-                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
-                will-change: transform;
-                overflow-y: auto;
-                overflow-x: hidden;
-            }
-            #mobile-menu-panel.open { transform: translateX(0); }
-
-            /* FIX 3: поиск вплотную к верху (без пустого места) */
-            #mmenu-search-wrap {
-                padding: 12px;
-                border-bottom: 1px solid var(--color-results-sep);
-                flex-shrink: 0;
-            }
-            #mmenu-search {
-                width: 100%;
-                padding: 10px 14px;
-                border-radius: 10px;
-                border: 1px solid var(--color-input-border);
-                background: var(--color-input-bg);
-                color: var(--color-text);
-                font-size: 16px;
-                box-sizing: border-box;
-            }
-            #mmenu-search-results {
-                list-style: none; padding: 4px 0; margin: 0;
-                flex: 1; overflow-y: auto; min-height: 0;
-            }
-            #mmenu-search-results li {
-                padding: 14px 20px; font-size: 17px;
-                color: var(--color-sidebar-text); cursor: pointer;
-                border-radius: 10px; margin: 2px 8px;
-            }
-            #mmenu-search-results li:active { background: var(--color-active-item); }
-            #mmenu-bottom {
-                padding: 12px;
-                padding-bottom: max(16px, env(safe-area-inset-bottom));
-                border-top: 1px solid var(--color-results-sep);
-                flex-shrink: 0;
-            }
-            #mmenu-logout-btn {
-                width: 100%; padding: 14px;
-                background: #4a90e2; color: white;
-                border: none; border-radius: 10px;
-                font-size: 16px; font-weight: 600;
-                cursor: pointer; margin-top: 4px;
-            }
-
-            /* затемнение за меню */
-            #mmenu-backdrop {
-                position: fixed;
-                top: 56px; left: 0; right: 0; bottom: 0;
-                z-index: 39;
-                background: rgba(0,0,0,0.45); display: none;
-            }
-            #mmenu-backdrop.open { display: block; }
-        }
-        @media (min-width: 768px) {
-            #mobile-menu-panel { display: none !important; }
-            #mmenu-backdrop    { display: none !important; }
-        }
 
         /* #app-layout на desktop занимает весь оставшийся body-space */
         @media (min-width: 768px) {
@@ -2274,6 +2092,226 @@
         .bg-anim-toggle-wrap input:checked + .bg-anim-slider::before { transform: translateX(20px); }
 
 
+
+        /* ═══════════════════════════════════════════════════════════════
+           MOBILE  <768px  —  модель трёх страниц
+           Стр.1 = #pg-menu       (меню, слева)
+           Стр.2 = #pg-contacts   (список, центр = #topbar + #sidebar)
+           Стр.3 = #pg-chat       (диалог, справа = #topbar + #chat)
+           Стол  = #rp-canvas-wrap (canvas, fixed, z=0)
+           ═══════════════════════════════════════════════════════════════ */
+        @media (max-width: 767px) {
+
+            /* layout-wrappers десктопа не мешают */
+            #app-layout          { display: contents; }
+            #left-panel          { display: contents; }
+            #panel-divider       { display: none; }
+            #right-panel         { display: contents; }
+            #desktop-chat-header { display: none !important; }
+            #dh-call-btn,
+            #dh-video-btn        { display: none; }
+            #welcome-screen      { display: none !important; }
+            #overlay             { display: none !important; }
+            #welcome-canvas-wrap { display: none; }
+
+            /* СТОЛ: canvas на весь экран, самый нижний */
+            #rp-canvas-wrap {
+                display: block;
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                pointer-events: none;
+            }
+            #rp-canvas-wrap canvas { width: 100% !important; height: 100% !important; }
+            body.bg-anim-off #rp-canvas-wrap canvas { display: none; }
+
+            /* ── СТРАНИЦА 2: список контактов (по умолчанию видна) ── */
+
+            /* topbar стр.2 — непрозрачный, поверх всего */
+            #topbar {
+                position: fixed;
+                top: 0; left: 0; right: 0;
+                z-index: 30;
+                height: 56px;
+                padding: 0 16px;
+                padding-top: max(0px, env(safe-area-inset-top));
+                background: var(--color-topbar);
+                display: flex !important;
+                align-items: center;
+                gap: 14px;
+                border-bottom: 1px solid var(--color-results-sep);
+                transition: background 0.3s;
+            }
+            #menu-btn {
+                font-size: 22px;
+                padding: 6px;
+                flex-shrink: 0;
+                background: none;
+                border: none;
+                color: var(--color-sidebar-text);
+                cursor: pointer;
+                order: -1;
+            }
+            #topbar-title {
+                font-size: 18px;
+                font-weight: 700;
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            /* кнопки звонка — только на стр.3 */
+            #call-btn, #video-call-btn { display: none !important; }
+
+            /* sidebar = список контактов, от topbar до низа, прозрачный */
+            #sidebar {
+                position: fixed;
+                top: 56px; left: 0; right: 0; bottom: 0;
+                z-index: 10;
+                background: transparent;
+                padding: 0;
+                overflow-y: auto;
+                display: flex !important;
+                flex-direction: column;
+                transform: none !important;
+                transition: none !important;
+            }
+            /* в сайдбаре на мобайл — только h3 + #users */
+            #sidebar #search-container,
+            #sidebar #search-results,
+            #sidebar-main .theme-switch-wrap,
+            #pacman-sidebar-btn,
+            #settings-open-btn,
+            #logout-btn-sidebar { display: none !important; }
+            #close-menu-btn     { display: none !important; }
+            #sidebar h3 {
+                font-size: 11px; letter-spacing: 0.08em;
+                padding: 10px 16px 4px; margin: 0;
+                color: var(--color-section-title);
+            }
+            #users { display: block !important; padding: 4px 0; margin: 0; }
+            #users li { padding: 14px 20px; font-size: 17px; margin: 2px 8px; border-radius: 10px; }
+
+            /* settings-panel поверх всего когда открыт */
+            #sidebar #settings-panel,
+            #sidebar .settings-submenu { position: fixed; inset: 0; z-index: 50; }
+
+            /* ── СТРАНИЦА 3: диалог ── */
+            /* #chat выезжает справа */
+            #chat {
+                position: fixed;
+                inset: 0;
+                z-index: 20;
+                background: transparent;
+                display: flex;
+                flex-direction: column;
+                transform: translateX(100%);
+                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+                will-change: transform;
+            }
+            body.mob-chat #chat { transform: translateX(0); }
+
+            /* на стр.3 topbar показывает имя собеседника + звонки */
+            /* (меняется через JS) */
+            body.mob-chat #call-btn,
+            body.mob-chat #video-call-btn { display: flex !important; }
+            body.mob-chat #menu-btn { display: flex !important; }
+
+            /* стр.2 контакты — скрываем когда открыт чат */
+            body.mob-chat #sidebar { display: none !important; }
+
+            /* отступ под topbar внутри чата */
+            #messages {
+                background: transparent !important;
+                padding-top: 56px;
+            }
+            #pin-bar { margin-top: 56px; }
+
+            /* футер непрозрачный */
+            #input-area {
+                background: var(--color-input-bar-bg) !important;
+                padding-bottom: max(8px, env(safe-area-inset-bottom));
+            }
+
+            /* ── СТРАНИЦА 1: меню ── */
+            #pg-menu {
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                right: 50px;          /* не доходит 50px до правого края */
+                z-index: 25;          /* между стр.2 (10) и топбаром (30) */
+                background: var(--color-sidebar);
+                display: flex;
+                flex-direction: column;
+                transform: translateX(-100%);
+                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+                will-change: transform;
+            }
+            body.mob-menu #pg-menu { transform: translateX(0); }
+
+            /* затемнение справа от меню */
+            #pg-menu-backdrop {
+                position: fixed;
+                top: 0; bottom: 0;
+                left: calc(100% - 50px); right: 0;  /* только 50px-полоска */
+                z-index: 24;
+                background: rgba(0,0,0,0.5);
+                display: none;
+                pointer-events: auto;
+            }
+            body.mob-menu #pg-menu-backdrop { display: block; }
+
+            /* поиск вверху меню */
+            #pgm-search-wrap {
+                padding: 12px;
+                padding-top: max(14px, env(safe-area-inset-top));
+                border-bottom: 1px solid var(--color-results-sep);
+                flex-shrink: 0;
+            }
+            #pgm-search {
+                width: 100%;
+                padding: 10px 14px;
+                border-radius: 10px;
+                border: 1px solid var(--color-input-border);
+                background: var(--color-input-bg);
+                color: var(--color-text);
+                font-size: 16px;
+                box-sizing: border-box;
+            }
+            #pgm-search-results {
+                list-style: none; padding: 4px 0; margin: 0;
+                flex: 1; overflow-y: auto; min-height: 0;
+            }
+            #pgm-search-results li {
+                padding: 14px 20px; font-size: 17px;
+                color: var(--color-sidebar-text);
+                border-radius: 10px; margin: 2px 8px; cursor: pointer;
+            }
+            #pgm-search-results li:active { background: var(--color-active-item); }
+            #pgm-bottom {
+                padding: 12px;
+                padding-bottom: max(16px, env(safe-area-inset-bottom));
+                border-top: 1px solid var(--color-results-sep);
+                flex-shrink: 0;
+            }
+            #pgm-logout-btn {
+                width: 100%; padding: 14px;
+                background: #4a90e2; color: white;
+                border: none; border-radius: 10px;
+                font-size: 16px; font-weight: 600;
+                cursor: pointer; margin-top: 4px;
+            }
+
+            /* шрифты */
+            .message      { font-size: 17px; padding: 10px 14px; }
+            .message-wrap { max-width: 85%; }
+            #offline-notice { font-size: 18px; }
+        }
+
+        @media (min-width: 768px) {
+            #pg-menu         { display: none !important; }
+            #pg-menu-backdrop{ display: none !important; }
+        }
 
         /* ── Переключатель темы (theme-toggle) ──────────────────────────────
            CSS взят из присланного style.css без изменений, только
@@ -2532,8 +2570,7 @@
 
     <div id="overlay"></div>
 
-    <!-- Мобайл: затемнение за меню -->
-    <div id="mmenu-backdrop"></div>
+    <div id="pg-menu-backdrop"></div>
 
     <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
     <div id="app-layout">
@@ -2562,22 +2599,22 @@
             <button id="logout-btn-sidebar">Выход</button>
         </div>
 
-        <!-- Мобайл: меню ☰ -->
-        <div id="mobile-menu-panel">
-            <div id="mmenu-search-wrap">
-                <input type="text" id="mmenu-search" placeholder="Найти пользователя..." autocomplete="off">
+        <!-- Страница 1: меню (мобайл) -->
+        <div id="pg-menu">
+            <div id="pgm-search-wrap">
+                <input type="text" id="pgm-search" placeholder="Найти пользователя..." autocomplete="off">
             </div>
-            <ul id="mmenu-search-results"></ul>
-            <div id="mmenu-bottom">
+            <ul id="pgm-search-results"></ul>
+            <div id="pgm-bottom">
                 <div class="theme-switch-wrap" style="margin-bottom: 8px; margin-top: 0;">
                     <label class="theme-switch">
-                        <input id="theme-toggle-mmenu" class="theme-switch__input" type="checkbox" role="switch" />
+                        <input id="theme-toggle-pgm" class="theme-switch__input" type="checkbox" role="switch" />
                         <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
                     </label>
                 </div>
-                <button id="mmenu-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
-                <button id="mmenu-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
-                <button id="mmenu-logout-btn">Выход</button>
+                <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
+                <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
+                <button id="pgm-logout-btn">Выход</button>
             </div>
         </div>
 
@@ -6089,174 +6126,184 @@
         })();
 
         // ── bg-anim toggle (settings) ────────────────────────────────────────
-        // ════════════════════════════════════════════════════════════════
-        // MOBILE NAV  <768px
-        // ════════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════
+        // MOBILE: три страницы  <768px
+        // Стр.1 = меню (#pg-menu)         ← тянуть вправо со стр.2
+        // Стр.2 = контакты (#sidebar)     — стартовая
+        // Стр.3 = диалог (#chat)          ← тянуть влево со стр.2
+        // ═══════════════════════════════════════════════════════════════
         (function setupMobileNav() {
             if (window.innerWidth >= 768) return;
 
-            const body         = document.body;
-            const chatEl       = document.getElementById('chat');
-            const menuPanel    = document.getElementById('mobile-menu-panel');
-            const backdrop     = document.getElementById('mmenu-backdrop');
-            const mmenuBtn     = document.getElementById('menu-btn');
-            const mmenuSearch  = document.getElementById('mmenu-search');
-            const mmenuResults = document.getElementById('mmenu-search-results');
-            const mmenuPacman  = document.getElementById('mmenu-pacman-btn');
-            const mmenuSett    = document.getElementById('mmenu-settings-btn');
-            const mmenuLogout  = document.getElementById('mmenu-logout-btn');
-            const topbarTitle  = document.getElementById('topbar-title');
-            const tmMenu       = document.getElementById('theme-toggle-mmenu');
-            const tmMain       = document.getElementById('theme-toggle');
+            const body        = document.body;
+            const topbarTitle = document.getElementById('topbar-title');
+            const menuBtn     = document.getElementById('menu-btn');
+            const callBtn     = document.getElementById('call-btn');
+            const videoBtn    = document.getElementById('video-call-btn');
+            const pgMenu      = document.getElementById('pg-menu');
+            const pgBackdrop  = document.getElementById('pg-menu-backdrop');
+            const chatEl      = document.getElementById('chat');
+            const pgmSearch   = document.getElementById('pgm-search');
+            const pgmResults  = document.getElementById('pgm-search-results');
+            const pgmPacman   = document.getElementById('pgm-pacman-btn');
+            const pgmSettings = document.getElementById('pgm-settings-btn');
+            const pgmLogout   = document.getElementById('pgm-logout-btn');
+            const tmPgm       = document.getElementById('theme-toggle-pgm');
+            const tmMain      = document.getElementById('theme-toggle');
 
-            // ── открыть/закрыть меню ──────────────────────────────────
-            function openMenu() {
-                menuPanel.classList.add('open');
-                backdrop.classList.add('open');
-            }
-            function closeMenu() {
-                menuPanel.classList.remove('open');
-                backdrop.classList.remove('open');
-            }
-
-            function openChat()  { body.classList.add('chat-open'); }
-            function closeChat() {
-                body.classList.remove('chat-open');
-                // FIX 5: явно сбрасываем шапку независимо от currentUser
+            // ── переключение страниц ──────────────────────────────────
+            function showMenu()     { body.classList.add('mob-menu'); body.classList.remove('mob-chat'); }
+            function showContacts() {
+                body.classList.remove('mob-menu');
+                body.classList.remove('mob-chat');
+                // Сброс шапки → стр.2
                 if (topbarTitle) topbarTitle.textContent = 'Oshino';
-                const cb = document.getElementById('call-btn');
-                const vb = document.getElementById('video-call-btn');
-                if (cb) cb.style.display = 'none';
-                if (vb) vb.style.display = 'none';
+                if (callBtn)  callBtn.style.display  = '';
+                if (videoBtn) videoBtn.style.display = '';
             }
+            function showChat()     { body.classList.remove('mob-menu'); body.classList.add('mob-chat'); }
 
-            // кнопка ☰ — toggle меню
-            if (mmenuBtn) mmenuBtn.addEventListener('click', () => {
-                if (menuPanel.classList.contains('open')) closeMenu();
-                else openMenu();
+            // ── кнопка ☰ ─────────────────────────────────────────────
+            if (menuBtn) menuBtn.addEventListener('click', () => {
+                if (body.classList.contains('mob-menu')) showContacts();
+                else if (body.classList.contains('mob-chat')) showContacts();
+                else showMenu();
             });
 
-            // закрытие по затемнению
-            if (backdrop) backdrop.addEventListener('click', closeMenu);
+            // ── клик по затемнению справа от меню → закрыть меню ─────
+            if (pgBackdrop) pgBackdrop.addEventListener('click', showContacts);
 
-            // синхронизация темы
-            if (tmMenu && tmMain) {
-                tmMenu.checked = tmMain.checked;
-                tmMenu.addEventListener('change', () => {
-                    tmMain.checked = tmMenu.checked;
+            // ── клик на контакт → стр.3 ──────────────────────────────
+            const usersEl = document.getElementById('users');
+            if (usersEl) {
+                usersEl.addEventListener('click', (e) => {
+                    if (e.target.closest('li[data-user]')) setTimeout(showChat, 0);
+                });
+            }
+
+            // ── тема ─────────────────────────────────────────────────
+            if (tmPgm && tmMain) {
+                tmPgm.checked = tmMain.checked;
+                tmPgm.addEventListener('change', () => {
+                    tmMain.checked = tmPgm.checked;
                     tmMain.dispatchEvent(new Event('change'));
                 });
-                tmMain.addEventListener('change', () => { tmMenu.checked = tmMain.checked; });
+                tmMain.addEventListener('change', () => { tmPgm.checked = tmMain.checked; });
             }
 
-            // кнопки в меню
-            if (mmenuPacman) mmenuPacman.addEventListener('click', () => {
-                closeMenu();
+            // ── кнопки в меню ─────────────────────────────────────────
+            if (pgmPacman) pgmPacman.addEventListener('click', () => {
+                showContacts();
                 document.getElementById('pacman-sidebar-btn').click();
-                openChat();
+                showChat();
             });
-            if (mmenuSett) mmenuSett.addEventListener('click', () => {
-                closeMenu();
+            if (pgmSettings) pgmSettings.addEventListener('click', () => {
+                showContacts();
                 document.getElementById('settings-open-btn').click();
-                openChat();
+                showChat();
             });
-            if (mmenuLogout) mmenuLogout.addEventListener('click', () => {
-                closeMenu();
+            if (pgmLogout) pgmLogout.addEventListener('click', () => {
+                showContacts();
                 document.getElementById('logout-btn-sidebar').click();
             });
 
-            // поиск в меню
-            if (mmenuSearch) {
+            // ── поиск в меню ──────────────────────────────────────────
+            if (pgmSearch) {
                 const mainSearch  = document.getElementById('search-input');
                 const mainResults = document.getElementById('search-results');
-                mmenuSearch.addEventListener('input', () => {
+                pgmSearch.addEventListener('input', () => {
                     if (mainSearch) {
-                        mainSearch.value = mmenuSearch.value;
+                        mainSearch.value = pgmSearch.value;
                         mainSearch.dispatchEvent(new Event('input'));
                     }
                 });
-                if (mainResults && mmenuResults) {
+                if (mainResults && pgmResults) {
                     new MutationObserver(() => {
-                        mmenuResults.innerHTML = mainResults.innerHTML;
-                        mmenuResults.querySelectorAll('li').forEach((li, i) => {
+                        pgmResults.innerHTML = mainResults.innerHTML;
+                        pgmResults.querySelectorAll('li').forEach((li, i) => {
                             li.addEventListener('click', () => {
                                 const orig = mainResults.querySelectorAll('li')[i];
                                 if (orig) orig.click();
-                                closeMenu();
-                                openChat();
+                                showChat();
                             });
                         });
                     }).observe(mainResults, { childList: true, subtree: true });
                 }
             }
 
-            // клик на контакт → открыть чат
-            const usersEl = document.getElementById('users');
-            if (usersEl) {
-                usersEl.addEventListener('click', (e) => {
-                    if (e.target.closest('li[data-user]')) setTimeout(openChat, 0);
-                });
-            }
+            // ═══════════════════════════════════════════════════════
+            // СВАЙП — единый обработчик на document
+            // Стр.2→1: свайп вправо на стр.2 (не из чата, не из меню)
+            // Стр.3→2: свайп вправо на стр.3 (чат открыт)
+            // Стр.1→2: свайп влево  на стр.1 (меню открыто)
+            // Начало свайпа: x >= 30px (не системный edge)
+            // ═══════════════════════════════════════════════════════
+            let tsX = 0, tsY = 0, tracking = false, dir = null;
 
-            // ── Свайп влево по меню → закрыть ──
-            // Слушаем на document чтобы overflow не блокировал
-            let mTsX = 0, mTsY = 0, mSwipe = false, mTracking = false;
-            menuPanel.addEventListener('touchstart', (e) => {
+            document.addEventListener('touchstart', (e) => {
                 const t = e.touches[0];
-                mTsX = t.clientX; mTsY = t.clientY;
-                mSwipe = false; mTracking = true;
+                tsX = t.clientX; tsY = t.clientY;
+                tracking = (tsX >= 30);
+                dir = null;
             }, { passive: true });
+
             document.addEventListener('touchmove', (e) => {
-                if (!mTracking || !menuPanel.classList.contains('open')) return;
+                if (!tracking) return;
                 const t = e.touches[0];
-                const dx = mTsX - t.clientX; // влево = положительный
-                const dy = Math.abs(t.clientY - mTsY);
-                if (!mSwipe && dx > 8 && dy < dx * 0.8) mSwipe = true;
-                if (mSwipe) {
-                    const shift = Math.max(-dx, -menuPanel.offsetWidth);
-                    menuPanel.style.transition = 'none';
-                    menuPanel.style.transform = `translateX(${Math.min(0, -dx)}px)`;
+                const dx = t.clientX - tsX;
+                const dy = Math.abs(t.clientY - tsY);
+                if (dir === null && (Math.abs(dx) > 8 || dy > 8)) {
+                    dir = (Math.abs(dx) > dy) ? 'h' : 'v';
                 }
-            }, { passive: true });
-            document.addEventListener('touchend', (e) => {
-                if (!mTracking) return;
-                mTracking = false;
-                menuPanel.style.transition = '';
-                menuPanel.style.transform = '';
-                if (!mSwipe) return;
-                const t = e.changedTouches[0];
-                const dx = mTsX - t.clientX;
-                const dy = Math.abs(t.clientY - mTsY);
-                if (dx > 60 && dy < dx * 0.8) closeMenu();
-                mSwipe = false;
+                if (dir !== 'h') return;
+
+                // Визуальная отзывчивость во время свайпа
+                if (body.classList.contains('mob-chat') && dx > 0) {
+                    // стр.3 → тянем вправо
+                    chatEl.style.transition = 'none';
+                    chatEl.style.transform = `translateX(${dx}px)`;
+                } else if (body.classList.contains('mob-menu') && dx < 0) {
+                    // стр.1 → тянем влево
+                    pgMenu.style.transition = 'none';
+                    pgMenu.style.transform = `translateX(${dx}px)`;
+                }
+                // стр.2 → вправо: меню потихоньку выползает
+                else if (!body.classList.contains('mob-chat') && !body.classList.contains('mob-menu') && dx > 0) {
+                    const shift = Math.min(dx, pgMenu.offsetWidth);
+                    pgMenu.style.transition = 'none';
+                    pgMenu.style.transform = `translateX(calc(-100% + ${shift}px))`;
+                }
             }, { passive: true });
 
-            // ── Свайп вправо по чату → закрыть чат ────────────────────
-            let cTsX = 0, cTsY = 0, cSwipe = false;
-            chatEl.addEventListener('touchstart', (e) => {
-                const t = e.touches[0];
-                cTsX = t.clientX; cTsY = t.clientY;
-                cSwipe = (cTsX >= 30);
-            }, { passive: true });
-            chatEl.addEventListener('touchmove', (e) => {
-                if (!cSwipe) return;
-                const t = e.touches[0];
-                const dx = t.clientX - cTsX;
-                const dy = Math.abs(t.clientY - cTsY);
-                if (dx > 0 && dy < dx * 0.8) {
-                    chatEl.style.transform = `translateX(${dx}px)`;
-                }
-            }, { passive: true });
-            chatEl.addEventListener('touchend', (e) => {
-                if (!cSwipe) return;
+            document.addEventListener('touchend', (e) => {
+                if (!tracking) return;
+                tracking = false;
+
+                // Сбрасываем инлайн-стили
+                chatEl.style.transition = '';
+                chatEl.style.transform  = '';
+                pgMenu.style.transition = '';
+                pgMenu.style.transform  = '';
+
+                if (dir !== 'h') return;
+
                 const t = e.changedTouches[0];
-                const dx = t.clientX - cTsX;
-                const dy = Math.abs(t.clientY - cTsY);
-                chatEl.style.transform = '';
-                if (dx > 60 && dy < dx * 0.6) {
-                    closeChat();
+                const dx = t.clientX - tsX;
+                const dy = Math.abs(t.clientY - tsY);
+                if (dy > Math.abs(dx) * 0.7) return; // слишком вертикально
+
+                const threshold = 60;
+
+                if (body.classList.contains('mob-chat') && dx > threshold) {
+                    // Стр.3 → стр.2
+                    showContacts();
+                } else if (body.classList.contains('mob-menu') && dx < -threshold) {
+                    // Стр.1 → стр.2
+                    showContacts();
+                } else if (!body.classList.contains('mob-chat') && !body.classList.contains('mob-menu') && dx > threshold) {
+                    // Стр.2 → стр.1
+                    showMenu();
                 }
-                cSwipe = false;
             }, { passive: true });
 
         })();
