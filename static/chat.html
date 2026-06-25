@@ -3648,6 +3648,19 @@
             }, 2500);
         }
 
+        // Прочитать текущий открытый диалог при возврате фокуса
+        function markCurrentDialogRead() {
+            if (!currentUser) return;
+            if (document.hidden || !document.hasFocus()) return;
+            if (!unreadCount[currentUser] && !historyState[currentUser]?.messages?.some(m => !m.own && !m.is_read)) return;
+            fetch(`/mark-read?with=${encodeURIComponent(currentUser)}`);
+            // Обновляем локальный state
+            const state = historyState[currentUser];
+            if (state) state.messages.forEach(m => { if (!m.own) m.is_read = true; });
+            unreadCount[currentUser] = 0;
+            renderDialogList();
+        }
+
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && (reconnecting || !wsReady)) {
                 clearTimeout(reconnectTimer);
@@ -3655,6 +3668,8 @@
             }
             // Уведомляем сервер об изменении видимости вкладки
             if (wsReady) ws.send(document.hidden ? 'blur' : 'focus');
+            // При возврате вкладки — прочитать открытый диалог если он активен
+            if (!document.hidden) markCurrentDialogRead();
         });
 
         // window.focus/blur дополнительно покрывают случай когда вкладка видима,
@@ -3662,6 +3677,8 @@
         // но окно браузера не на переднем плане).
         window.addEventListener('focus', () => {
             if (wsReady) ws.send('focus');
+            // При возврате фокуса окна — прочитать открытый диалог
+            markCurrentDialogRead();
         });
         window.addEventListener('blur', () => {
             if (wsReady) ws.send('blur');
@@ -4835,8 +4852,16 @@
             renderDialogList();
 
             if (currentUser === msg.from) {
-                // Чат открыт — сразу помечаем как прочитанное
-                fetch(`/mark-read?with=${encodeURIComponent(msg.from)}`);
+                // Прочитываем только если окно браузера активно и вкладка видима.
+                // Если пользователь переключился в другое приложение или другую
+                // вкладку — сообщение остаётся непрочитанным; прочтение произойдёт
+                // при возврате фокуса (см. listeners ниже).
+                if (!document.hidden && document.hasFocus()) {
+                    fetch(`/mark-read?with=${encodeURIComponent(msg.from)}`);
+                } else {
+                    unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;
+                    renderDialogList();
+                }
                 renderMessages(state.messages);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
