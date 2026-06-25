@@ -4664,7 +4664,6 @@
 
             if (currentUser !== msg.from) {
                 unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;
-                if (!msg.call_type) playMessageSound();
             }
 
             // Обновляем lastMsg для корректной сортировки списка
@@ -5206,26 +5205,6 @@
                 const startAt = ctx.currentTime + (startDelayMs || 0) / 1000;
                 osc.start(startAt);
                 osc.stop(startAt + durationMs / 1000);
-            } catch (e) {}
-        }
-
-        // playMessageSound — звук входящего сообщения.
-        // Загружаем MP3 через Audio API; AudioContext используется только как
-        // резервный путь если браузер заблокировал автовоспроизведение.
-        let msgAudio = null;
-        function getOrCreateMsgAudio() {
-            if (!msgAudio) {
-                msgAudio = new Audio('/sounds/income_msg.mp3');
-                msgAudio.volume = 0.6;
-            }
-            return msgAudio;
-        }
-        function playMessageSound() {
-            try {
-                const audio = getOrCreateMsgAudio();
-                // currentTime = 0 позволяет воспроизвести снова если предыдущий ещё не закончился
-                audio.currentTime = 0;
-                audio.play().catch(() => {});
             } catch (e) {}
         }
 
@@ -6799,6 +6778,16 @@
                 // Pac-Man — выгружаем iframe
                 const pIframe = document.getElementById('pgm-pacman-iframe');
                 if (pIframe) pIframe.src = 'about:blank';
+
+                // Сбрасываем текущий диалог — иначе приложение считает чат открытым
+                // даже после возврата к списку свайпом или кнопкой ←
+                if (myTypingSent && currentUser && wsReady) {
+                    myTypingSent = false;
+                    ws.send('typingstop:' + JSON.stringify({ to: currentUser }));
+                }
+                clearTimeout(myTypingTimer);
+                myTypingSent = false;
+                currentUser = null;
 
                 body.classList.remove('mob-menu');
                 body.classList.remove('mob-chat');
