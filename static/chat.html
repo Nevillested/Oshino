@@ -91,7 +91,7 @@
             --color-welcome-card-hover:rgba(30, 33, 44, 0.82);
 
             /* Подсветка сообщения при jump-to */
-            --color-msg-highlight: rgba(200, 210, 255, 0.18);
+            --color-msg-highlight: rgba(180, 200, 255, 0.45);
         }
 
         /* ── Светлая тема ──────────────────────────────────────────────────── */
@@ -168,7 +168,7 @@
             --color-welcome-card-hover:rgba(234, 243, 252, 0.88);
 
             /* Подсветка сообщения при jump-to */
-            --color-msg-highlight: rgba(30, 60, 100, 0.15);
+            --color-msg-highlight: rgba(30, 80, 160, 0.22);
         }
 
         * {
@@ -595,12 +595,12 @@
 
         .message-wrap.highlighted {
             border-radius: 8px;
-            animation: msg-highlight-fade 1.6s ease forwards;
+            animation: msg-highlight-fade 3s ease forwards;
         }
 
         @keyframes msg-highlight-fade {
             0%   { background: var(--color-msg-highlight); }
-            70%  { background: var(--color-msg-highlight); }
+            60%  { background: var(--color-msg-highlight); }
             100% { background: transparent; }
         }
 
