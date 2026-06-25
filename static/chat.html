@@ -491,6 +491,10 @@
             color: #2ecc71;
         }
 
+        /* last-seen когда контакт выделен */
+        #users li.active .dialog-status { color: #ffffff !important; }
+        #users li.active .dialog-status.online { color: #a8f5c0 !important; }
+
         .dialog-status.typing {
             color: #4a90e2;
             font-style: italic;
@@ -2312,9 +2316,7 @@
                 font-weight: 400;
             }
             #users li .dialog-status.online { color: #2ecc71; }
-            /* last-seen на выделенном (синем) элементе — светлый */
-            #users li.active .dialog-status { color: #ffffff; }
-            #users li.active .dialog-status.online { color: #a8f5c0; }
+
 
             /* settings-panel поверх всего когда открыт */
             #sidebar #settings-panel,
