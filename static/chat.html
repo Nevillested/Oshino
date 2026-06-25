@@ -2217,15 +2217,168 @@
         .bg-anim-toggle-wrap input:checked + .bg-anim-slider { background: #4a90e2; }
         .bg-anim-toggle-wrap input:checked + .bg-anim-slider::before { transform: translateX(20px); }
 
-        /* ── Mobile: app-layout не мешает (просто block) ─────────────────── */
+        /* ── Mobile: полная мобайл-архитектура (<768px) ─────────────────── */
         @media (max-width: 767px) {
+            /* app-layout wrappers не мешают */
             #app-layout    { display: contents; }
             #left-panel    { display: contents; }
             #panel-divider { display: none; }
             #right-panel   { display: contents; }
-            #rp-canvas-wrap { display: none; }
             #desktop-chat-header { display: none !important; }
             #dh-call-btn, #dh-video-btn { display: none; }
+
+            /* Canvas — на весь экран сзади */
+            #rp-canvas-wrap {
+                display: block;
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                pointer-events: none;
+                width: 100vw;
+                height: 100vh;
+            }
+            #rp-canvas-wrap canvas {
+                width: 100% !important;
+                height: 100% !important;
+                display: block;
+            }
+            body.bg-anim-off #rp-canvas-wrap canvas { display: none; }
+
+            /* welcome-canvas-wrap на мобайл скрываем (canvas уже есть в rp-canvas-wrap) */
+            #welcome-canvas-wrap { display: none; }
+
+            /* ── Экран списка контактов ── */
+            #mobile-contacts {
+                position: fixed;
+                inset: 0;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                background: var(--color-sidebar);
+                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+            }
+            #mobile-contacts.hidden {
+                transform: translateX(-100%);
+                pointer-events: none;
+            }
+            #mobile-contacts-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px 16px;
+                padding-top: max(12px, env(safe-area-inset-top));
+                background: var(--color-topbar);
+                border-bottom: 1px solid var(--color-results-sep);
+                flex-shrink: 0;
+                min-height: 56px;
+            }
+            #mobile-contacts-title {
+                font-size: 20px;
+                font-weight: 700;
+                color: var(--color-sidebar-text);
+            }
+            #mobile-menu-btn {
+                background: none;
+                border: none;
+                color: var(--color-sidebar-text);
+                cursor: pointer;
+                padding: 8px;
+                display: flex;
+                align-items: center;
+                border-radius: 8px;
+            }
+            #mobile-users {
+                list-style: none;
+                padding: 8px 0;
+                margin: 0;
+                overflow-y: auto;
+                flex: 1;
+            }
+            #mobile-users li {
+                padding: 16px 20px;
+                font-size: 17px;
+                color: var(--color-sidebar-text);
+                cursor: pointer;
+                border-radius: 10px;
+                margin: 2px 8px;
+                transition: background 0.15s;
+            }
+            #mobile-users li:active,
+            #mobile-users li.active {
+                background: var(--color-active-item);
+            }
+            #mobile-users li .user-status {
+                font-size: 12px;
+                color: var(--color-section-title);
+                margin-top: 2px;
+            }
+            #mobile-users li .user-status.online { color: #2ecc71; }
+
+            /* ── Чат на мобайл ── */
+            #topbar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 20;
+                height: 56px;
+                padding-top: max(0px, env(safe-area-inset-top));
+            }
+            #chat {
+                position: fixed;
+                inset: 0;
+                z-index: 15;
+                display: flex;
+                flex-direction: column;
+                background: transparent;
+                transform: translateX(100%);
+                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+            }
+            #chat.mobile-visible {
+                transform: translateX(0);
+            }
+
+            /* sidebar (меню) на мобайл — поверх всего, без контактов */
+            #sidebar {
+                position: fixed;
+                inset: 0;
+                z-index: 50;
+                transform: translateX(-100%);
+                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+                background: var(--color-sidebar);
+                padding: 20px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                padding-top: max(20px, env(safe-area-inset-top));
+            }
+            #sidebar.open {
+                transform: translateX(0);
+            }
+            /* Скрываем h3 "Диалоги" и #users в мобайл-меню */
+            #sidebar h3,
+            #sidebar #users {
+                display: none !important;
+            }
+
+            /* overlay для закрытия sidebar */
+            #overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 40;
+                background: rgba(0,0,0,0.5);
+                display: none;
+            }
+            #overlay.open { display: block; }
+
+            /* Скрываем #welcome-screen на мобайл — показываем mobile-contacts */
+            #welcome-screen { display: none !important; }
+
+            /* messages нужен отступ сверху под topbar */
+            #messages {
+                padding-top: 64px;
+                background: transparent !important;
+            }
         }
 
         /* ── Переключатель темы (theme-toggle) ──────────────────────────────
@@ -2485,7 +2638,20 @@
 
     <div id="overlay"></div>
 
-    <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
+    <!-- Мобайл: список контактов (отдельный экран, поверх canvas) -->
+    <div id="mobile-contacts">
+        <div id="mobile-contacts-header">
+            <span id="mobile-contacts-title">Oshino</span>
+            <button id="mobile-menu-btn" title="Меню">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <ul id="mobile-users"></ul>
+    </div>
     <div id="app-layout">
     <!-- ── Левая панель (desktop) ─────────────────────────────────────────── -->
     <div id="left-panel">
@@ -6019,7 +6185,115 @@
             });
         })();
 
-        // ── bg-anim toggle (settings) ────────────────────────────────────────
+        // ── Mobile contacts & swipe navigation ──────────────────────────────
+        (function setupMobile() {
+            if (window.innerWidth >= 768) return;
+
+            const mobileContacts = document.getElementById('mobile-contacts');
+            const mobileUsers    = document.getElementById('mobile-users');
+            const mobileMenuBtn  = document.getElementById('mobile-menu-btn');
+            const chatEl         = document.getElementById('chat');
+            const sidebarEl      = document.getElementById('sidebar');
+            const overlayEl      = document.getElementById('overlay');
+
+            // Показать список контактов (скрыть чат)
+            function showContacts() {
+                mobileContacts.classList.remove('hidden');
+                chatEl.classList.remove('mobile-visible');
+                // Сбрасываем currentUser — чтобы topbar не показывал старое
+                // (не трогаем глобальный currentUser, только UI)
+            }
+
+            // Показать чат (скрыть список)
+            function showChat() {
+                mobileContacts.classList.add('hidden');
+                chatEl.classList.add('mobile-visible');
+            }
+
+            // Синхронизируем #mobile-users с #users при изменениях
+            function syncMobileUsers() {
+                const source = document.getElementById('users');
+                if (!source || !mobileUsers) return;
+                mobileUsers.innerHTML = '';
+                Array.from(source.children).forEach(li => {
+                    const clone = li.cloneNode(true);
+                    clone.addEventListener('click', () => {
+                        // Передаём клик на оригинальный элемент чтобы сработала вся логика
+                        li.click();
+                        showChat();
+                    });
+                    mobileUsers.appendChild(clone);
+                });
+            }
+
+            // Наблюдаем за изменениями в #users
+            const usersEl = document.getElementById('users');
+            if (usersEl) {
+                new MutationObserver(syncMobileUsers).observe(usersEl, { childList: true, subtree: true, characterData: true, attributes: true });
+                syncMobileUsers();
+            }
+
+            // Кнопка меню → открыть sidebar
+            if (mobileMenuBtn) {
+                mobileMenuBtn.addEventListener('click', () => {
+                    sidebarEl.classList.add('open');
+                    overlayEl.classList.add('open');
+                });
+            }
+
+            // Overlay → закрыть sidebar
+            if (overlayEl) {
+                overlayEl.addEventListener('click', () => {
+                    sidebarEl.classList.remove('open');
+                    overlayEl.classList.remove('open');
+                });
+            }
+
+            // Изначально показываем контакты
+            showContacts();
+
+            // ── Свайп вправо для возврата к контактам ──
+            // Начинаем только если touch начался не от самого края (>= 30px)
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let swipeActive = false;
+
+            chatEl.addEventListener('touchstart', (e) => {
+                const t = e.touches[0];
+                touchStartX = t.clientX;
+                touchStartY = t.clientY;
+                // Не реагируем на свайп от края (системный жест iOS/Android)
+                swipeActive = touchStartX >= 30;
+            }, { passive: true });
+
+            chatEl.addEventListener('touchend', (e) => {
+                if (!swipeActive) return;
+                const t = e.changedTouches[0];
+                const dx = t.clientX - touchStartX;
+                const dy = Math.abs(t.clientY - touchStartY);
+                // Свайп вправо: dx > 60px, горизонтальный (dy < dx/2)
+                if (dx > 60 && dy < dx / 2) {
+                    showContacts();
+                    // Сбрасываем выделение активного пользователя
+                    document.querySelectorAll('#mobile-users li.active').forEach(el => el.classList.remove('active'));
+                }
+                swipeActive = false;
+            }, { passive: true });
+
+            // При выборе контакта из основного #users (вызывается из openDialog)
+            // — перехватываем через MutationObserver на #topbar-title
+            // Синхронизируем active-класс в mobile-users при изменении в users
+            const titleObserver = new MutationObserver(() => {
+                // Обновляем active-класс в mobile-users
+                const activeInUsers = document.querySelector('#users li.active');
+                document.querySelectorAll('#mobile-users li').forEach((li, i) => {
+                    const sourceLi = document.querySelectorAll('#users li')[i];
+                    li.classList.toggle('active', sourceLi && sourceLi.classList.contains('active'));
+                });
+            });
+            if (usersEl) titleObserver.observe(usersEl, { attributes: true, subtree: true, attributeFilter: ['class'] });
+
+        })();
         const bgAnimToggle    = document.getElementById('bg-anim-toggle');
         const bgAnimOpenBtn   = document.getElementById('open-bg-anim-submenu');
         const bgAnimBackBtn   = document.getElementById('bg-anim-back-btn');
@@ -6071,11 +6345,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <script>
     (function() {
-        // На desktop — canvas в правой панели, на мобайл — в welcome-экране
-        const isDesktop = window.innerWidth >= 768;
-        const canvasWrap = isDesktop
-            ? document.getElementById('rp-canvas-wrap')
-            : document.getElementById('welcome-canvas-wrap');
+        // Canvas всегда в #rp-canvas-wrap (fixed, на весь экран)
+        const canvasWrap = document.getElementById('rp-canvas-wrap');
         if (!canvasWrap) return;
 
         const pDeg  = (a) => Math.PI / 180 * a;
@@ -6229,20 +6500,7 @@
             };
         });
 
-        // На desktop — canvas всегда активен (управляется bg-anim-toggle).
-        // На мобайл — останавливаем когда welcome-экран скрыт → экономим CPU.
-        if (!isDesktop) {
-            const observer = new MutationObserver(() => {
-                const visible = welcomeScreen && getComputedStyle(welcomeScreen).display !== 'none';
-                if (p5inst) {
-                    visible ? p5inst.loop() : p5inst.noLoop();
-                }
-            });
-            if (welcomeScreen) {
-                observer.observe(welcomeScreen, { attributes: true, attributeFilter: ['style', 'class'] });
-            }
-        }
-
+        // Canvas всегда активен — управляется только bg-anim-toggle
         // Делаем p5inst доступным глобально для bg-anim toggle
         window.p5inst = p5inst;
     })();
