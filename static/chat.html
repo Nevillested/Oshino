@@ -2234,7 +2234,7 @@
                 transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
                 will-change: transform;
             }
-            /* в сайдбаре на мобайл — только h3 + #users */
+            /* в сайдбаре на мобайл — только #users, без заголовка */
             #sidebar #search-container,
             #sidebar #search-results,
             #sidebar-main .theme-switch-wrap,
@@ -2242,13 +2242,48 @@
             #settings-open-btn,
             #logout-btn-sidebar { display: none !important; }
             #close-menu-btn     { display: none !important; }
-            #sidebar h3 {
-                font-size: 11px; letter-spacing: 0.08em;
-                padding: 10px 16px 4px; margin: 0;
-                color: var(--color-section-title);
+            /* Заголовок "Диалоги" — убираем */
+            #sidebar h3         { display: none !important; }
+
+            #users {
+                display: block !important;
+                padding: 6px 0 0;
+                margin: 0;
             }
-            #users { display: block !important; padding: 4px 0; margin: 0; }
-            #users li { padding: 14px 20px; font-size: 17px; margin: 2px 8px; border-radius: 10px; }
+            #users li {
+                padding: 12px 12px 12px 16px;
+                margin: 0;
+                border-radius: 0;
+                border-bottom: 1px solid var(--color-results-sep);
+                font-size: 16px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            /* dialog-name — колонкой: имя сверху, статус снизу */
+            #users li .dialog-name {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 3px;
+                white-space: normal;
+                overflow: hidden;
+                min-width: 0;
+                flex: 1;
+            }
+            /* Статус идёт на отдельную строку под именем */
+            #users li .dialog-status {
+                display: block;
+                font-size: 12px;
+                color: var(--color-section-title);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 100%;
+                font-weight: 400;
+            }
+            #users li .dialog-status.online { color: #2ecc71; }
 
             /* settings-panel поверх всего когда открыт */
             #sidebar #settings-panel,
