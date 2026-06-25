@@ -2959,10 +2959,11 @@ func (a *App) handleAdminDisableUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := a.db.Exec(
-		"UPDATE messenger.users SET active = 0 WHERE id = $1", targetID,
+		"UPDATE messenger.users SET active = 0::smallint WHERE id = $1", targetID,
 	); err != nil {
 		log.Printf("handleAdminDisableUser: UPDATE active: %v", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка обновления пользователя: " + err.Error()})
 		return
 	}
 
