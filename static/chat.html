@@ -546,6 +546,7 @@
             min-height: 0;
             width: 100%;
             background: var(--color-messages-bg);
+            position: relative;
         }
 
         #offline-notice {
@@ -575,6 +576,34 @@
             font-size: 13px;
             padding: 6px 0 2px;
             display: none;
+        }
+
+        #scroll-bottom-btn {
+            position: absolute;
+            bottom: 72px;
+            right: 18px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--color-topbar);
+            border: 1px solid var(--color-results-sep);
+            color: var(--color-sidebar-text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+        }
+        #scroll-bottom-btn.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #scroll-bottom-btn:active {
+            background: var(--color-results-hover);
         }
 
         .message {
@@ -3122,6 +3151,12 @@
                 <button id="send-btn">Отправить</button>
             </div>
         </div>
+        <!-- Кнопка "вниз" — появляется при скролле вверх -->
+        <button id="scroll-bottom-btn" title="В конец">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+        </button>
     </div><!-- /#chat -->
     </div><!-- /#right-panel -->
     </div><!-- /#app-layout -->
@@ -3304,6 +3339,7 @@
         const formArea = document.getElementById('form-area');
         const inputArea = document.getElementById('input-area');
         const loadMoreIndicator = document.getElementById('load-more-indicator');
+        const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
 
         const welcomeScreen = document.getElementById('welcome-screen');
         const pacmanBlock   = document.getElementById('pacman-block');
@@ -4053,6 +4089,7 @@
             updateFormState();
             cancelReply();
             loadPinned(user);
+            scrollBottomBtn.classList.remove('visible');
 
             const state = historyState[user];
 
@@ -4442,6 +4479,14 @@
 
         // Подгрузка при скролле вверх
         messagesDiv.addEventListener('scroll', async () => {
+            // Кнопка "вниз": показываем если не у самого низа
+            const distFromBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight;
+            if (distFromBottom > 120) {
+                scrollBottomBtn.classList.add('visible');
+            } else {
+                scrollBottomBtn.classList.remove('visible');
+            }
+
             if (messagesDiv.scrollTop > 40) return;
             if (!currentUser) return;
             const state = historyState[currentUser];
@@ -4454,6 +4499,10 @@
             // Восстанавливаем позицию
             const scrollHeightAfter = messagesDiv.scrollHeight;
             messagesDiv.scrollTop = scrollHeightAfter - scrollHeightBefore;
+        });
+
+        scrollBottomBtn.addEventListener('click', () => {
+            messagesDiv.scrollTo({ top: messagesDiv.scrollHeight, behavior: 'smooth' });
         });
 
         // ── Отправка / получение ─────────────────────────────────────────────────
@@ -5121,6 +5170,7 @@
                 welcomeScreen.style.display = 'flex';
                 messagesDiv.style.display = 'none';
                 offlineNotice.style.display = 'none';
+                scrollBottomBtn.classList.remove('visible');
                 topbarTitle.textContent = 'Oshino';
                 if (topbarSub) { topbarSub.textContent = ''; topbarSub.className = ''; }
                 callBtn.style.display = 'none';
