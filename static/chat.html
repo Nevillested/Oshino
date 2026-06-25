@@ -2253,6 +2253,10 @@
             #sidebar #settings-panel,
             #sidebar .settings-submenu { position: fixed; inset: 0; z-index: 50; }
 
+            /* При открытии из мобильного меню (mob-menu) — настройки поверх pg-menu */
+            body.mob-menu #settings-panel,
+            body.mob-menu .settings-submenu { position: fixed; inset: 0; z-index: 40; background: var(--color-sidebar); }
+
             /* ── СТРАНИЦА 3: диалог ── */
             /* #chat выезжает справа */
             #chat {
@@ -5825,8 +5829,16 @@
         // Настройки → главный сайдбар
         // Настройки → главный сайдбар
         settingsBackBtn.addEventListener('click', () => {
+            const fromMenu = settingsPanel.dataset.fromMenu === '1';
             settingsPanel.classList.remove('open');
-            sidebarMain.style.display = 'flex';
+            delete settingsPanel.dataset.fromMenu;
+            if (fromMenu && window.innerWidth < 768) {
+                // Открыто из мобильного меню — просто закрываем panel, mob-menu остаётся
+                const sMain = document.getElementById('sidebar-main');
+                if (sMain) sMain.style.display = '';
+            } else {
+                sidebarMain.style.display = 'flex';
+            }
         });
 
         // Настройки → подменю отображаемого имени
@@ -6274,9 +6286,11 @@
                 showChat();
             });
             if (pgmSettings) pgmSettings.addEventListener('click', () => {
-                showContacts();
-                document.getElementById('settings-open-btn').click();
-                showChat();
+                // Остаёмся на стр.1 (mob-menu), открываем settings-panel поверх pg-menu
+                const sMain = document.getElementById('sidebar-main');
+                const sPanel = document.getElementById('settings-panel');
+                if (sMain)  sMain.style.display = 'none';
+                if (sPanel) { sPanel.classList.add('open'); sPanel.dataset.fromMenu = '1'; }
             });
             if (pgmLogout) pgmLogout.addEventListener('click', () => {
                 showContacts();
