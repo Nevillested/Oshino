@@ -221,11 +221,47 @@
             font-weight: 600;
         }
 
-        #topbar-title {
+        /* Обёртка для двух строк заголовка на стр.3 */
+        #topbar-info {
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        #topbar-title {
+            font-size: 17px;
+            font-weight: 700;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            line-height: 1.2;
+        }
+
+        #topbar-subtitle {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--color-section-title);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: none;
+        }
+        #topbar-subtitle.online { color: #2ecc71; }
+
+        #back-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
 
         #call-btn, #video-call-btn {
@@ -2142,6 +2178,7 @@
                 border-bottom: 1px solid var(--color-results-sep);
                 transition: background 0.3s;
             }
+            /* Стр.2: кнопка меню видна, back-btn скрыт */
             #menu-btn {
                 font-size: 22px;
                 padding: 6px;
@@ -2150,19 +2187,38 @@
                 border: none;
                 color: var(--color-sidebar-text);
                 cursor: pointer;
-                order: -1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            #back-btn { display: none !important; }
+            #topbar-info {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                overflow: hidden;
+                min-width: 0;
             }
             #topbar-title {
                 font-size: 18px;
                 font-weight: 700;
-                flex: 1;
-                min-width: 0;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
             }
+            /* subtitle скрыт на стр.2 */
+            #topbar-subtitle { display: none !important; }
             /* кнопки звонка — только на стр.3 */
             #call-btn, #video-call-btn { display: none !important; }
+
+            /* ── Стр.3: mob-chat — переключаем топбар ── */
+            /* Убираем menu-btn, показываем back-btn и кнопки звонка */
+            body.mob-chat #menu-btn   { display: none !important; }
+            body.mob-chat #back-btn   { display: flex !important; }
+            body.mob-chat #call-btn   { display: flex !important; }
+            body.mob-chat #video-call-btn { display: flex !important; }
+            /* subtitle появляется */
+            body.mob-chat #topbar-subtitle { display: block !important; }
+            /* title чуть меньше — место для subtitle */
+            body.mob-chat #topbar-title { font-size: 16px; font-weight: 600; }
 
             /* sidebar = список контактов, от topbar до низа, прозрачный */
             #sidebar {
@@ -2212,12 +2268,6 @@
             }
             body.mob-chat #chat { transform: translateX(0); }
 
-            /* на стр.3 topbar показывает имя собеседника + звонки */
-            /* (меняется через JS) */
-            body.mob-chat #call-btn,
-            body.mob-chat #video-call-btn { display: flex !important; }
-            body.mob-chat #menu-btn { display: flex !important; }
-
             /* стр.2 контакты — скрываем когда открыт чат */
             body.mob-chat #sidebar { display: none !important; }
 
@@ -2235,11 +2285,12 @@
             }
 
             /* ── СТРАНИЦА 1: меню ── */
+            /* z-index выше топбара (30) — меню накрывает ВСЁ включая шапку стр.2 */
             #pg-menu {
                 position: fixed;
                 top: 0; left: 0; bottom: 0;
                 right: 50px;          /* не доходит 50px до правого края */
-                z-index: 25;          /* между стр.2 (10) и топбаром (30) */
+                z-index: 35;          /* выше топбара (30) и #chat (20) */
                 background: var(--color-sidebar);
                 display: flex;
                 flex-direction: column;
@@ -2254,7 +2305,7 @@
                 position: fixed;
                 top: 0; bottom: 0;
                 left: calc(100% - 50px); right: 0;  /* только 50px-полоска */
-                z-index: 24;
+                z-index: 34;
                 background: rgba(0,0,0,0.5);
                 display: none;
                 pointer-events: auto;
@@ -2544,17 +2595,28 @@
 </head>
 <body>
     <div id="topbar">
+        <!-- Стр.2: кнопка меню (только на мобайле на стр.2) -->
         <button id="menu-btn">☰</button>
-        <span id="topbar-title">Oshino</span>
+        <!-- Стр.3: кнопка назад (только на мобайле на стр.3) -->
+        <button id="back-btn" title="Назад">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </button>
+        <!-- Стр.2: просто заголовок. Стр.3: имя + last seen (два ряда) -->
+        <div id="topbar-info">
+            <span id="topbar-title">Oshino</span>
+            <span id="topbar-subtitle"></span>
+        </div>
+        <button id="call-btn" title="Позвонить" style="display: none;">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
+            </svg>
+        </button>
         <button id="video-call-btn" title="Видеозвонок" style="display: none;">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="23 7 16 12 23 17 23 7"></polygon>
                 <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-            </svg>
-        </button>
-        <button id="call-btn" title="Позвонить" style="display: none;">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
             </svg>
         </button>
     </div>
@@ -4570,6 +4632,7 @@
             const desktopHeader = document.getElementById('desktop-chat-header');
             const dhUsername = document.getElementById('dh-username');
             const dhStatus   = document.getElementById('dh-status');
+            const topbarSub  = document.getElementById('topbar-subtitle');
 
             if (!currentUser) {
                 inputArea.style.display = 'none';
@@ -4577,6 +4640,7 @@
                 messagesDiv.style.display = 'none';
                 offlineNotice.style.display = 'none';
                 topbarTitle.textContent = 'Oshino';
+                if (topbarSub) { topbarSub.textContent = ''; topbarSub.className = ''; }
                 callBtn.style.display = 'none';
                 videoCallBtn.style.display = 'none';
                 if (desktopHeader) desktopHeader.classList.add('hidden');
@@ -4590,7 +4654,13 @@
             offlineNotice.style.display = 'none';
             const isOnline = onlineUsers.includes(currentUser);
             const statusStr = isOnline ? 'в сети' : formatLastSeen(currentUser);
-            topbarTitle.textContent = getDisplayName(currentUser) + ' — ' + statusStr;
+
+            // На мобайле: title = имя, subtitle = статус (две строки в топбаре стр.3)
+            topbarTitle.textContent = getDisplayName(currentUser);
+            if (topbarSub) {
+                topbarSub.textContent = statusStr;
+                topbarSub.className = isOnline ? 'online' : '';
+            }
             callBtn.style.display = 'flex';
             videoCallBtn.style.display = 'flex';
 
@@ -6068,6 +6138,8 @@
             overlay.classList.remove('open');
 
             topbarTitle.textContent    = '🕹 Pac-Man';
+            const _pacSub = document.getElementById('topbar-subtitle');
+            if (_pacSub) { _pacSub.textContent = ''; _pacSub.className = ''; }
             callBtn.style.display      = 'none';
             videoCallBtn.style.display = 'none';
         }
@@ -6137,7 +6209,9 @@
 
             const body        = document.body;
             const topbarTitle = document.getElementById('topbar-title');
+            const topbarSub   = document.getElementById('topbar-subtitle');
             const menuBtn     = document.getElementById('menu-btn');
+            const backBtn     = document.getElementById('back-btn');
             const callBtn     = document.getElementById('call-btn');
             const videoBtn    = document.getElementById('video-call-btn');
             const pgMenu      = document.getElementById('pg-menu');
@@ -6158,17 +6232,18 @@
                 body.classList.remove('mob-chat');
                 // Сброс шапки → стр.2
                 if (topbarTitle) topbarTitle.textContent = 'Oshino';
-                if (callBtn)  callBtn.style.display  = '';
-                if (videoBtn) videoBtn.style.display = '';
+                if (topbarSub)   { topbarSub.textContent = ''; topbarSub.className = ''; }
             }
             function showChat()     { body.classList.remove('mob-menu'); body.classList.add('mob-chat'); }
 
-            // ── кнопка ☰ ─────────────────────────────────────────────
+            // ── кнопка ☰ (стр.2) ──────────────────────────────────────
             if (menuBtn) menuBtn.addEventListener('click', () => {
                 if (body.classList.contains('mob-menu')) showContacts();
-                else if (body.classList.contains('mob-chat')) showContacts();
                 else showMenu();
             });
+
+            // ── кнопка ← (стр.3) → назад на стр.2 ──────────────────
+            if (backBtn) backBtn.addEventListener('click', showContacts);
 
             // ── клик по затемнению справа от меню → закрыть меню ─────
             if (pgBackdrop) pgBackdrop.addEventListener('click', showContacts);
