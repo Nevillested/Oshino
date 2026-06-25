@@ -3400,6 +3400,8 @@
                 reconnecting = false;
                 ws.send('getdialogs');
                 loadUnreadCounts();
+                // Сообщаем серверу начальное состояние видимости вкладки
+                ws.send(document.hidden ? 'blur' : 'focus');
             };
 
             ws.onmessage = (event) => {
@@ -3598,6 +3600,18 @@
                 clearTimeout(reconnectTimer);
                 connectWS();
             }
+            // Уведомляем сервер об изменении видимости вкладки
+            if (wsReady) ws.send(document.hidden ? 'blur' : 'focus');
+        });
+
+        // window.focus/blur дополнительно покрывают случай когда вкладка видима,
+        // но пользователь переключился на другое приложение (документ не скрыт,
+        // но окно браузера не на переднем плане).
+        window.addEventListener('focus', () => {
+            if (wsReady) ws.send('focus');
+        });
+        window.addEventListener('blur', () => {
+            if (wsReady) ws.send('blur');
         });
 
         connectWS();
@@ -4732,7 +4746,11 @@
 
             if (currentUser !== msg.from) {
                 unreadCount[msg.from] = (unreadCount[msg.from] || 0) + 1;
-                if (!msg.call_type) playMessageSound();
+            }
+            // Звук: играем если вкладка скрыта или окно браузера не в фокусе,
+            // либо открыт другой диалог — в любом случае не звонок.
+            if (!msg.call_type && (document.hidden || !document.hasFocus() || currentUser !== msg.from)) {
+                playMessageSound();
             }
 
             // Обновляем lastMsg для корректной сортировки списка

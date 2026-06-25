@@ -85,10 +85,11 @@ type PendingCall struct {
 }
 
 type Client struct {
-	login string
-	conn  *websocket.Conn
-	send  chan []byte
-	done  chan struct{} // закрывается один раз в readPump при отключении
+	login   string
+	conn    *websocket.Conn
+	send    chan []byte
+	done    chan struct{} // закрывается один раз в readPump при отключении
+	focused bool         // true — вкладка видима и в фокусе (браузер на переднем плане)
 }
 
 type Message struct {
@@ -1806,6 +1807,16 @@ func (c *Client) readPump(a *App) {
 
 		if msgStr == "getdialogs" {
 			a.sendDialogsTo(c)
+		} else if msgStr == "focus" {
+			// Клиент сообщает что вкладка видима и в фокусе
+			a.mu.Lock()
+			c.focused = true
+			a.mu.Unlock()
+		} else if msgStr == "blur" {
+			// Клиент сообщает что вкладка скрыта или потеряла фокус
+			a.mu.Lock()
+			c.focused = false
+			a.mu.Unlock()
 		} else if len(msgStr) > 4 && msgStr[:4] == "msg:" {
 			var msg Message
 			json.Unmarshal([]byte(msgStr[4:]), &msg)
@@ -1922,11 +1933,10 @@ func (a *App) sendDialogsTo(c *Client) {
 
 // deliverRealtime — общая часть доставки: рассылает payload на все активные
 // устройства логина-получателя и логина-отправителя (мультидевайс), обновляет
-// список диалогов на затронутых устройствах. Возвращает true, если у
-// получателя не было ни одного активного устройства — вызывающий код сам
-// решает, нужен ли в этом случае push (для звонков он, как правило, уже был
-// отправлен раньше через сигналинг, и слать его второй раз тут не нужно).
-func (a *App) deliverRealtime(msg Message) (recipientOffline bool) {
+// список диалогов на затронутых устройствах. Возвращает true, если получателю
+// нужно отправить push — то есть либо он полностью оффлайн, либо ни одна из его
+// вкладок не находится в фокусе (браузер свёрнут, другая вкладка, экран заблокирован).
+func (a *App) deliverRealtime(msg Message) (needPush bool) {
 	toLogin := strings.ToLower(msg.To)
 	fromLogin := strings.ToLower(msg.From)
 
@@ -1943,6 +1953,14 @@ func (a *App) deliverRealtime(msg Message) (recipientOffline bool) {
 	for c := range a.clients[fromLogin] {
 		senders = append(senders, c)
 	}
+	// Проверяем есть ли хоть одно устройство получателя в фокусе — пока держим мьютекс
+	anyFocused := false
+	for _, c := range recipients {
+		if c.focused {
+			anyFocused = true
+			break
+		}
+	}
 	a.mu.Unlock()
 
 	// Получателю — само сообщение на все его устройства
@@ -1956,7 +1974,8 @@ func (a *App) deliverRealtime(msg Message) (recipientOffline bool) {
 		a.sendDialogsTo(c)
 	}
 
-	return len(recipients) == 0
+	// Пуш нужен если получатель полностью оффлайн ИЛИ онлайн, но все вкладки не в фокусе
+	return len(recipients) == 0 || !anyFocused
 }
 
 // routeMessage рассылает обычное сообщение (текст/картинка/голосовое) и, если
