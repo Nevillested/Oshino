@@ -489,6 +489,10 @@ func (a *App) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("%s подключился (устройств онлайн: %d)\n", login, deviceCount)
 
+	// Обновляем last_seen при каждом подключении — любой коннект означает,
+	// что пользователь был в сети в этот момент.
+	go a.updateLastSeen(login)
+
 	client.send <- []byte("user:" + login)
 	a.broadcastOnlineUsers()
 	a.deliverPendingCallIfAny(client)
@@ -1778,22 +1782,17 @@ func (a *App) handleTurnCredentials(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) readPump(a *App) {
 	defer func() {
-		wasLastConn := false
 		a.mu.Lock()
 		if conns, ok := a.clients[c.login]; ok {
 			delete(conns, c)
 			if len(conns) == 0 {
 				delete(a.clients, c.login)
-				wasLastConn = true
 			}
 		}
 		a.mu.Unlock()
 		close(c.done)
 		c.conn.Close()
 		fmt.Printf("%s отключился\n", c.login)
-		if wasLastConn {
-			a.updateLastSeen(c.login)
-		}
 		a.broadcastOnlineUsers()
 	}()
 
