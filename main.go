@@ -318,6 +318,7 @@ func main() {
 	http.HandleFunc("/admin/change-user-password", app.handleAdminChangeUserPassword)
 	http.HandleFunc("/admin/kill-all-sessions", app.handleAdminKillAllSessions)
 	http.HandleFunc("/admin/disable-user", app.handleAdminDisableUser)
+	http.HandleFunc("/admin/enable-user", app.handleAdminEnableUser)
 	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/pacman.html")
 	})
@@ -2959,10 +2960,11 @@ func (a *App) handleAdminDisableUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := a.db.Exec(
-		"UPDATE messenger.users SET active = 0 WHERE id = $1", targetID,
+		"UPDATE messenger.users SET active = 0::smallint WHERE id = $1", targetID,
 	); err != nil {
 		log.Printf("handleAdminDisableUser: UPDATE active: %v", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка обновления пользователя: " + err.Error()})
 		return
 	}
 
@@ -2977,6 +2979,56 @@ func (a *App) handleAdminDisableUser(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Admin [%s]: пользователь [%s] отключён (active=0)", login, targetLogin)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"success": "Пользователь отключён"})
+}
+
+// handleAdminEnableUser — POST /admin/enable-user (form: target_login) — только id=0.
+// Ставит active=1 для указанного пользователя — разрешает вход в систему.
+func (a *App) handleAdminEnableUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var id int
+	if err := a.db.QueryRow(
+		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login,
+	).Scan(&id); err != nil || id != 0 {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	targetLogin := strings.TrimSpace(r.FormValue("target_login"))
+	if targetLogin == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Укажите логин пользователя"})
+		return
+	}
+
+	var targetID int
+	if err := a.db.QueryRow(
+		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", targetLogin,
+	).Scan(&targetID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Пользователь не найден"})
+		return
+	}
+
+	if _, err := a.db.Exec(
+		"UPDATE messenger.users SET active = 1::smallint WHERE id = $1", targetID,
+	); err != nil {
+		log.Printf("handleAdminEnableUser: UPDATE active: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка обновления пользователя: " + err.Error()})
+		return
+	}
+
+	log.Printf("Admin [%s]: пользователь [%s] включён (active=1)", login, targetLogin)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"success": "Пользователь включён"})
 }
 
 // handleDisplayName — GET/POST /display-name
