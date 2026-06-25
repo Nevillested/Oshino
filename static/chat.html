@@ -2210,15 +2210,14 @@
             #call-btn, #video-call-btn { display: none !important; }
 
             /* ── Стр.3: mob-chat — переключаем топбар ── */
-            /* Убираем menu-btn, показываем back-btn и кнопки звонка */
             body.mob-chat #menu-btn   { display: none !important; }
             body.mob-chat #back-btn   { display: flex !important; }
             body.mob-chat #call-btn   { display: flex !important; }
             body.mob-chat #video-call-btn { display: flex !important; }
             /* subtitle появляется */
-            body.mob-chat #topbar-subtitle { display: block !important; }
-            /* title чуть меньше — место для subtitle */
-            body.mob-chat #topbar-title { font-size: 16px; font-weight: 600; }
+            body.mob-chat #topbar-subtitle { display: block !important; font-size: 13px; font-weight: 400; }
+            /* title на стр.3 — чуть крупнее чем было, не жирный */
+            body.mob-chat #topbar-title { font-size: 18px; font-weight: 600; line-height: 1.2; }
 
             /* sidebar = список контактов, от topbar до низа, прозрачный */
             #sidebar {
@@ -3667,7 +3666,10 @@
         }
 
         // formatLastSeen возвращает строку статуса для оффлайн-пользователя.
-        // Сегодня — только время, иначе — дата + время.
+        // < 1 мин  → «только что»
+        // < 60 мин → «был(а) в сети N мин. назад»
+        // сегодня  → «был(а) в сети в HH:MM»
+        // иначе    → «был(а) в сети ДД.ММ в HH:MM»
         function formatLastSeen(login) {
             const iso = lastSeenMap[login.toLowerCase()];
             if (!iso) return 'не в сети';
@@ -3675,16 +3677,23 @@
             if (isNaN(d.getTime())) return 'не в сети';
             const now = new Date();
             const pad = n => String(n).padStart(2, '0');
+            const diffMs  = now - d;
+            const diffMin = Math.floor(diffMs / 60000);
+
+            if (diffMin < 1)  return 'только что';
+            if (diffMin < 60) return 'был(а) в сети ' + diffMin + ' мин. назад';
+
             const timePart = pad(d.getHours()) + ':' + pad(d.getMinutes());
-            const sameDay = d.getDate()     === now.getDate()
-                         && d.getMonth()    === now.getMonth()
-                         && d.getFullYear() === now.getFullYear();
-            if (sameDay) return 'последний раз в сети ' + timePart;
+            const sameDay  = d.getDate()     === now.getDate()
+                          && d.getMonth()    === now.getMonth()
+                          && d.getFullYear() === now.getFullYear();
+            if (sameDay) return 'был(а) в сети в ' + timePart;
+
             const sameYear = d.getFullYear() === now.getFullYear();
             const datePart = sameYear
                 ? pad(d.getDate()) + '.' + pad(d.getMonth() + 1)
                 : pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
-            return 'последний раз в сети ' + datePart + ' ' + timePart;
+            return 'был(а) в сети ' + datePart + ' в ' + timePart;
         }
 
         // Возвращает отображаемое имя пользователя: display_name если есть, иначе login
@@ -3701,7 +3710,7 @@
             logins.forEach(user => {
                 const count = unreadCount[user] || 0;
                 const isOnline = onlineUsers.includes(user);
-                const statusText = isOnline ? '(в сети)' : '(' + formatLastSeen(user) + ')';
+                const statusText = isOnline ? 'в сети' : formatLastSeen(user);
 
                 // Пункт в боковом меню
                 const li = document.createElement('li');
