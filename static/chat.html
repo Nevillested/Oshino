@@ -2272,8 +2272,6 @@
             #settings-open-btn,
             #logout-btn-sidebar { display: none !important; }
             #close-menu-btn     { display: none !important; }
-            /* Заголовок "Диалоги" — убираем */
-            #sidebar h3         { display: none !important; }
 
             #users {
                 display: block !important;
@@ -2281,7 +2279,7 @@
                 margin: 0;
             }
             #users li {
-                padding: 12px 12px 12px 16px;
+                padding: 12px 12px 12px 8px;
                 margin: 0;
                 border-radius: 0;
                 border-bottom: 1px solid var(--color-results-sep);
@@ -2314,6 +2312,9 @@
                 font-weight: 400;
             }
             #users li .dialog-status.online { color: #2ecc71; }
+            /* last-seen на выделенном (синем) элементе — светлый */
+            #users li.active .dialog-status { color: rgba(255,255,255,0.70); }
+            #users li.active .dialog-status.online { color: #a8f5c0; }
 
             /* settings-panel поверх всего когда открыт */
             #sidebar #settings-panel,
@@ -2802,7 +2803,6 @@
             </div>
             <ul id="search-results"></ul>
 
-            <h3>Диалоги</h3>
             <ul id="users"></ul>
 
             <div class="theme-switch-wrap">
