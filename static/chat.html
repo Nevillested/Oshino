@@ -2253,28 +2253,31 @@
             #sidebar #settings-panel,
             #sidebar .settings-submenu { position: fixed; inset: 0; z-index: 50; }
 
-            /* ── Внутренние экраны pg-menu ── */
-            #pgm-main {
-                display: flex;
-                flex-direction: column;
-                flex: 1;
-                min-height: 0;
-                overflow: hidden;
-            }
-            /* Когда открыт слот настроек или Pac-Man — скрываем основной экран */
-            #pg-menu.pgm-settings #pgm-main,
-            #pg-menu.pgm-pacman  #pgm-main  { display: none; }
+            /* ── Основной экран pg-menu: поиск + результаты + кнопки ── */
+            /* По умолчанию основные элементы видны */
+            #pgm-search-wrap { display: block; }
+            #pgm-search-results { display: block; }
+            #pgm-bottom { display: block; }
 
+            /* Когда открыты настройки или pac-man — скрываем основной экран */
+            #pg-menu.pgm-settings #pgm-search-wrap,
+            #pg-menu.pgm-settings #pgm-search-results,
+            #pg-menu.pgm-settings #pgm-bottom,
+            #pg-menu.pgm-pacman  #pgm-search-wrap,
+            #pg-menu.pgm-pacman  #pgm-search-results,
+            #pg-menu.pgm-pacman  #pgm-bottom { display: none !important; }
+
+            /* ── Слот настроек ── */
             #pgm-settings-slot {
+                display: none;
+                flex-direction: column;
                 flex: 1;
                 min-height: 0;
                 overflow-y: auto;
-                display: none;
-                flex-direction: column;
             }
             #pg-menu.pgm-settings #pgm-settings-slot { display: flex; }
 
-            /* Настройки телепортированы в slot — нужны свои стили внутри pg-menu */
+            /* Настройки телепортированы в slot — position:static, без fixed overlay */
             #pgm-settings-slot #settings-panel,
             #pgm-settings-slot .settings-submenu {
                 position: static !important;
@@ -2282,23 +2285,29 @@
                 z-index: auto !important;
                 background: transparent !important;
                 padding: 12px;
-                flex: 1;
-                min-height: 0;
-                overflow-y: auto;
                 display: none;
                 flex-direction: column;
+                flex: 1;
+                overflow-y: auto;
             }
             #pgm-settings-slot #settings-panel.open,
             #pgm-settings-slot .settings-submenu.open { display: flex; }
 
+            /* ── Pac-Man в меню ── */
             #pgm-pacman-wrap {
-                flex: 1;
-                min-height: 0;
                 display: none;
                 flex-direction: column;
+                flex: 1;
+                min-height: 0;
                 background: #000;
             }
             #pg-menu.pgm-pacman #pgm-pacman-wrap { display: flex; }
+            #pgm-pacman-back-btn {
+                padding: 12px 16px;
+                flex-shrink: 0;
+                background: var(--color-sidebar);
+                border-bottom: 1px solid var(--color-results-sep);
+            }
 
             /* ── СТРАНИЦА 3: диалог ── */
             /* #chat выезжает справа */
@@ -2684,35 +2693,33 @@
     <!-- Страница 1: меню (мобайл) — прямой дочерний элемент body,
          чтобы position:fixed + z-index:35 работал без влияния stacking context родителей -->
     <div id="pg-menu">
-        <!-- Основной экран меню -->
-        <div id="pgm-main">
-            <div id="pgm-search-wrap">
-                <input type="text" id="pgm-search" placeholder="Найти пользователя..." autocomplete="off">
+        <!-- Основной экран меню: поиск, результаты, кнопки снизу -->
+        <div id="pgm-search-wrap">
+            <input type="text" id="pgm-search" placeholder="Найти пользователя..." autocomplete="off">
+        </div>
+        <ul id="pgm-search-results"></ul>
+        <div id="pgm-bottom">
+            <div class="theme-switch-wrap" style="margin-bottom: 8px; margin-top: 0;">
+                <label class="theme-switch">
+                    <input id="theme-toggle-pgm" class="theme-switch__input" type="checkbox" role="switch" />
+                    <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
+                </label>
             </div>
-            <ul id="pgm-search-results"></ul>
-            <div id="pgm-bottom">
-                <div class="theme-switch-wrap" style="margin-bottom: 8px; margin-top: 0;">
-                    <label class="theme-switch">
-                        <input id="theme-toggle-pgm" class="theme-switch__input" type="checkbox" role="switch" />
-                        <span style="overflow:hidden;position:absolute;width:1px;height:1px;">Тема</span>
-                    </label>
-                </div>
-                <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
-                <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
-                <button id="pgm-logout-btn">Выход</button>
-            </div>
+            <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
+            <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
+            <button id="pgm-logout-btn">Выход</button>
         </div>
         <!-- Слот для настроек (JS телепортирует сюда #settings-panel и submenus) -->
-        <div id="pgm-settings-slot" style="display:none; flex-direction:column; flex:1; overflow-y:auto;"></div>
+        <div id="pgm-settings-slot"></div>
         <!-- Pac-Man внутри меню -->
-        <div id="pgm-pacman-wrap" style="display:none; flex-direction:column; flex:1; background:#000;">
-            <button id="pgm-pacman-back-btn" class="settings-back-btn" style="padding: 12px 16px; flex-shrink:0; background: #111318;">
+        <div id="pgm-pacman-wrap">
+            <button id="pgm-pacman-back-btn" class="settings-back-btn">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="15 18 9 12 15 6"></polyline>
                 </svg>
                 Pac-Man
             </button>
-            <iframe id="pgm-pacman-iframe" src="about:blank" style="flex:1; border:none; display:block;"></iframe>
+            <iframe id="pgm-pacman-iframe" src="about:blank" style="flex:1; border:none; display:block; min-height:0;"></iframe>
         </div>
     </div>
 
