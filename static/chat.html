@@ -3071,7 +3071,7 @@
             <button id="recording-send-btn" type="button">Отправить</button>
         </div>
         <!-- Reply-bar — цитата выбранного сообщения над полем ввода -->
-        <div id="reply-bar" style="display: none;">
+        <div id="reply-bar">
             <div id="reply-preview">
                 <div id="reply-preview-from"></div>
                 <div id="reply-preview-text"></div>
@@ -4043,6 +4043,9 @@
             if (state && state.messages && state.messages.length > 0) {
                 renderMessages(state.messages);
             } else {
+                if (!historyState[user]) {
+                    historyState[user] = { oldestId: 0, allLoaded: false, messages: [] };
+                }
                 messagesDiv.innerHTML = '';
                 messagesDiv.appendChild(loadMoreIndicator);
                 loadMoreIndicator.style.display = 'none';
@@ -4289,7 +4292,7 @@
                 if (msg.image_id || msg.local_preview) {
                     // Цитата перед картинкой если это reply
                     if (msg.reply_preview) {
-                        wrap.appendChild(buildReplyQuote(msg.reply_preview, msg.own));
+                        wrap.appendChild(buildReplyQuote(msg.reply_preview, msg.own, msg.reply_to_id));
                     }
                     const img = document.createElement('img');
                     img.className = 'message-image';
@@ -4302,7 +4305,7 @@
                     wrap.appendChild(img);
                 } else if (msg.audio_id || msg.local_audio_url) {
                     if (msg.reply_preview) {
-                        wrap.appendChild(buildReplyQuote(msg.reply_preview, msg.own));
+                        wrap.appendChild(buildReplyQuote(msg.reply_preview, msg.own, msg.reply_to_id));
                     }
                     const audioSrc = msg.local_audio_url || ('/audio/' + msg.audio_id);
                     const player = buildAudioPlayer(audioSrc, msg.audio_duration || 0, msg.own ? 'own' : 'other');
@@ -4311,7 +4314,7 @@
                     const bubble = document.createElement('div');
                     bubble.className = 'message ' + (msg.own ? 'own' : 'other');
                     if (msg.reply_preview) {
-                        bubble.appendChild(buildReplyQuote(msg.reply_preview, msg.own));
+                        bubble.appendChild(buildReplyQuote(msg.reply_preview, msg.own, msg.reply_to_id));
                     }
                     const textNode = document.createElement('span');
                     textNode.textContent = msg.text;
@@ -4359,7 +4362,7 @@
 
         // ── Вспомогательные функции для сообщений ────────────────────────────────
 
-        function buildReplyQuote(preview, isOwn) {
+        function buildReplyQuote(preview, isOwn, replyToId) {
             const q = document.createElement('div');
             q.className = 'msg-reply-quote';
             const f = document.createElement('div');
@@ -4370,6 +4373,13 @@
             t.textContent = preview.text;
             q.appendChild(f);
             q.appendChild(t);
+            if (replyToId) {
+                q.style.cursor = 'pointer';
+                q.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    scrollToMessage(replyToId);
+                });
+            }
             return q;
         }
 
