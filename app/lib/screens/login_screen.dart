@@ -424,7 +424,7 @@ class _EyePainter extends CustomPainter {
       canvas.drawLine(
         Offset(w * 0.1, h * 0.5),
         Offset(w * 0.9, h * 0.5),
-        paint,
+        paint,git add app/lib/
       );
     }
   }
