@@ -2465,6 +2465,10 @@
                 background: transparent;
                 display: flex;
                 flex-direction: column;
+                /* Отступ под фиксированный топбар — ОДИН раз на контейнере и с
+                   учётом safe-area. Дочерние #pin-bar и #messages свой отступ
+                   больше НЕ добавляют (см. ниже). */
+                padding-top: calc(56px + env(safe-area-inset-top));
                 transform: translateX(100%);
                 transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
                 will-change: transform;
@@ -2474,12 +2478,13 @@
             /* стр.2 контакты — уезжают влево синхронно с появлением чата */
             body.mob-chat #sidebar { transform: translateX(-100%); }
 
-            /* отступ под topbar внутри чата */
+            /* Отступ под топбар теперь на самом #chat (см. выше) — здесь его
+               НЕ дублируем. Раньше padding-top на #messages + margin-top на
+               #pin-bar давали двойной сдвиг при показанном закрепе, а закреп
+               не учитывал safe-area и прятался за топбаром (был не виден). */
             #messages {
                 background: transparent !important;
-                padding-top: 56px;
             }
-            #pin-bar { margin-top: 56px; }
 
             /* футер непрозрачный */
             #input-area {
@@ -6331,24 +6336,30 @@
             openForwardModal(id);
         });
 
-        // Скролл к сообщению по id — если оно уже отрендерено в DOM, скроллим
-        // к нему; если нет — догружаем историю вверх пока не найдём или не упрёмся.
+
+        // Скролл к сообщению по id. Если его ещё нет в DOM — догружаем историю
+        // вверх, пока не найдём или не упрёмся в начало переписки.
         async function scrollToMessage(msgId) {
             if (!msgId) return;
-            // Пробуем найти уже отрендеренный элемент
-            const el = messagesDiv.querySelector(`[data-msg-id="${msgId}"]`);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // Подсветка через CSS-анимацию (цвет берётся из CSS-переменной темы)
-                el.classList.remove('highlighted');
-                // Форсируем reflow чтобы анимация рестартовала если кликнули дважды
-                void el.offsetWidth;
-                el.classList.add('highlighted');
-                el.addEventListener('animationend', () => el.classList.remove('highlighted'), { once: true });
-                return;
+            const user = currentUser;
+            let el = messagesDiv.querySelector(`[data-msg-id="${msgId}"]`);
+            let guard = 0;
+            while (!el && user && historyState[user] &&
+                   !historyState[user].allLoaded && guard < 60) {
+                guard++;
+                const before = historyState[user].messages.length;
+                await loadHistory(user, historyState[user].oldestId || 0, 20);
+                if (currentUser !== user) return; // успели сменить диалог
+                if (historyState[user].messages.length === before) break;
+                el = messagesDiv.querySelector(`[data-msg-id="${msgId}"]`);
             }
-            // Сообщение не найдено в DOM — возможно ещё не подгружено
-            console.log('Сообщение', msgId, 'не найдено в текущем окне');
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.remove('highlighted');
+            void el.offsetWidth; // рестарт анимации при повторном клике
+            el.classList.add('highlighted');
+            el.addEventListener('animationend',
+                () => el.classList.remove('highlighted'), { once: true });
         }
 
         function getMsgPreviewText(msg) {
