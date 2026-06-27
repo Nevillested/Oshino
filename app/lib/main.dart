@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
+import 'screens/main_screen.dart';
 
 void main() {
   runApp(const OshinoApp());
@@ -16,7 +17,11 @@ class OshinoApp extends StatelessWidget {
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0d0d0d),
       ),
-      home: const LoginScreen(),
+      initialRoute: '/login',
+      routes: {
+        '/login': (_) => const LoginScreen(),
+        '/main': (_) => const MainScreen(),
+      },
     );
   }
 }
