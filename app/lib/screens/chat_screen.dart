@@ -12,6 +12,7 @@ import '../models/message.dart';
 import '../services/api_service.dart';
 import '../services/ws_service.dart';
 import '../services/call_service.dart';
+import '../services/settings_service.dart';
 import '../widgets/particle_bg.dart';
 import 'call_screen.dart';
 
@@ -60,7 +61,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   OshinoMessage? _replyingTo;
 
   // Закреплённое сообщение
-  // Закреплённое сообщение
   Map<String, dynamic>? _pinnedMsg;
 
   // Переход к закреплённому: ключ на каждое сообщение (для
@@ -73,10 +73,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   double _ctxGlobalY = 0;
   bool _ctxOwnMessage = false;
 
+  // Режим множественного выбора сообщений (для массовой пересылки).
+  bool _selectionMode = false;
+  final Set<int> _selectedIds = {};
+
   // Логика одиночного/двойного тапа
   Timer? _tapTimer;
   OshinoMessage? _pendingTapMsg;
   double _pendingTapY = 0;
+
+  // Свайп слева направо — назад к списку диалогов (те же пороги, что у
+  // открытия меню на главной). _swipeBackTriggered защищает от повторного
+  // pop во время одного жеста (onHorizontalDragUpdate срабатывает многократно).
+  double _dragStartX = 0;
+  double _dragStartY = 0;
+  bool _swipeBackTriggered = false;
 
   static const List<String> _reactionEmojis = ['👍','❤️','😂','😮','😢','👏'];
 
@@ -105,7 +116,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final from = (data['from'] ?? '').toString().toLowerCase();
       if (from != widget.login.toLowerCase()) return;
-      final msg = OshinoMessage.fromJson({...data, 'own': false});
+      final msg = OshinoMessage.fromJson(
+          {...data, 'id': data['msg_id'], 'own': false});
       setState(() => _messages.add(msg));
       _scrollToBottom();
       if (!_isAtBottom()) _playMessageSound();
@@ -116,17 +128,46 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final to = (data['to'] ?? '').toString().toLowerCase();
       if (to != widget.login.toLowerCase()) return;
-      if (data['image_id'] != null || data['audio_id'] != null) return;
+
       final msgId = (data['msg_id'] as num?)?.toInt();
+      final hasMedia =
+          data['image_id'] != null || data['audio_id'] != null;
+
       setState(() {
-        final idx = _messages.indexWhere((m) => m.pending && m.own);
-        if (idx >= 0) {
-          _messages[idx] = _messages[idx].copyWith(
-            id: msgId ?? _messages[idx].id,
-            createdAt: data['created_at']?.toString() ?? _messages[idx].createdAt,
-            pending: false,
-          );
+        // Сообщение с таким id уже есть (повторный ack либо медиа, уже
+        // добавленное ответом аплоада) — не задваиваем.
+        if (msgId != null &&
+            msgId > 0 &&
+            _messages.any((m) => m.id == msgId)) {
+          return;
         }
+
+        if (!hasMedia) {
+          // Обычная отправка текста с этого устройства — реконсилим
+          // оптимистичный плейсхолдер.
+          final idx = _messages.indexWhere((m) =>
+              m.pending && m.own && m.imageId == null && m.audioId == null);
+          if (idx >= 0) {
+            _messages[idx] = _messages[idx].copyWith(
+              id: msgId ?? _messages[idx].id,
+              createdAt:
+                  data['created_at']?.toString() ?? _messages[idx].createdAt,
+              pending: false,
+            );
+            return;
+          }
+        } else {
+          // Медиа: если идёт наша же загрузка (есть незавершённый медиа-
+          // плейсхолдер), реконсиляцию сделает ответ аплоада — ack пропускаем.
+          final hasPendingMedia = _messages.any((m) =>
+              m.pending && m.own && (m.imageId != null || m.audioId != null));
+          if (hasPendingMedia) return;
+        }
+
+        // Плейсхолдера нет: это пересылка в текущий чат (или отправка с другого
+        // устройства) — добавляем сообщение как своё сразу же.
+        _messages.add(OshinoMessage.fromJson(
+            {...data, 'id': msgId, 'own': true, 'pending': false}));
       });
       _scrollToBottom();
     });
@@ -181,15 +222,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
     });
 
-// Закреп. Событие приходит на все устройства ОБЕИХ сторон диалога,
-    // поэтому применяем его только если оно про этот открытый чат
-    // (data['with'] == собеседник). Иначе закреп/откреп из другого
-    // диалога перезапишет баннер здесь.
+    // Закреп
     WsService.instance.pinStream.listen((data) {
       if (!mounted) return;
-      final withUser = (data['with'] ?? '').toString().toLowerCase();
-      if (withUser.isNotEmpty &&
-          withUser != widget.login.toLowerCase()) return;
       setState(() {
         if (data['_pinned'] == true) {
           _pinnedMsg = {
@@ -211,7 +246,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() => _pinnedMsg = data);
     }
   }
-// Переход к закреплённому сообщению: догружаем историю, пока сообщение не
+
+  // Переход к закреплённому сообщению: догружаем историю, пока сообщение не
   // окажется в списке, затем центрируем и подсвечиваем.
   Future<void> _scrollToMessage(int messageId) async {
     if (messageId <= 0) return;
@@ -266,6 +302,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
     }
   }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _isAppActive = state == AppLifecycleState.resumed;
@@ -335,7 +372,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _tapTimer!.cancel();
       _tapTimer = null;
       _pendingTapMsg = null;
-      _sendReaction(msg, '👍');
+      _sendReaction(msg, SettingsService.instance.defaultReaction.value);
       return;
     }
     _tapTimer?.cancel();
@@ -361,6 +398,95 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _dismissContextMenu() {
     if (_ctxMsg != null) setState(() => _ctxMsg = null);
+  }
+
+  // ── Множественный выбор сообщений ─────────────────────────────────────────
+
+  void _enterSelection(OshinoMessage msg) {
+    if (msg.id <= 0) return;
+    // Гасим возможное контекстное меню / ожидающий двойной тап.
+    _dismissContextMenu();
+    _tapTimer?.cancel();
+    _tapTimer = null;
+    _pendingTapMsg = null;
+    setState(() {
+      _selectionMode = true;
+      _selectedIds.add(msg.id);
+    });
+  }
+
+  void _toggleSelection(OshinoMessage msg) {
+    if (msg.id <= 0) return;
+    setState(() {
+      if (_selectedIds.contains(msg.id)) {
+        _selectedIds.remove(msg.id);
+      } else {
+        _selectedIds.add(msg.id);
+      }
+      if (_selectedIds.isEmpty) _selectionMode = false;
+    });
+  }
+
+  void _exitSelection() {
+    if (!_selectionMode && _selectedIds.isEmpty) return;
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _forwardSelected() {
+    final ids = _selectedIds.toList()..sort(); // в хронологическом порядке
+    if (ids.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1a1d24),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: _ForwardSheet(
+          onSelect: (login) async {
+            Navigator.pop(ctx);
+            int okCount = 0;
+            // Последовательно — чтобы сообщения пришли в исходном порядке.
+            for (final id in ids) {
+              final ok = await ApiService.forward(id, login);
+              if (ok) okCount++;
+            }
+            if (!mounted) return;
+            _exitSelection();
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(okCount > 0
+                  ? 'Переслано пользователю $login: $okCount'
+                  : 'Ошибка пересылки'),
+              duration: const Duration(seconds: 2),
+            ));
+          },
+        ),
+      ),
+    );
+  }
+
+  // Кружок-галочка слева/справа от сообщения в режиме выбора.
+  Widget _selectionCheck(bool selected) {
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? const Color(0xFF4a90e2) : Colors.transparent,
+        border: Border.all(
+          color: selected ? const Color(0xFF4a90e2) : const Color(0xFF5a5f70),
+          width: 2,
+        ),
+      ),
+      child: selected
+          ? const Icon(Icons.check, size: 14, color: Colors.white)
+          : null,
+    );
   }
 
   void _sendReaction(OshinoMessage msg, String emoji) {
@@ -594,11 +720,16 @@ void _showForwardDialog(OshinoMessage msg) {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    return Scaffold(
+    return PopScope(
+      canPop: !_selectionMode,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _selectionMode) _exitSelection();
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF0d0d0d),
       body: Stack(
         children: [
-          const Positioned.fill(child: ParticleBackground(darkTheme: true)),
+          const Positioned.fill(child: OshinoBackground()),
           Column(
             children: [
               // Топбар
@@ -611,7 +742,9 @@ void _showForwardDialog(OshinoMessage msg) {
                     children: [
                       SizedBox(
                         height: 60,
-                        child: Row(
+                        child: _selectionMode
+                            ? _buildSelectionBar()
+                            : Row(
                           children: [
                             IconButton(
                               icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
@@ -668,23 +801,59 @@ void _showForwardDialog(OshinoMessage msg) {
 
               // Сообщения
               Expanded(
-                child: _loading && _messages.isEmpty
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF4a90e2)))
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        itemCount: _messages.length + (_loading && _messages.isNotEmpty ? 1 : 0),
-                        itemBuilder: (context, i) {
-                          if (i == 0 && _loading && _messages.isNotEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.all(8),
-                              child: Center(child: SizedBox(width: 20, height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4a90e2)))));
-                          }
-                          final idx = _loading && _messages.isNotEmpty ? i - 1 : i;
-                          return _buildMessageRow(_messages[idx]);
-                        },
+                child: Stack(
+                  children: [
+                    _loading && _messages.isEmpty
+                        ? const Center(child: CircularProgressIndicator(color: Color(0xFF4a90e2)))
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            itemCount: _messages.length + (_loading && _messages.isNotEmpty ? 1 : 0),
+                            itemBuilder: (context, i) {
+                              if (i == 0 && _loading && _messages.isNotEmpty) {
+                                return const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: Center(child: SizedBox(width: 20, height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4a90e2)))));
+                              }
+                              final idx = _loading && _messages.isNotEmpty ? i - 1 : i;
+                              return _buildMessageRow(_messages[idx]);
+                            },
+                          ),
+                    // Свайп слева направо — назад к списку диалогов. Те же пороги,
+                    // что у открытия меню на главной (main_screen). Поверх ленты,
+                    // translucent — тап и вертикальный скролл проходят сквозь.
+                    // Отключаем, пока открыто контекстное меню.
+                    if (_ctxMsg == null)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragStart: (d) {
+                            _dragStartX = d.globalPosition.dx;
+                            _dragStartY = d.globalPosition.dy;
+                            _swipeBackTriggered = false;
+                          },
+                          onHorizontalDragUpdate: (d) {
+                            if (_swipeBackTriggered) return;
+                            final totalDx = (d.globalPosition.dx - _dragStartX).abs();
+                            final totalDy = (d.globalPosition.dy - _dragStartY).abs();
+                            if (_dragStartX > 20 &&
+                                d.globalPosition.dx - _dragStartX > 30 &&
+                                totalDx > totalDy * 1.5) {
+                              _swipeBackTriggered = true;
+                              if (_selectionMode) {
+                                _exitSelection();
+                              } else {
+                                Navigator.of(context).pop();
+                              }
+                            }
+                          },
+                          onHorizontalDragEnd: (_) => _swipeBackTriggered = false,
+                          child: const SizedBox.expand(),
+                        ),
                       ),
+                  ],
+                ),
               ),
 
               // Панель ввода
@@ -721,12 +890,39 @@ void _showForwardDialog(OshinoMessage msg) {
           if (_ctxMsg != null) _buildContextMenuOverlay(screenHeight),
         ],
       ),
+      ),
+    );
+  }
+
+  // Верхняя панель в режиме выбора: закрыть · счётчик · переслать.
+  Widget _buildSelectionBar() {
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.close, color: Colors.white, size: 22),
+          onPressed: _exitSelection,
+        ),
+        Expanded(
+          child: Text(
+            'Выбрано: ${_selectedIds.length}',
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.forward, color: Colors.white, size: 22),
+          tooltip: 'Переслать',
+          onPressed: _selectedIds.isEmpty ? null : _forwardSelected,
+        ),
+      ],
     );
   }
 
   // ── ЗАКРЕП ────────────────────────────────────────────────────────────────
 
-Widget _buildPinBanner() {
+  Widget _buildPinBanner() {
     final pinnedId = (_pinnedMsg!['message_id'] as num?)?.toInt();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -951,46 +1147,92 @@ Widget _buildContextMenuOverlay(double screenHeight) {
 
   // ── СООБЩЕНИЯ ─────────────────────────────────────────────────────────────
 
-Widget _buildMessageRow(OshinoMessage msg) {
+  Widget _buildMessageRow(OshinoMessage msg) {
     if (msg.callType != null) return _buildCallLog(msg);
     // Ключ на сообщение — для перехода к закреплённому (Scrollable.ensureVisible).
     final key = msg.id > 0
         ? _messageKeys.putIfAbsent(msg.id, () => GlobalKey())
         : null;
     final highlighted = _highlightedMsgId == msg.id;
+    final selectable = msg.id > 0;
+    final selected = _selectionMode && _selectedIds.contains(msg.id);
+
+    final bubble = AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: highlighted ? const Color(0x334a90e2) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            msg.own ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (msg.forwardedFrom != null)
+            Padding(
+              padding: EdgeInsets.only(left: msg.own ? 0 : 4, right: msg.own ? 4 : 0, bottom: 2),
+              child: Text('↗ Переслано от ${msg.forwardedFrom}',
+                  style: const TextStyle(color: Color(0xFF4a90e2), fontSize: 11)),
+            ),
+          if (msg.imageId != null)
+            _buildImageMessage(msg)
+          else if (msg.audioId != null)
+            _buildAudioMessage(msg)
+          else
+            _buildTextMessage(msg),
+          // Реакции
+          _buildReactions(msg),
+        ],
+      ),
+    );
+
+    // В режиме выбора — кружок-галочка: слева у сообщений собеседника,
+    // справа у своих. Невыбираемые (pending) — кружок не показываем.
+    Widget rowChild;
+    if (_selectionMode) {
+      final check = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Opacity(
+          opacity: selectable ? 1 : 0,
+          child: _selectionCheck(selected),
+        ),
+      );
+      rowChild = Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: msg.own
+            ? [Expanded(child: bubble), const SizedBox(width: 4), check]
+            : [check, const SizedBox(width: 4), Expanded(child: bubble)],
+      );
+    } else {
+      rowChild = bubble;
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapUp: (details) => _handleMessageTap(msg, details.globalPosition.dy),
+      onTapUp: (details) {
+        if (_selectionMode) {
+          _toggleSelection(msg);
+        } else {
+          _handleMessageTap(msg, details.globalPosition.dy);
+        }
+      },
+      onLongPress: selectable
+          ? () {
+              if (_selectionMode) {
+                _toggleSelection(msg);
+              } else {
+                _enterSelection(msg);
+              }
+            }
+          : null,
       child: AnimatedContainer(
         key: key,
-        duration: const Duration(milliseconds: 300),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        decoration: BoxDecoration(
-          color: highlighted ? const Color(0x334a90e2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              msg.own ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (msg.forwardedFrom != null)
-              Padding(
-                padding: EdgeInsets.only(
-                    left: msg.own ? 0 : 4, right: msg.own ? 4 : 0, bottom: 2),
-                child: Text('↗ Переслано от ${msg.forwardedFrom}',
-                    style:
-                        const TextStyle(color: Color(0xFF4a90e2), fontSize: 11)),
-              ),
-            if (msg.imageId != null)
-              _buildImageMessage(msg)
-            else if (msg.audioId != null)
-              _buildAudioMessage(msg)
-            else
-              _buildTextMessage(msg),
-            _buildReactions(msg),
-          ],
-        ),
+        duration: const Duration(milliseconds: 150),
+        color: selected ? const Color(0x1a4a90e2) : Colors.transparent,
+        // В режиме выбора игнорируем внутренние нажатия (воспроизведение
+        // голосового, открытие фото) — любой тап по строке = выбор.
+        child: _selectionMode ? IgnorePointer(child: rowChild) : rowChild,
       ),
     );
   }

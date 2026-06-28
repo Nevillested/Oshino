@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import '../services/settings_service.dart';
 
 // ── Perlin noise ─────────────────────────────────────────────────────────────
 class _PerlinNoise {
@@ -213,5 +214,26 @@ class _ParticleBackgroundState extends State<ParticleBackground>
         ),
       );
     });
+  }
+}
+// ── Фон приложения с учётом настройки анимации ───────────────────────────────
+/// Реактивная обёртка: показывает анимированные частицы, когда
+/// SettingsService.instance.bgAnim == true, иначе — однотонную заливку.
+/// Когда анимация выключена, ParticleBackground не строится вовсе
+/// (контроллер анимации не работает — экономия батареи).
+class OshinoBackground extends StatelessWidget {
+  const OshinoBackground({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: SettingsService.instance.bgAnim,
+      builder: (context, on, _) {
+        if (on) {
+          return const ParticleBackground(darkTheme: true);
+        }
+        return Container(color: const Color(0xFF0d0d0d));
+      },
+    );
   }
 }

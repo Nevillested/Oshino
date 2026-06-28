@@ -4,9 +4,11 @@ import '../widgets/particle_bg.dart';
 import '../services/ws_service.dart';
 import '../services/api_service.dart';
 import '../services/call_service.dart';
+import '../services/settings_service.dart';
 import 'chat_screen.dart';
 import 'pacman_screen.dart';
 import 'call_screen.dart';
+import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -26,12 +28,20 @@ class _MainScreenState extends State<MainScreen> {
   double _dragStartX = 0;
   double _dragStartY = 0;
 
+  /// Навигатор внутри боковой панели — настройки открываются здесь же,
+  /// не выходя за пределы панели (как в веб-версии).
+  final GlobalKey<NavigatorState> _menuNavKey =
+      GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
 
     CallService.instance.startListening();
     WsService.instance.connect();
+
+    // Подтягиваем реакцию по умолчанию с сервера для двойного тапа в чате.
+    SettingsService.instance.loadDefaultReaction();
 
     ApiService.getUnreadCounts().then((counts) {
       if (!mounted) return;
@@ -139,7 +149,13 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _openMenu() => setState(() => _menuOpen = true);
-  void _closeMenu() => setState(() => _menuOpen = false);
+
+  void _closeMenu() {
+    // Сбрасываем внутреннюю навигацию панели к стартовому экрану,
+    // чтобы при повторном открытии меню было в исходном состоянии.
+    _menuNavKey.currentState?.popUntil((r) => r.isFirst);
+    setState(() => _menuOpen = false);
+  }
 
   void _openChat(String login) {
     setState(() => _unreadCounts.remove(login.toLowerCase()));
@@ -169,14 +185,21 @@ class _MainScreenState extends State<MainScreen> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (_menuOpen) _closeMenu();
+        if (_menuOpen) {
+          final nav = _menuNavKey.currentState;
+          if (nav != null && nav.canPop()) {
+            nav.pop();
+          } else {
+            _closeMenu();
+          }
+        }
       },
       child: Scaffold(
         backgroundColor: const Color(0xFF0d0d0d),
         body: Stack(
           children: [
             const Positioned.fill(
-              child: ParticleBackground(darkTheme: true),
+              child: OshinoBackground(),
             ),
 
             Column(
@@ -335,6 +358,7 @@ class _MainScreenState extends State<MainScreen> {
               bottom: 0,
               width: menuWidth,
               child: _MenuPanel(
+                navKey: _menuNavKey,
                 onClose: _closeMenu,
                 onLogout: _logout,
                 onStartChat: (login) {
@@ -350,22 +374,77 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-class _MenuPanel extends StatefulWidget {
+/// Горизонтальный слайд (вправо→влево) для переходов внутри панели —
+/// визуально как раскрытие подменю в веб-версии.
+Route<T> _panelSlideRoute<T>(Widget page) {
+  return PageRouteBuilder<T>(
+    transitionDuration: const Duration(milliseconds: 240),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
+    pageBuilder: (_, __, ___) => page,
+    transitionsBuilder: (_, anim, __, child) {
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+        child: child,
+      );
+    },
+  );
+}
+
+/// Боковая панель: собственный Navigator, чтобы настройки и их подменю
+/// открывались внутри панели (как в веб-версии), не уходя на отдельный экран.
+class _MenuPanel extends StatelessWidget {
+  final GlobalKey<NavigatorState> navKey;
   final VoidCallback onClose;
   final VoidCallback onLogout;
   final void Function(String login) onStartChat;
 
   const _MenuPanel({
+    required this.navKey,
     required this.onClose,
     required this.onLogout,
     required this.onStartChat,
   });
 
   @override
-  State<_MenuPanel> createState() => _MenuPanelState();
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF111318),
+      child: ClipRect(
+        child: Navigator(
+          key: navKey,
+          onGenerateRoute: (_) => MaterialPageRoute(
+            settings: const RouteSettings(name: 'menu-home'),
+            builder: (_) => _MenuHome(
+              onClose: onClose,
+              onLogout: onLogout,
+              onStartChat: onStartChat,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _MenuPanelState extends State<_MenuPanel> {
+class _MenuHome extends StatefulWidget {
+  final VoidCallback onClose;
+  final VoidCallback onLogout;
+  final void Function(String login) onStartChat;
+
+  const _MenuHome({
+    required this.onClose,
+    required this.onLogout,
+    required this.onStartChat,
+  });
+
+  @override
+  State<_MenuHome> createState() => _MenuHomeState();
+}
+
+class _MenuHomeState extends State<_MenuHome> {
   final _searchController = TextEditingController();
   List<String> _searchResults = [];
   bool _searching = false;
@@ -486,7 +565,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                 label: 'Pac-Man',
                 onTap: () {
                   widget.onClose();
-                  Navigator.of(context).push(
+                  Navigator.of(context, rootNavigator: true).push(
                     MaterialPageRoute(
                         builder: (_) => const PacmanScreen()),
                   );
@@ -495,7 +574,11 @@ class _MenuPanelState extends State<_MenuPanel> {
               _MenuItem(
                 icon: Icons.settings,
                 label: 'Настройки',
-                onTap: () {},
+                onTap: () {
+                  // Открываем настройки внутри самой панели.
+                  Navigator.of(context)
+                      .push(_panelSlideRoute(const SettingsScreen()));
+                },
               ),
               Padding(
                 padding:

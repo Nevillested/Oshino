@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
+import 'services/settings_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Загружаем клиентские настройки (анимация фона) до первого кадра,
+  // чтобы фон сразу отрисовался в нужном состоянии.
+  await SettingsService.instance.loadLocal();
   runApp(const OshinoApp());
 }
 
