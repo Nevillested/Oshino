@@ -1723,7 +1723,7 @@ func (a *App) sendFcmToLogin(login string, payload pushNotificationPayload) {
 			},
 			Data: map[string]string{
 				"type":    payload.Type,
-				"from":    payload.From,
+				"sender":  payload.From,
 				"title":   payload.Title,
 				"body":    payload.Body,
 				"call_id": payload.CallID,
@@ -1739,8 +1739,8 @@ func (a *App) sendFcmToLogin(login string, payload pushNotificationPayload) {
 		}
 
 		if _, serr := a.fcmClient.Send(context.Background(), msg); serr != nil {
-			if messaging.IsUnregistered(serr) || messaging.IsInvalidArgument(serr) {
-				log.Printf("FCM: токен id=%d недействителен — удалён (%v)", t.id, serr)
+			if messaging.IsUnregistered(serr) {
+				log.Printf("FCM: токен id=%d отозван — удалён (%v)", t.id, serr)
 				a.db.Exec("DELETE FROM messenger.fcm_tokens WHERE id = $1", t.id)
 			} else {
 				log.Printf("FCM: ОШИБКА отправки (token id=%d): %v", t.id, serr)

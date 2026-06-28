@@ -22,7 +22,7 @@ final FlutterLocalNotificationsPlugin _localNotif =
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   debugPrint(
-      '[push-bg] получено: from=${message.data['from']} title=${message.notification?.title} data=${message.data}');
+      '[push-bg] получено: from=${message.data['sender']} title=${message.notification?.title} data=${message.data}');
 }
 
 class PushService {
@@ -67,7 +67,7 @@ class PushService {
     // Foreground: FCM не показывает уведомление автоматически — показываем сами.
     FirebaseMessaging.onMessage.listen((m) {
       debugPrint(
-          '[push] onMessage (foreground): from=${m.data['from']} title=${m.notification?.title}');
+          '[push] onMessage (foreground): from=${m.data['sender']} title=${m.notification?.title}');
       _showForeground(m);
     });
 
@@ -112,7 +112,7 @@ class PushService {
   void _showForeground(RemoteMessage m) {
     final n = m.notification;
     final title =
-        n?.title ?? m.data['title'] ?? m.data['from'] ?? 'Oshino';
+        n?.title ?? m.data['title'] ?? m.data['sender'] ?? 'Oshino';
     final body = n?.body ?? m.data['body'] ?? 'Новое сообщение';
     _localNotif.show(
       DateTime.now().millisecondsSinceEpoch.remainder(100000),
