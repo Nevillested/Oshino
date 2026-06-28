@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'api_service.dart';
@@ -20,10 +19,7 @@ final FlutterLocalNotificationsPlugin _localNotif =
 /// (через указанный канал) — здесь логика не требуется, но обработчик обязателен,
 /// чтобы доставлялась data-нагрузка.
 @pragma('vm:entry-point')
-Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
-  debugPrint(
-      '[push-bg] получено: from=${message.data['sender']} title=${message.notification?.title} data=${message.data}');
-}
+Future<void> firebaseBackgroundHandler(RemoteMessage message) async {}
 
 class PushService {
   PushService._();
@@ -58,16 +54,11 @@ class PushService {
     );
 
     // Разрешение на уведомления (Android 13+ POST_NOTIFICATIONS).
-    final settings = await FirebaseMessaging.instance.requestPermission();
-    debugPrint('[push] permission: ${settings.authorizationStatus}');
-    final granted =
-        await androidImpl?.requestNotificationsPermission();
-    debugPrint('[push] android notif permission granted: $granted');
+    await FirebaseMessaging.instance.requestPermission();
+    await androidImpl?.requestNotificationsPermission();
 
     // Foreground: FCM не показывает уведомление автоматически — показываем сами.
     FirebaseMessaging.onMessage.listen((m) {
-      debugPrint(
-          '[push] onMessage (foreground): from=${m.data['sender']} title=${m.notification?.title}');
       _showForeground(m);
     });
 
@@ -84,16 +75,10 @@ class PushService {
     try {
       final t = await FirebaseMessaging.instance.getToken();
       if (t == null || t.isEmpty) {
-        debugPrint('[push] getToken вернул NULL/пусто');
         return;
       }
-      final head = t.substring(0, t.length > 16 ? 16 : t.length);
-      debugPrint('[push] getToken OK: $head... (len=${t.length})');
-      final ok = await ApiService.fcmSubscribe(t);
-      debugPrint('[push] fcmSubscribe результат: $ok');
-    } catch (e) {
-      debugPrint('[push] registerToken ошибка: $e');
-    }
+      await ApiService.fcmSubscribe(t);
+    } catch (_) {}
   }
 
   /// Снять регистрацию (явный выход): удалить токен на сервере и локально.

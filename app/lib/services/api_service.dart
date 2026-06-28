@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -166,11 +165,8 @@ class ApiService {
         },
         body: jsonEncode({'token': token}),
       );
-      debugPrint('[api] fcm-subscribe HTTP ${response.statusCode}');
       return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('[api] fcm-subscribe ошибка: $e');
-    }
+    } catch (_) {}
     return false;
   }
 

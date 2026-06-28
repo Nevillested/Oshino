@@ -3483,7 +3483,6 @@
             wsReady = false;
 
             ws.onopen = () => {
-                console.log('WebSocket подключен');
                 wsReady = true;
                 reconnecting = false;
                 ws.send('getdialogs');
@@ -3563,7 +3562,6 @@
 
             ws.onclose = () => {
                 wsReady = false;
-                console.log('WebSocket закрыт, переподключение через 3с...');
                 if (!reconnecting) {
                     reconnecting = true;
                     scheduleReconnect();
@@ -3751,7 +3749,6 @@
         // отдельную кнопку (см. ios-push-banner), и запрос идёт по факту клика на неё.
         async function initPushNotifications() {
             if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-                console.log('Push-уведомления не поддерживаются этим браузером');
                 return;
             }
 
@@ -3760,7 +3757,6 @@
             // (navigator.standalone === true). Это ограничение платформы, не наше —
             // если условие не выполнено, дальше пытаться нет смысла.
             if (isIOSDevice() && !window.navigator.standalone) {
-                console.log('iOS: push доступен только из приложения на главном экране');
                 return;
             }
 
@@ -3787,7 +3783,6 @@
 
                 await requestPushPermissionAndSubscribe(registration);
             } catch (e) {
-                console.log('Не удалось настроить push-уведомления:', e);
             }
         }
 
@@ -3813,7 +3808,6 @@
                 const registration = await navigator.serviceWorker.ready;
                 await requestPushPermissionAndSubscribe(registration);
             } catch (e) {
-                console.log('Не удалось включить push на iOS:', e);
             }
         });
 
@@ -3829,7 +3823,6 @@
                     body: JSON.stringify(subscription.toJSON())
                 });
             } catch (e) {
-                console.log('Не удалось отправить push-подписку на сервер:', e);
             }
         }
 
@@ -5072,7 +5065,7 @@
         recordingSendBtn.addEventListener('click', () => {
             stopRecording(false);
         });
-        
+
         async function startRecording() {
             let stream;
             try {
@@ -5971,7 +5964,6 @@
             } catch (e) {
                 // На устройстве реально только одна камера, либо запрошенная сторона
                 // недоступна — тихо остаёмся на текущей, кнопка просто не сработает.
-                console.log('Не удалось переключить камеру:', e);
             }
         }
 
@@ -6014,7 +6006,6 @@
                     sdp_type: 'answer'
                 });
             } catch (e) {
-                console.log('Ошибка renegotiation видео:', e);
             }
         }
 
@@ -6023,7 +6014,6 @@
             try {
                 await pc.setRemoteDescription({ type: 'answer', sdp: sig.sdp });
             } catch (e) {
-                console.log('Ошибка применения ответа на видео-renegotiation:', e);
             }
         }
 
