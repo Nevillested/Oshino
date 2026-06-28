@@ -1684,11 +1684,13 @@ func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
 // Android-приложение). Битые/отозванные токены удаляются из БД сразу.
 func (a *App) sendFcmToLogin(login string, payload pushNotificationPayload) {
 	if a.fcmClient == nil {
+		log.Printf("FCM: клиент не инициализирован — пропуск пуша для %s", login)
 		return
 	}
 
 	var userID int
 	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&userID); err != nil {
+		log.Printf("FCM: пользователь %s не найден в БД — пропуск (%v)", login, err)
 		return
 	}
 
@@ -1709,6 +1711,8 @@ func (a *App) sendFcmToLogin(login string, payload pushNotificationPayload) {
 		}
 	}
 	rows.Close()
+
+	log.Printf("FCM: для %s найдено токенов: %d", login, len(toks))
 
 	for _, t := range toks {
 		msg := &messaging.Message{
@@ -1736,10 +1740,13 @@ func (a *App) sendFcmToLogin(login string, payload pushNotificationPayload) {
 
 		if _, serr := a.fcmClient.Send(context.Background(), msg); serr != nil {
 			if messaging.IsUnregistered(serr) || messaging.IsInvalidArgument(serr) {
+				log.Printf("FCM: токен id=%d недействителен — удалён (%v)", t.id, serr)
 				a.db.Exec("DELETE FROM messenger.fcm_tokens WHERE id = $1", t.id)
 			} else {
-				log.Printf("Ошибка отправки FCM (token id=%d): %v", t.id, serr)
+				log.Printf("FCM: ОШИБКА отправки (token id=%d): %v", t.id, serr)
 			}
+		} else {
+			log.Printf("FCM: отправлено успешно для %s (token id=%d)", login, t.id)
 		}
 	}
 }
@@ -1794,6 +1801,7 @@ func (a *App) handleFcmSubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("FCM: токен сохранён/обновлён для %s (userID=%d)", login, userID)
 	w.WriteHeader(http.StatusOK)
 }
 
