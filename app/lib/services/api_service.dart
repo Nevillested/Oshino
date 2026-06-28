@@ -1,11 +1,79 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 class ApiService {
   static const String baseUrl = 'https://oshino.space';
   static String? _sessionToken;
 
   static String? get sessionToken => _sessionToken;
+
+  // ── Персистентное хранение токена сессии ───────────────────────────────────
+  //
+  // Токен пишется в файл рядом с настройками (path_provider, как oshino_settings).
+  // Это убирает разлогин при перезапуске приложения: сессия живёт на сервере
+  // (TTL 1 год), пока пользователь сам не нажмёт «Выход» или админ не выполнит
+  // kill-all-sessions. В обоих случаях запись в messenger.sessions удаляется,
+  // и проверка restoreSession() получит 401 → локальный токен будет стёрт.
+
+  static Future<File> _tokenFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/oshino_session');
+  }
+
+  static Future<void> _persistToken(String token) async {
+    try {
+      final f = await _tokenFile();
+      await f.writeAsString(token);
+    } catch (_) {}
+  }
+
+  static Future<void> _clearToken() async {
+    try {
+      final f = await _tokenFile();
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+
+  /// Восстановление сессии при старте приложения.
+  /// Возвращает true, если сохранённый токен ещё действителен на сервере.
+  ///
+  /// • Нет файла / пустой токен → false (показываем экран входа).
+  /// • Сервер ответил 200 на авторизованный запрос → true.
+  /// • Сервер ответил 401 (logout/kill-all-sessions/истёк) → чистим токен, false.
+  /// • Нет сети на старте → НЕ разлогиниваем: оставляем токен в памяти и пускаем
+  ///   в приложение (true), WS-сервис переподключится сам, когда сеть появится.
+  static Future<bool> restoreSession() async {
+    try {
+      final f = await _tokenFile();
+      if (!await f.exists()) return false;
+      final token = (await f.readAsString()).trim();
+      if (token.isEmpty) return false;
+      _sessionToken = token;
+
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/unread-counts'),
+            headers: authHeaders,
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) return true;
+
+      if (response.statusCode == 401) {
+        _sessionToken = null;
+        await _clearToken();
+        return false;
+      }
+
+      // Прочие коды (5xx и т.п.) — не считаем сессию мёртвой, пускаем внутрь.
+      return true;
+    } catch (_) {
+      // Таймаут/отсутствие сети: оставляем сохранённый токен в силе.
+      return _sessionToken != null && _sessionToken!.isNotEmpty;
+    }
+  }
 
   static Future<String?> login(String login, String password) async {
     try {
@@ -21,6 +89,14 @@ class ApiService {
         final cookie = response.headers['set-cookie'];
         if (cookie != null) {
           _sessionToken = _extractSessionToken(cookie);
+        }
+        // На случай отсутствия set-cookie (прокси и т.п.) — токен есть и в теле.
+        if ((_sessionToken == null || _sessionToken!.isEmpty) &&
+            data['token'] != null) {
+          _sessionToken = data['token'].toString();
+        }
+        if (_sessionToken != null && _sessionToken!.isNotEmpty) {
+          await _persistToken(_sessionToken!);
         }
         return null;
       } else {
@@ -45,8 +121,22 @@ class ApiService {
         if (_sessionToken != null) 'Cookie': 'session=$_sessionToken',
       };
 
-  static void logout() {
+  /// Явный выход: гасим сессию на сервере (best-effort) и стираем локальный токен,
+  /// чтобы при следующем запуске приложение показало экран входа.
+  static Future<void> logout() async {
+    final token = _sessionToken;
     _sessionToken = null;
+    await _clearToken();
+    if (token != null && token.isNotEmpty) {
+      try {
+        await http
+            .get(
+              Uri.parse('$baseUrl/logout'),
+              headers: {'Cookie': 'session=$token'},
+            )
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
   }
 
   static Future<List<String>> searchUsers(String query) async {
@@ -61,6 +151,38 @@ class ApiService {
       }
     } catch (_) {}
     return [];
+  }
+
+  // ── FCM (push для нативного приложения) ─────────────────────────────────────
+
+  static Future<bool> fcmSubscribe(String token) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/fcm-subscribe'),
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'token': token}),
+      );
+      return response.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
+  static Future<bool> fcmUnsubscribe(String token) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/fcm-unsubscribe'),
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'token': token}),
+      );
+      return response.statusCode == 200;
+    } catch (_) {}
+    return false;
   }
 
   static Future<List<Map<String, dynamic>>> loadHistory(

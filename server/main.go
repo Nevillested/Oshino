@@ -28,6 +28,10 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
+
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/messaging"
+	"google.golang.org/api/option"
 )
 
 type App struct {
@@ -50,6 +54,12 @@ type App struct {
 	vapidPublicKey  string
 	vapidPrivateKey string
 	vapidContact    string // mailto: или https:-адрес для VAPID claim (sub)
+
+	// fcmClient — клиент Firebase Cloud Messaging (FCM HTTP v1) для нативного
+	// Android-приложения. Web/PWA получают уведомления через Web Push (VAPID выше),
+	// нативный Flutter — через FCM. nil, если FCM не сконфигурирован (нет
+	// FCM_CREDENTIALS_FILE) — в этом случае FCM-ветка просто молча пропускается.
+	fcmClient *messaging.Client
 
 	// pendingCalls — звонки, чей call-offer не удалось доставить сразу (получатель
 	// был полностью оффлайн). Буферизуется на время ожидания ответа (callRingTimeout),
@@ -256,6 +266,28 @@ func main() {
 		app.vapidContact = "mailto:admin@oshino.space"
 	}
 
+	// Инициализация FCM (нативный push для Android-приложения). Путь к JSON
+	// сервис-аккаунта Firebase задаётся в my_cfg как FCM_CREDENTIALS_FILE.
+	// Project ID берётся из самого файла, отдельной переменной не нужно.
+	if credPath := os.Getenv("FCM_CREDENTIALS_FILE"); credPath != "" {
+		fbApp, ferr := firebase.NewApp(
+			context.Background(), nil, option.WithCredentialsFile(credPath))
+		if ferr != nil {
+			log.Printf("ВНИМАНИЕ: не удалось инициализировать Firebase (%v) — FCM-push отключён", ferr)
+		} else if mc, merr := fbApp.Messaging(context.Background()); merr != nil {
+			log.Printf("ВНИМАНИЕ: не удалось создать FCM-клиент (%v) — FCM-push отключён", merr)
+		} else {
+			app.fcmClient = mc
+			log.Println("FCM-клиент инициализирован.")
+		}
+	} else {
+		log.Println("ВНИМАНИЕ: FCM_CREDENTIALS_FILE не задан в my_cfg — push для Android-приложения работать не будет.")
+	}
+
+	// Идемпотентно гарантируем наличие таблицы FCM-токенов (на случай, если
+	// bd.sql ещё не применён вручную) — деплой не требует отдельного шага в psql.
+	app.ensureFcmTable()
+
 	if err := app.db.QueryRow("SELECT login FROM messenger.users WHERE id = 1").Scan(&app.defaultContact); err != nil {
 		log.Printf("Не удалось получить дефолтный контакт (id=1): %v", err)
 	}
@@ -309,6 +341,8 @@ func main() {
 	http.HandleFunc("/push-public-key", app.handlePushPublicKey)
 	http.HandleFunc("/push-subscribe", app.handlePushSubscribe)
 	http.HandleFunc("/push-unsubscribe", app.handlePushUnsubscribe)
+	http.HandleFunc("/fcm-subscribe", app.handleFcmSubscribe)
+	http.HandleFunc("/fcm-unsubscribe", app.handleFcmUnsubscribe)
 	http.HandleFunc("/pinned", app.handleGetPinned)
 	http.HandleFunc("/pin", app.handlePin)
 	http.HandleFunc("/unpin", app.handleUnpin)
@@ -1636,14 +1670,167 @@ type pushNotificationPayload struct {
 	CallID string `json:"call_id,omitempty"`
 }
 
-// sendPushToLogin отправляет push-уведомление на ВСЕ сохранённые подписки логина.
-// Используется только когда получатель полностью оффлайн (ни одного активного WS) —
+// sendPushToLogin — единая точка отправки push получателю, который оффлайн
+// (или со всеми вкладками не в фокусе). Фанаутит в оба канала: Web Push (для
+// браузеров/PWA) и FCM (для нативного Android-приложения). Каждый канал
+// независимо пропускается, если не сконфигурирован, поэтому все существующие
+// места вызова автоматически покрывают и веб, и приложение.
+func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
+	a.sendWebPushToLogin(login, payload)
+	a.sendFcmToLogin(login, payload)
+}
+
+// sendFcmToLogin отправляет уведомление на все FCM-токены логина (нативное
+// Android-приложение). Битые/отозванные токены удаляются из БД сразу.
+func (a *App) sendFcmToLogin(login string, payload pushNotificationPayload) {
+	if a.fcmClient == nil {
+		return
+	}
+
+	var userID int
+	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&userID); err != nil {
+		return
+	}
+
+	rows, err := a.db.Query("SELECT id, token FROM messenger.fcm_tokens WHERE user_id = $1", userID)
+	if err != nil {
+		log.Println("Ошибка чтения FCM-токенов:", err)
+		return
+	}
+	type tokRow struct {
+		id  int
+		tok string
+	}
+	var toks []tokRow
+	for rows.Next() {
+		var t tokRow
+		if err := rows.Scan(&t.id, &t.tok); err == nil {
+			toks = append(toks, t)
+		}
+	}
+	rows.Close()
+
+	for _, t := range toks {
+		msg := &messaging.Message{
+			Token: t.tok,
+			Notification: &messaging.Notification{
+				Title: payload.Title,
+				Body:  payload.Body,
+			},
+			Data: map[string]string{
+				"type":    payload.Type,
+				"from":    payload.From,
+				"title":   payload.Title,
+				"body":    payload.Body,
+				"call_id": payload.CallID,
+			},
+			Android: &messaging.AndroidConfig{
+				Priority: "high",
+				Notification: &messaging.AndroidNotification{
+					ChannelID: "oshino_messages",
+					Sound:     "income_msg",
+					Icon:      "ic_stat_oshino",
+				},
+			},
+		}
+
+		if _, serr := a.fcmClient.Send(context.Background(), msg); serr != nil {
+			if messaging.IsUnregistered(serr) || messaging.IsInvalidArgument(serr) {
+				a.db.Exec("DELETE FROM messenger.fcm_tokens WHERE id = $1", t.id)
+			} else {
+				log.Printf("Ошибка отправки FCM (token id=%d): %v", t.id, serr)
+			}
+		}
+	}
+}
+
+// ensureFcmTable идемпотентно создаёт таблицу FCM-токенов и индекс по user_id.
+func (a *App) ensureFcmTable() {
+	_, err := a.db.Exec(`
+		CREATE TABLE IF NOT EXISTS messenger.fcm_tokens (
+			id serial PRIMARY KEY,
+			user_id integer NOT NULL REFERENCES messenger.users(id) ON DELETE CASCADE,
+			token text NOT NULL UNIQUE,
+			created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user ON messenger.fcm_tokens (user_id);
+	`)
+	if err != nil {
+		log.Printf("ensureFcmTable: %v", err)
+	}
+}
+
+// handleFcmSubscribe — POST /fcm-subscribe {"token":"..."} — сохраняет (или
+// переназначает на текущего пользователя) FCM-токен устройства.
+func (a *App) handleFcmSubscribe(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+		http.Error(w, "Некорректное тело запроса", http.StatusBadRequest)
+		return
+	}
+	var userID int
+	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&userID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	_, err := a.db.Exec(`
+		INSERT INTO messenger.fcm_tokens (user_id, token)
+		VALUES ($1, $2)
+		ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id
+	`, userID, body.Token)
+	if err != nil {
+		log.Println("Ошибка сохранения FCM-токена:", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleFcmUnsubscribe — POST /fcm-unsubscribe {"token":"..."} — удаляет токен
+// (вызывается при явном выходе пользователя из приложения).
+func (a *App) handleFcmUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+		http.Error(w, "Некорректное тело запроса", http.StatusBadRequest)
+		return
+	}
+	if _, err := a.db.Exec("DELETE FROM messenger.fcm_tokens WHERE token = $1", body.Token); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// sendWebPushToLogin отправляет Web Push на ВСЕ сохранённые подписки логина
+// (браузеры/PWA). Используется только когда получатель полностью оффлайн —
 // если есть хоть одно живое соединение, доставка идёт через routeMessage/routeCallSignal,
 // и дублирующий push был бы просто шумом поверх уже работающего realtime-уведомления.
 //
 // Мёртвые подписки (410 Gone / 404 Not Found от push-службы — браузер отписался или
 // подписка истекла) удаляются из БД сразу же, чтобы не пытаться слать в пустоту вечно.
-func (a *App) sendPushToLogin(login string, payload pushNotificationPayload) {
+func (a *App) sendWebPushToLogin(login string, payload pushNotificationPayload) {
 	if a.vapidPublicKey == "" || a.vapidPrivateKey == "" {
 		return
 	}

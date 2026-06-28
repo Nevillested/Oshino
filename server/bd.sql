@@ -240,3 +240,29 @@ ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS display_name varchar;
 -- DEFAULT 1: все существующие пользователи остаются активными после миграции.
 ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS active smallint NOT NULL DEFAULT 1;
 
+-- ── Table: messenger.fcm_tokens ─────────────────────────────────────────────
+-- Регистрационные токены Firebase Cloud Messaging для нативного Android-
+-- приложения (web/PWA используют push_subscriptions выше). Один пользователь
+-- может иметь несколько токенов (разные устройства). Сервер также создаёт эту
+-- таблицу идемпотентно при старте (ensureFcmTable), так что применять блок
+-- вручную не обязательно — он здесь для полноты схемы.
+
+CREATE TABLE IF NOT EXISTS messenger.fcm_tokens
+(
+    id serial NOT NULL,
+    user_id integer NOT NULL,
+    token text COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fcm_tokens_pkey PRIMARY KEY (id),
+    CONSTRAINT fcm_tokens_token_key UNIQUE (token),
+    CONSTRAINT fcm_tokens_user_id_fkey FOREIGN KEY (user_id)
+        REFERENCES messenger.users (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE
+)
+TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user
+    ON messenger.fcm_tokens USING btree
+    (user_id ASC NULLS LAST)
+    TABLESPACE pg_default;

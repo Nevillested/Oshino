@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "4124040351",
+    "project_id": "oshino-64e09",
+    "storage_bucket": "oshino-64e09.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:4124040351:android:7ce806e7da93da361f56aa",
+        "android_client_info": {
+          "package_name": "space.oshino.oshino"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcRCJ5qBpRsxRDPntYipEZAIzC11A9Ekw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

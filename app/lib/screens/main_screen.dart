@@ -5,6 +5,7 @@ import '../services/ws_service.dart';
 import '../services/api_service.dart';
 import '../services/call_service.dart';
 import '../services/settings_service.dart';
+import '../services/push_service.dart';
 import 'chat_screen.dart';
 import 'pacman_screen.dart';
 import 'call_screen.dart';
@@ -40,6 +41,10 @@ class _MainScreenState extends State<MainScreen> {
     CallService.instance.startListening();
     WsService.instance.connect();
 
+    // Регистрируем FCM-токен на сервере (покрывает и свежий вход, и
+    // восстановленную сессию — upsert на сервере идемпотентен).
+    PushService.instance.registerToken();
+
     // Подтягиваем реакцию по умолчанию с сервера для двойного тапа в чате.
     SettingsService.instance.loadDefaultReaction();
 
@@ -53,6 +58,7 @@ class _MainScreenState extends State<MainScreen> {
       setState(() {
         _dialogs.clear();
         _dialogs.addAll(dialogs);
+        _sortDialogs();
       });
     });
 
@@ -76,6 +82,18 @@ class _MainScreenState extends State<MainScreen> {
       if (from.isEmpty) return;
       setState(() {
         _unreadCounts[from] = (_unreadCounts[from] ?? 0) + 1;
+        // Поднимаем диалог в топ: помечаем его временем последнего сообщения
+        // (сейчас) и пересортировываем, не дожидаясь повторного getdialogs.
+        final idx =
+            _dialogs.indexWhere((d) => d.login.toLowerCase() == from);
+        if (idx >= 0) {
+          final old = _dialogs[idx];
+          _dialogs[idx] = OshinoDialog(
+            login: old.login,
+            lastMsg: DateTime.now().toUtc().toIso8601String(),
+          );
+          _sortDialogs();
+        }
       });
       final chatOpen = ChatScreen.activeChat?.toLowerCase() == from;
       final seen = chatOpen && ChatScreen.isAtBottom;
@@ -126,6 +144,19 @@ class _MainScreenState extends State<MainScreen> {
   String _getDisplayName(String login) =>
       _displayNames[login.toLowerCase()] ?? login;
 
+  // Время последнего сообщения диалога для сортировки. Пустое/неразбираемое —
+  // в самый низ (эпоха 0). Форматы сервера ("2026-06-27 15:33:00+00") и
+  // локального подъёма (ISO8601 с 'T') оба корректно парсятся DateTime.
+  DateTime _dialogTime(OshinoDialog d) {
+    if (d.lastMsg.isEmpty) return DateTime.fromMillisecondsSinceEpoch(0);
+    return DateTime.tryParse(d.lastMsg) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  void _sortDialogs() {
+    _dialogs.sort((a, b) => _dialogTime(b).compareTo(_dialogTime(a)));
+  }
+
   bool _isOnline(String login) =>
       _onlineUsers.contains(login.toLowerCase());
 
@@ -171,9 +202,12 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  void _logout() {
+  void _logout() async {
+    // Снимаем регистрацию пуша ДО logout, пока сессия ещё валидна на сервере.
+    await PushService.instance.unregisterToken();
     WsService.instance.dispose();
-    ApiService.logout();
+    await ApiService.logout();
+    if (!mounted) return;
     Navigator.of(context).pushReplacementNamed('/login');
   }
 
@@ -240,6 +274,7 @@ class _MainScreenState extends State<MainScreen> {
                           ),
                         )
                       : ListView.separated(
+                          padding: EdgeInsets.zero,
                           itemCount: _dialogs.length,
                           separatorBuilder: (_, __) => const Divider(
                             height: 1,

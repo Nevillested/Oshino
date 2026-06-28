@@ -8,10 +8,12 @@
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 <uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="oshino"
+        android:label="Oshino"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:hardwareAccelerated="true">
         <activity
             android:name=".MainActivity"
@@ -40,6 +42,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- FCM: канал по умолчанию для системных уведомлений (когда приложение
+             в фоне/закрыто и Android показывает notification-блок сам) и иконка
+             в статус-баре. Канал oshino_messages создаётся в push_service.dart
+             с кастомным звуком income_msg. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="oshino_messages" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_oshino" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
