@@ -4149,13 +4149,19 @@
 
             const state = historyState[user];
 
-            // Если уже есть сообщения в памяти — показываем сразу, потом дозагружаем
-            if (state && state.messages && state.messages.length > 0) {
+            // Берём кэш из памяти ТОЛЬКО если для этого диалога уже была выполнена
+            // первичная загрузка истории (historyLoaded). Иначе в state.messages
+            // могут лежать лишь отдельные сообщения, прилетевшие в ещё не открытый
+            // чат через receiveMessage — и без первичной загрузки история не
+            // подтянется (был баг: «загрузка...» висит, старая переписка не грузится).
+            if (state && state.historyLoaded && state.messages && state.messages.length > 0) {
                 renderMessages(state.messages);
             } else {
-                if (!historyState[user]) {
-                    historyState[user] = { oldestId: 0, allLoaded: false, messages: [] };
-                }
+                // Сбрасываем состояние и грузим начисто. Возможные «живые» сообщения
+                // не теряются — они уже в БД и придут заново из истории, без дублей.
+                // lastMsg сохраняем, чтобы не сбить сортировку списка диалогов.
+                const prevLastMsg = (state && state.lastMsg) ? state.lastMsg : undefined;
+                historyState[user] = { oldestId: 0, allLoaded: false, messages: [], historyLoaded: false, lastMsg: prevLastMsg };
                 messagesDiv.innerHTML = '';
                 messagesDiv.appendChild(loadMoreIndicator);
                 loadMoreIndicator.style.display = 'none';
@@ -4175,6 +4181,9 @@
                 const resp = await fetch(url);
                 if (!resp.ok) { state.loading = false; return; }
                 const msgs = await resp.json();
+
+                // Первичная загрузка завершена — теперь кэш в памяти полноценный.
+                if (beforeId === 0) state.historyLoaded = true;
 
                 if (msgs.length < limit) {
                     state.allLoaded = true;
