@@ -18,7 +18,7 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final List<OshinoDialog> _dialogs = [];
   final Map<String, String> _lastSeenMap = {};
   final Map<String, String> _displayNames = {};
@@ -37,6 +37,8 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addObserver(this);
 
     CallService.instance.startListening();
     WsService.instance.connect();
@@ -137,8 +139,23 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _audioPlayer.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Сообщаем серверу о смене фокуса, чтобы он корректно решал, слать ли push.
+    // paused/hidden — приложение ушло в фон (сворачивание, блокировка экрана):
+    // помечаемся «не в фокусе», и сервер шлёт FCM, даже если WS ещё жив.
+    // resumed — снова на переднем плане.
+    if (state == AppLifecycleState.resumed) {
+      WsService.instance.send('focus');
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      WsService.instance.send('blur');
+    }
   }
 
   String _getDisplayName(String login) =>

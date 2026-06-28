@@ -1975,6 +1975,17 @@ func (a *App) handleTurnCredentials(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Параметры keepalive WebSocket. Сервер периодически шлёт ping; клиент
+// (dart:io WebSocket и браузер) автоматически отвечает pong, что сбрасывает
+// read-deadline. Если устройство умерло/заснуло/потеряло сеть и pong не
+// пришёл в течение wsPongWait — ReadMessage вернёт ошибку, соединение
+// закроется, получатель станет оффлайн, и сообщение уйдёт через FCM-push.
+const (
+	wsWriteWait  = 10 * time.Second
+	wsPongWait   = 40 * time.Second
+	wsPingPeriod = 30 * time.Second // обязательно < wsPongWait
+)
+
 func (c *Client) readPump(a *App) {
 	defer func() {
 		a.mu.Lock()
@@ -1990,6 +2001,12 @@ func (c *Client) readPump(a *App) {
 		fmt.Printf("%s отключился\n", c.login)
 		a.broadcastOnlineUsers()
 	}()
+
+	c.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		return nil
+	})
 
 	for {
 		_, message, err := c.conn.ReadMessage()
@@ -2067,13 +2084,21 @@ func (c *Client) readPump(a *App) {
 }
 
 func (c *Client) writePump() {
+	ticker := time.NewTicker(wsPingPeriod)
+	defer ticker.Stop()
 	for {
 		select {
 		case msg, ok := <-c.send:
 			if !ok {
 				return
 			}
+			c.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
 			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		case <-c.done:
