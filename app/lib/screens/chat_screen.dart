@@ -49,8 +49,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _loading = false;
   bool _allLoaded = false;
   int _oldestId = 0;
-  String _lastSeen = '';
-  bool _isOnline = false;
+  // Статус собеседника вынесен в ValueNotifier'ы: пинги присутствия (приходят
+  // часто) обновляют только заголовок через ValueListenableBuilder и больше
+  // НЕ дёргают setState всего экрана, т.е. не перестраивают ленту сообщений.
+  final ValueNotifier<bool> _isOnlineVN = ValueNotifier<bool>(false);
+  final ValueNotifier<String> _lastSeenVN = ValueNotifier<String>('');
   bool _isAppActive = true;
 
   bool _isRecording = false;
@@ -91,14 +94,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   static const List<String> _reactionEmojis = ['👍','❤️','😂','😮','😢','👏'];
 
+  // Предрасчёт максимальной ширины пузырей (раз за build вместо
+  // MediaQuery-зависимости в каждом сообщении).
+  double _maxTextBubbleW = 0;
+  double _maxImageBubbleW = 0;
+
   @override
   void initState() {
     super.initState();
     ChatScreen.activeChat = widget.login;
     ChatScreen.isAtBottom = true;
     WidgetsBinding.instance.addObserver(this);
-    _lastSeen = widget.lastSeen;
-    _isOnline = widget.isOnline;
+    _lastSeenVN.value = widget.lastSeen;
+    _isOnlineVN.value = widget.isOnline;
     _loadHistory(initial: true);
     _loadPinned();
 
@@ -192,15 +200,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final online = List<String>.from(data['online'] ?? []);
       final lastSeen = Map<String, String>.from(data['last_seen'] ?? {});
-      setState(() {
-        _isOnline = online.contains(widget.login.toLowerCase());
-        if (!_isOnline) {
-          final iso = lastSeen[widget.login.toLowerCase()];
-          if (iso != null) _lastSeen = _formatLastSeen(iso);
-        } else {
-          _lastSeen = 'в сети';
-        }
-      });
+      // Обновляем только заголовок (через ValueNotifier), без setState —
+      // лента сообщений при этом не перестраивается.
+      final nowOnline = online.contains(widget.login.toLowerCase());
+      _isOnlineVN.value = nowOnline;
+      if (!nowOnline) {
+        final iso = lastSeen[widget.login.toLowerCase()];
+        if (iso != null) _lastSeenVN.value = _formatLastSeen(iso);
+      } else {
+        _lastSeenVN.value = 'в сети';
+      }
     });
 
     // Реакции
@@ -712,6 +721,8 @@ void _showForwardDialog(OshinoMessage msg) {
     _audioPlayer.dispose();
     _voicePlayer.dispose();
     _recorder.dispose();
+    _isOnlineVN.dispose();
+    _lastSeenVN.dispose();
     super.dispose();
   }
 
@@ -719,7 +730,10 @@ void _showForwardDialog(OshinoMessage msg) {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
+    final media = MediaQuery.sizeOf(context);
+    final screenHeight = media.height;
+    _maxTextBubbleW = media.width * 0.75;
+    _maxImageBubbleW = media.width * 0.65;
     return PopScope(
       canPop: !_selectionMode,
       onPopInvokedWithResult: (didPop, result) {
@@ -736,7 +750,7 @@ void _showForwardDialog(OshinoMessage msg) {
               SafeArea(
                 bottom: false,
                 child: Container(
-                  color: const Color(0xFF111318).withOpacity(0.92),
+                  color: const Color(0xFF111318),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -758,10 +772,21 @@ void _showForwardDialog(OshinoMessage msg) {
                                   Text(widget.displayName,
                                       style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
                                       overflow: TextOverflow.ellipsis),
-                                  Text(_lastSeen,
-                                      style: TextStyle(
-                                          color: _isOnline ? const Color(0xFF4a90e2) : const Color(0xFF5a5f70),
-                                          fontSize: 12)),
+                                  ValueListenableBuilder<bool>(
+                                    valueListenable: _isOnlineVN,
+                                    builder: (_, online, __) =>
+                                        ValueListenableBuilder<String>(
+                                      valueListenable: _lastSeenVN,
+                                      builder: (_, seen, __) => Text(
+                                        seen,
+                                        style: TextStyle(
+                                            color: online
+                                                ? const Color(0xFF4a90e2)
+                                                : const Color(0xFF5a5f70),
+                                            fontSize: 12),
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -860,7 +885,7 @@ void _showForwardDialog(OshinoMessage msg) {
               SafeArea(
                 top: false,
                 child: Container(
-                  color: const Color(0xFF111318).withOpacity(0.92),
+                  color: const Color(0xFF111318),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1149,22 +1174,30 @@ Widget _buildContextMenuOverlay(double screenHeight) {
 
   Widget _buildMessageRow(OshinoMessage msg) {
     if (msg.callType != null) return _buildCallLog(msg);
-    // Ключ на сообщение — для перехода к закреплённому (Scrollable.ensureVisible).
-    final key = msg.id > 0
+    // GlobalKey навешиваем ТОЛЬКО на закреплённое сообщение (для
+    // Scrollable.ensureVisible). Раньше ключ был у каждого сообщения, что при
+    // прокрутке нагружало реестр GlobalKey и давало микролаги.
+    final isPinnedTarget = msg.id > 0 &&
+        _pinnedMsg != null &&
+        (_pinnedMsg!['message_id'] as num?)?.toInt() == msg.id;
+    final key = isPinnedTarget
         ? _messageKeys.putIfAbsent(msg.id, () => GlobalKey())
         : null;
     final highlighted = _highlightedMsgId == msg.id;
     final selectable = msg.id > 0;
     final selected = _selectionMode && _selectedIds.contains(msg.id);
 
-    final bubble = AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+    // Обычный Container вместо AnimatedContainer: неявная анимация на КАЖДОМ
+    // сообщении (в простое — холостая) — лишняя работа на каждый кадр.
+    final bubble = Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 2),
-      decoration: BoxDecoration(
-        color: highlighted ? const Color(0x334a90e2) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: highlighted
+          ? BoxDecoration(
+              color: const Color(0x334a90e2),
+              borderRadius: BorderRadius.circular(8),
+            )
+          : null,
       child: Column(
         crossAxisAlignment:
             msg.own ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -1226,10 +1259,9 @@ Widget _buildContextMenuOverlay(double screenHeight) {
               }
             }
           : null,
-      child: AnimatedContainer(
+      child: Container(
         key: key,
-        duration: const Duration(milliseconds: 150),
-        color: selected ? const Color(0x1a4a90e2) : Colors.transparent,
+        color: selected ? const Color(0x1a4a90e2) : null,
         // В режиме выбора игнорируем внутренние нажатия (воспроизведение
         // голосового, открытие фото) — любой тап по строке = выбор.
         child: _selectionMode ? IgnorePointer(child: rowChild) : rowChild,
@@ -1238,6 +1270,7 @@ Widget _buildContextMenuOverlay(double screenHeight) {
   }
 
   Widget _buildReactions(OshinoMessage msg) {
+    if (msg.reactions.isEmpty) return const SizedBox.shrink();
     final grouped = msg.reactionsGrouped;
     if (grouped.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -1299,7 +1332,7 @@ Widget _buildContextMenuOverlay(double screenHeight) {
     return Align(
       alignment: msg.own ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        constraints: BoxConstraints(maxWidth: _maxTextBubbleW),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: msg.own
@@ -1344,18 +1377,28 @@ Widget _buildContextMenuOverlay(double screenHeight) {
     return Align(
       alignment: msg.own ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
+        constraints: BoxConstraints(maxWidth: _maxImageBubbleW),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: isLocal
-                  ? Image.file(File(msg.imageId!), fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _imagePlaceholder())
-                  : Image.network('https://oshino.space/image/${msg.imageId}',
-                      headers: ApiService.authHeaders, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _imagePlaceholder()),
+            RepaintBoundary(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: isLocal
+                    ? Image.file(File(msg.imageId!),
+                        fit: BoxFit.cover,
+                        cacheWidth: 720,
+                        filterQuality: FilterQuality.low,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => _imagePlaceholder())
+                    : Image.network('https://oshino.space/image/${msg.imageId}',
+                        headers: ApiService.authHeaders,
+                        fit: BoxFit.cover,
+                        cacheWidth: 720,
+                        filterQuality: FilterQuality.low,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => _imagePlaceholder()),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.only(top: 2, right: 2),

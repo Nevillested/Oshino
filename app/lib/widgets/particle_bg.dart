@@ -53,6 +53,11 @@ class _Particle {
   final List<Offset> trail = [];
   static const int maxTrail = 20;
 
+  // Предрасчитанные цвета хвоста: trailColors[i] — цвет сегмента с индексом i.
+  // Раньше цвет (HSL→RGB) и объект Paint создавались для каждого сегмента
+  // КАЖДЫЙ кадр (≈1000 аллокаций/кадр на 60fps). Теперь — один раз на старте.
+  final List<Color> trailColors = [];
+
   _Particle(this.x, this.y, this.hueSeed) : lx = x, ly = y;
 
   void applyOpt({
@@ -64,6 +69,16 @@ class _Particle {
     sat      = hueSeed > .5 ? s1 : s2;
     light    = hueSeed > .5 ? l1 : l2;
     maxSpeed = hueSeed > .5 ? 1.2 : 0.8;
+
+    // Предрасчёт палитры хвоста (альфа линейно нарастает к голове).
+    final h = hue % 360;
+    final s = (sat / 100).clamp(0.0, 1.0);
+    final l = (light / 100).clamp(0.0, 1.0);
+    trailColors.clear();
+    for (int i = 0; i <= maxTrail; i++) {
+      final alpha = (i / maxTrail) * 0.6;
+      trailColors.add(HSLColor.fromAHSL(alpha, h, s, l).toColor());
+    }
   }
 
   void update(_PerlinNoise noise, double noiseScale, double angle, double time,
@@ -99,32 +114,34 @@ final a = noise.noise(x * noiseScale, y * noiseScale + time * noiseScale)
 // ── Painter ──────────────────────────────────────────────────────────────────
 class _ParticlePainter extends CustomPainter {
   final List<_Particle> particles;
-  final double time;
 
-  _ParticlePainter({required this.particles, required this.time});
+  // repaint-Listenable (контроллер анимации) перерисовывает слой сам —
+  // без setState и без пересборки виджета.
+  _ParticlePainter({required this.particles, required Listenable repaint})
+      : super(repaint: repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Один объект Paint на весь кадр (вместо ~1000).
+    final paint = Paint()
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
     for (final p in particles) {
-      if (p.trail.length < 2) continue;
-      for (int i = 1; i < p.trail.length; i++) {
-        final alpha = (i / p.trail.length) * 0.6;
-        final paint = Paint()
-          ..color = HSLColor.fromAHSL(
-            alpha,
-            p.hue % 360,
-            (p.sat / 100).clamp(0.0, 1.0),
-            (p.light / 100).clamp(0.0, 1.0),
-          ).toColor()
-          ..strokeWidth = 1.2
-          ..strokeCap = StrokeCap.round;
+      final len = p.trail.length;
+      if (len < 2) continue;
+      final tc = p.trailColors;
+      final maxIdx = tc.length - 1;
+      for (int i = 1; i < len; i++) {
+        paint.color = tc[i <= maxIdx ? i : maxIdx]; // предрасчитанный цвет
         canvas.drawLine(p.trail[i - 1], p.trail[i], paint);
       }
     }
   }
 
+  // Перерисовка управляется repaint-Listenable, поэтому здесь — false.
   @override
-  bool shouldRepaint(_ParticlePainter old) => old.time != time;
+  bool shouldRepaint(_ParticlePainter old) => false;
 }
 
 // ── Widget ───────────────────────────────────────────────────────────────────
@@ -159,9 +176,11 @@ class _ParticleBackgroundState extends State<ParticleBackground>
        0.0,         // вправо
     ];
     _angle = directions[math.Random().nextInt(4)];
+    // Длительность не влияет на скорость (её задаёт _time += 0.75);
+    // важно лишь, что repeat() тикает каждый кадр (≈60fps).
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 16),
+      duration: const Duration(seconds: 1),
     )..addListener(_tick)..repeat();
   }
 
@@ -178,6 +197,8 @@ class _ParticleBackgroundState extends State<ParticleBackground>
     });
   }
 
+  // Обновляем только данные частиц. Перерисовку слоя инициирует сам
+  // контроллер через repaint-Listenable у CustomPainter — setState не нужен.
   void _tick() {
     if (_particles.isEmpty) return;
     _time += 0.75;
@@ -186,7 +207,6 @@ class _ParticleBackgroundState extends State<ParticleBackground>
     for (final p in _particles) {
       p.update(_noise, _noiseScale, _angle, _time, w, h);
     }
-    setState(() {});
   }
 
   @override
@@ -203,13 +223,18 @@ class _ParticleBackgroundState extends State<ParticleBackground>
         _lastSize = size;
         _initParticles(size);
       }
-      return Container(
-        color: const Color(0xFF0d0d0d),
-        child: CustomPaint(
-          size: size,
-          painter: _ParticlePainter(
-            particles: _particles,
-            time: _time,
+      // RepaintBoundary изолирует постоянную перерисовку фона от остального UI.
+      return RepaintBoundary(
+        child: Container(
+          color: const Color(0xFF0d0d0d),
+          child: CustomPaint(
+            size: size,
+            isComplex: true,
+            willChange: true,
+            painter: _ParticlePainter(
+              particles: _particles,
+              repaint: _controller,
+            ),
           ),
         ),
       );
