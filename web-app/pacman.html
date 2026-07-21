@@ -40,11 +40,11 @@ html, body {
 /* D-pad */
 #dpad {
     display: grid;
-    grid-template-columns: repeat(3, 52px);
-    grid-template-rows: repeat(3, 52px);
-    gap: 4px;
+    grid-template-columns: repeat(3, 56px);
+    grid-template-rows: repeat(3, 56px);
+    gap: 18px;
     justify-content: center;
-    padding: 6px 0 10px;
+    padding: 10px 0 16px;
     flex-shrink: 0;
 }
 .dp {
@@ -1369,6 +1369,7 @@ window.addEventListener('load', function() {
         var keyCode = dpMap[id];
         function fire(e) {
             e.preventDefault();
+            if (navigator.vibrate) navigator.vibrate(20);
             var ev = new KeyboardEvent('keydown', { keyCode: keyCode, which: keyCode, bubbles: true });
             document.dispatchEvent(ev);
         }

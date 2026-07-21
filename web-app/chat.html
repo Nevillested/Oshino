@@ -2567,11 +2567,35 @@
             .message      { font-size: 17px; padding: 10px 14px; }
             .message-wrap { max-width: 85%; }
             #offline-notice { font-size: 18px; }
+
+            /* ── СТРАНИЦА 4: полноэкранное встроенное приложение / игра ──
+               Выезжает СПРАВА поверх всего (z выше меню). Открывается тапом
+               по кнопке в меню, закрывается свайпом слева направо. */
+            #mob-app-page {
+                position: fixed;
+                inset: 0;
+                z-index: 40;            /* выше меню (35), чата (20), топбара (30) */
+                background: var(--color-bg);
+                display: flex;
+                flex-direction: column;
+                transform: translateX(100%);
+                transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+                will-change: transform;
+            }
+            body.mob-app #mob-app-page { transform: translateX(0); }
+            #mob-app-page iframe {
+                flex: 1;
+                width: 100%;
+                border: none;
+                display: block;
+                min-height: 0;
+            }
         }
 
         @media (min-width: 768px) {
             #pg-menu         { display: none !important; }
             #pg-menu-backdrop{ display: none !important; }
+            #mob-app-page    { display: none !important; }
         }
 
         /* ── Переключатель темы (theme-toggle) ──────────────────────────────
@@ -2890,6 +2914,8 @@
                 </label>
             </div>
             <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
+            <button id="pgm-mia-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>🍚 Мама, я азиат</span><span class="app-status-dot" id="pgm-mia-dot"></span></button>
+            <button id="pgm-files-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>📁 Файловое хранилище</span><span class="app-status-dot" id="pgm-files-dot"></span></button>
             <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
             <button id="pgm-logout-btn">Выход</button>
         </div>
@@ -2906,6 +2932,9 @@
             <iframe id="pgm-pacman-iframe" src="about:blank" style="flex:1; border:none; display:block; min-height:0;"></iframe>
         </div>
     </div>
+
+    <!-- Страница 4 (мобайл): полноэкранное встроенное приложение/игра, выезжает справа -->
+    <div id="mob-app-page"><iframe id="mob-app-iframe" src="about:blank" title="Приложение"></iframe></div>
 
     <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
     <div id="app-layout">
@@ -7027,6 +7056,9 @@
                 const h = await res.json();
                 applyAppButton(miaSidebarBtn,   document.getElementById('mia-status-dot'),   h.mia);
                 applyAppButton(filesSidebarBtn, document.getElementById('files-status-dot'), h.files);
+                // Мобильное меню — те же кнопки/огоньки
+                applyAppButton(document.getElementById('pgm-mia-btn'),   document.getElementById('pgm-mia-dot'),   h.mia);
+                applyAppButton(document.getElementById('pgm-files-btn'), document.getElementById('pgm-files-dot'), h.files);
             } catch (e) { /* тихо: сеть/сервер временно недоступны */ }
         }
         refreshAppsHealth();
@@ -7163,6 +7195,10 @@
                 myTypingSent = false;
                 currentUser = null;
 
+                // Закрываем встроенное приложение, если было открыто
+                body.classList.remove('mob-app');
+                if (typeof mobAppIframe !== 'undefined' && mobAppIframe) mobAppIframe.src = 'about:blank';
+
                 body.classList.remove('mob-menu');
                 body.classList.remove('mob-chat');
                 if (topbarTitle) topbarTitle.textContent = 'Oshino';
@@ -7216,21 +7252,31 @@
                 pgMenu.classList.remove('pgm-pacman');
             });
 
-            // ── Pac-Man из pg-menu ───────────────────────────────────
-            if (pgmPacman) pgmPacman.addEventListener('click', () => {
-                pgMenu.classList.add('pgm-pacman');
-                pgMenu.classList.remove('pgm-settings');
-                const pIframe = document.getElementById('pgm-pacman-iframe');
-                if (pIframe && pIframe.src === 'about:blank') pIframe.src = '/pacman';
-            });
+            // ── Встроенные приложения / игра: полноэкранная стр.4 (выезжает справа) ──
+            // Открывается тапом по кнопке в меню, закрывается свайпом слева направо.
+            // Меню (mob-menu) под ней остаётся открытым — после закрытия возвращаемся
+            // ровно туда, откуда пришли: список контактов + открытое меню.
+            const mobAppPage   = document.getElementById('mob-app-page');
+            const mobAppIframe = document.getElementById('mob-app-iframe');
+            const pgmMiaBtn    = document.getElementById('pgm-mia-btn');
+            const pgmFilesBtn  = document.getElementById('pgm-files-btn');
 
-            // ── Назад из Pac-Man в pg-menu ───────────────────────────
-            const pgmPacmanBack = document.getElementById('pgm-pacman-back-btn');
-            if (pgmPacmanBack) pgmPacmanBack.addEventListener('click', () => {
-                pgMenu.classList.remove('pgm-pacman');
-                const pIframe = document.getElementById('pgm-pacman-iframe');
-                if (pIframe) pIframe.src = 'about:blank';
-            });
+            function openMobApp(url) {
+                if (mobAppIframe) mobAppIframe.src = url;
+                body.classList.add('mob-app');
+            }
+            function closeMobApp() {
+                if (!body.classList.contains('mob-app')) return;
+                body.classList.remove('mob-app');
+                // выгружаем iframe после завершения анимации, чтобы не мигало содержимым
+                setTimeout(() => {
+                    if (mobAppIframe && !body.classList.contains('mob-app')) mobAppIframe.src = 'about:blank';
+                }, 320);
+            }
+
+            if (pgmPacman)   pgmPacman.addEventListener('click',   () => openMobApp('/pacman'));
+            if (pgmMiaBtn)   pgmMiaBtn.addEventListener('click',    () => openMobApp('/app/mia/'));
+            if (pgmFilesBtn) pgmFilesBtn.addEventListener('click',  () => openMobApp('/app/files/'));
 
             // ── Logout ───────────────────────────────────────────────
             if (pgmLogout) pgmLogout.addEventListener('click', () => {
@@ -7288,6 +7334,15 @@
                 }
                 if (dir !== 'h') return;
 
+                // Стр.4 (встроенное приложение) → тянем вправо, чтобы закрыть
+                if (body.classList.contains('mob-app')) {
+                    if (dx > 0 && mobAppPage) {
+                        mobAppPage.style.transition = 'none';
+                        mobAppPage.style.transform = `translateX(${dx}px)`;
+                    }
+                    return;
+                }
+
                 // Визуальная отзывчивость во время свайпа
                 if (body.classList.contains('mob-chat') && dx > 0) {
                     // стр.3 → тянем вправо
@@ -7315,6 +7370,7 @@
                 chatEl.style.transform  = '';
                 pgMenu.style.transition = '';
                 pgMenu.style.transform  = '';
+                if (mobAppPage) { mobAppPage.style.transition = ''; mobAppPage.style.transform = ''; }
 
                 if (dir !== 'h') return;
 
@@ -7324,6 +7380,12 @@
                 if (dy > Math.abs(dx) * 0.7) return; // слишком вертикально
 
                 const threshold = 60;
+
+                // Стр.4 → закрыть встроенное приложение свайпом вправо (приоритетно)
+                if (body.classList.contains('mob-app')) {
+                    if (dx > threshold) closeMobApp();
+                    return;
+                }
 
                 if (body.classList.contains('mob-chat') && dx > threshold) {
                     // Стр.3 → стр.2
