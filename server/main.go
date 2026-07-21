@@ -360,9 +360,11 @@ func main() {
 		http.ServeFile(w, r, "../web-app/pacman.html")
 	})
 	// Встроенные приложения (проксирование к контейнерам через frpc-туннель).
-	http.HandleFunc("/app/mia/", app.newAppProxy("http://127.0.0.1:6800", "can_channel"))
+	http.HandleFunc("/app/mia/", app.newAppProxy("http://127.0.0.1:6800", "can_channel", false))
+	http.HandleFunc("/app/files/", app.newAppProxy("http://127.0.0.1:6555", "can_files", true))
 	http.HandleFunc("/apps-health", app.handleAppsHealth)
 	app.startAppsHealthProbe()
+
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
 }
