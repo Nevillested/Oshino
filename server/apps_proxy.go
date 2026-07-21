@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -25,6 +26,25 @@ import (
 // доступ к контейнерам (субдомены) убирается — единственная точка входа теперь
 // мессенджер, поэтому повторная авторизация внутри приложений не нужна.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// appProxyTransport — общий транспорт для reverse-proxy к контейнерам.
+//
+// Ключевой момент: IdleConnTimeout НАМЕРЕННО меньше keep-alive-таймаута uvicorn
+// (по умолчанию ~5с). Если Go переиспользует соединение, которое uvicorn уже
+// закрыл, запрос через frp-туннель зависает до общего таймаута (не приходит FIN).
+// Закрывая простаивающие соединения раньше сервера, мы гарантированно избегаем
+// «вечной загрузки» после паузы в общении с приложением.
+var appProxyTransport http.RoundTripper = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	MaxIdleConns:          100,
+	IdleConnTimeout:       3 * time.Second, // < uvicorn keep-alive (5с)
+	TLSHandshakeTimeout:   5 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+}
 
 // userHasFlag проверяет булев флаг доступа пользователя (колонка smallint 0/1).
 // column — строковый литерал из кода (can_channel / can_files), НЕ пользовательский
@@ -48,6 +68,7 @@ func (a *App) newAppProxy(targetURL, flagColumn string) http.HandlerFunc {
 		log.Fatalf("newAppProxy: некорректный targetURL %q: %v", targetURL, err)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = appProxyTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) {
 		// Туннель/контейнер недоступен — это ожидаемая ситуация при деградации
 		// канала, не паникуем, просто отдаём 502.
@@ -93,12 +114,21 @@ type appsHealthState struct {
 
 var appsHealth appsHealthState
 
+// healthProbeClient ходит СВЕЖИМ соединением на каждый замер (как curl):
+// DisableKeepAlives убирает переиспользование, из-за которого зонд натыкался
+// на закрытое uvicorn соединение и висел до таймаута, ложно показывая красный.
+var healthProbeClient = &http.Client{
+	Timeout: healthProbeTimeout,
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+	},
+}
+
 // startAppsHealthProbe запускает фоновый зонд. Вызывать один раз при старте.
 func (a *App) startAppsHealthProbe() {
-	client := &http.Client{Timeout: healthProbeTimeout}
 	go func() {
 		for {
-			ok, ms, errStr := probeTunnelOnce(client)
+			ok, ms, errStr := probeTunnelOnce(healthProbeClient)
 			appsHealth.mu.Lock()
 			appsHealth.tunnelOK = ok
 			appsHealth.lastMs = ms
