@@ -2351,6 +2351,8 @@
             #sidebar #search-results,
             #sidebar-main .theme-switch-wrap,
             #pacman-sidebar-btn,
+            #mia-sidebar-btn,
+            #files-sidebar-btn,
             #settings-open-btn,
             #logout-btn-sidebar { display: none !important; }
             #close-menu-btn     { display: none !important; }
@@ -2799,6 +2801,36 @@
             border: none;
             display: block;
         }
+
+        /* ── Встроенные приложения (Мама-я-азиат, файловое хранилище) ──────── */
+        #mia-block, #files-block {
+            flex: 1;
+            flex-direction: column;
+            min-height: 0;
+            background: #000;
+        }
+        #mia-block iframe, #files-block iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+        /* Кнопка приложения в сайдбаре с огоньком доступности */
+        .app-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .app-status-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-left: auto;
+            background: #888;
+        }
+        .app-status-dot.green { background: #3ba55d; }
+        .app-status-dot.red   { background: #e04b4b; }
     </style>
 </head>
 <body>
@@ -2897,6 +2929,8 @@
                 </label>
             </div>
             <button id="pacman-sidebar-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
+            <button id="mia-sidebar-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>🍚 Мама, я азиат</span><span class="app-status-dot" id="mia-status-dot"></span></button>
+            <button id="files-sidebar-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>📁 Файловое хранилище</span><span class="app-status-dot" id="files-status-dot"></span></button>
             <button id="settings-open-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
             <button id="logout-btn-sidebar">Выход</button>
         </div>
@@ -3129,6 +3163,10 @@
 
         <!-- Блок Pac-Man — третий экран, встроен inline -->
         <div id="pacman-block" style="display: none;"></div>
+
+        <!-- Блоки встроенных приложений (iframe к контейнерам через прокси) -->
+        <div id="mia-block" style="display: none;"></div>
+        <div id="files-block" style="display: none;"></div>
 
         <div id="offline-notice">Пользователь не в сети</div>
         <div id="messages" style="display: none;">
@@ -5226,6 +5264,12 @@
             const frame = pacmanBlock.querySelector('iframe');
             if (frame) frame.src = 'about:blank';
 
+            // Прячем встроенные приложения при возврате в чат
+            ['mia-block', 'files-block'].forEach(id => {
+                const b = document.getElementById(id);
+                if (b) { b.style.display = 'none'; const f = b.querySelector('iframe'); if (f) f.src = 'about:blank'; }
+            });
+
             const desktopHeader = document.getElementById('desktop-chat-header');
             const dhUsername = document.getElementById('dh-username');
             const dhStatus   = document.getElementById('dh-status');
@@ -6878,6 +6922,12 @@
             const desktopHeader = document.getElementById('desktop-chat-header');
             if (desktopHeader) desktopHeader.classList.add('hidden');
 
+            // Прячем блоки встроенных приложений, если были открыты
+            ['mia-block', 'files-block'].forEach(id => {
+                const b = document.getElementById(id);
+                if (b) { b.style.display = 'none'; const f = b.querySelector('iframe'); if (f) f.src = 'about:blank'; }
+            });
+
             // Показываем Pac-Man блок
             pacmanBlock.style.display = 'flex';
 
@@ -6908,6 +6958,79 @@
             overlay.classList.remove('open');
             showPacman();
         });
+
+        // ── Встроенные приложения: «Мама, я азиат» и «Файловое хранилище» ─────
+        const miaBlock         = document.getElementById('mia-block');
+        const filesBlock       = document.getElementById('files-block');
+        const miaSidebarBtn     = document.getElementById('mia-sidebar-btn');
+        const filesSidebarBtn   = document.getElementById('files-sidebar-btn');
+
+        // Показ приложения в правой панели (как Pac-Man, адрес не меняется)
+        function showAppBlock(block, url, title) {
+            welcomeScreen.style.display  = 'none';
+            messagesDiv.style.display    = 'none';
+            inputArea.style.display      = 'none';
+            offlineNotice.style.display  = 'none';
+            pacmanBlock.style.display    = 'none';
+            // прячем соседний блок-приложение, если был открыт
+            const other = (block === miaBlock) ? filesBlock : miaBlock;
+            if (other) { other.style.display = 'none'; const of = other.querySelector('iframe'); if (of) of.src = 'about:blank'; }
+
+            const desktopHeader = document.getElementById('desktop-chat-header');
+            if (desktopHeader) desktopHeader.classList.add('hidden');
+
+            block.style.display = 'flex';
+            if (!block.querySelector('iframe')) {
+                const frame = document.createElement('iframe');
+                frame.src = url;
+                frame.title = title;
+                block.appendChild(frame);
+            } else {
+                block.querySelector('iframe').src = url;
+            }
+
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+
+            topbarTitle.textContent = title;
+            const _sub = document.getElementById('topbar-subtitle');
+            if (_sub) { _sub.textContent = ''; _sub.className = ''; }
+            callBtn.style.display      = 'none';
+            videoCallBtn.style.display = 'none';
+        }
+
+        if (miaSidebarBtn) miaSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            showAppBlock(miaBlock, '/app/mia/', '🍚 Мама, я азиат');
+        });
+        if (filesSidebarBtn) filesSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            showAppBlock(filesBlock, '/app/files/', '📁 Файловое хранилище');
+        });
+
+        // Огоньки доступности + показ кнопок по правам (одним запросом к /apps-health)
+        function applyAppButton(btn, dot, status) {
+            if (!btn) return;
+            if (status === 'none' || !status) { btn.style.display = 'none'; return; }
+            btn.style.display = 'flex';
+            if (dot) {
+                dot.classList.remove('green', 'red');
+                dot.classList.add(status === 'green' ? 'green' : 'red');
+            }
+        }
+        async function refreshAppsHealth() {
+            try {
+                const res = await fetch('/apps-health', { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const h = await res.json();
+                applyAppButton(miaSidebarBtn,   document.getElementById('mia-status-dot'),   h.mia);
+                applyAppButton(filesSidebarBtn, document.getElementById('files-status-dot'), h.files);
+            } catch (e) { /* тихо: сеть/сервер временно недоступны */ }
+        }
+        refreshAppsHealth();
+        setInterval(refreshAppsHealth, 15000);
 
         // Desktop header call buttons → переиспользуем существующие кнопки
         const dhCallBtn  = document.getElementById('dh-call-btn');
