@@ -35,9 +35,9 @@ import (
 )
 
 type App struct {
-	db *sql.DB
-	mu sync.Mutex
-	clients  map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
+	db      *sql.DB
+	mu      sync.Mutex
+	clients map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
 
 	// defaultContact — логин пользователя с id=1, добавляется всем как контакт по умолчанию.
 	// Читается один раз при старте, чтобы не дёргать БД на каждую отправку списка диалогов.
@@ -99,7 +99,7 @@ type Client struct {
 	conn    *websocket.Conn
 	send    chan []byte
 	done    chan struct{} // закрывается один раз в readPump при отключении
-	focused bool         // true — вкладка видима и в фокусе (браузер на переднем плане)
+	focused bool          // true — вкладка видима и в фокусе (браузер на переднем плане)
 }
 
 type Message struct {
@@ -162,7 +162,7 @@ type DialogEntry struct {
 // Сервер не интерпретирует SDP/ICE содержимое, только маршрутизирует между
 // устройствами from/to — ровно так же, как Message, но без сохранения в БД.
 type CallSignal struct {
-	Type      string `json:"type"`                // call-offer | call-answer | call-ice | call-end | call-reject | call-video-on | call-video-on-answer
+	Type      string `json:"type"` // call-offer | call-answer | call-ice | call-end | call-reject | call-video-on | call-video-on-answer
 	From      string `json:"from"`
 	To        string `json:"to"`
 	CallID    string `json:"call_id"`             // генерируется звонящим, привязывает все сообщения одного звонка
@@ -359,7 +359,10 @@ func main() {
 	http.HandleFunc("/pacman", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "../web-app/pacman.html")
 	})
-
+	// Встроенные приложения (проксирование к контейнерам через frpc-туннель).
+	http.HandleFunc("/app/mia/", app.newAppProxy("http://127.0.0.1:6800", "can_channel"))
+	http.HandleFunc("/apps-health", app.handleAppsHealth)
+	app.startAppsHealthProbe()
 	fmt.Println("Сервер слушает порт 8080...")
 	http.ListenAndServe(":8080", nil)
 }
@@ -1663,10 +1666,10 @@ func (a *App) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 // pushNotificationPayload — JSON, который попадёт в event.data внутри Service Worker
 // (sw.js его парсит и решает, какой заголовок/текст/действие показать).
 type pushNotificationPayload struct {
-	Type  string `json:"type"`            // "call" | "message"
-	From  string `json:"from"`
-	Title string `json:"title"`
-	Body  string `json:"body"`
+	Type   string `json:"type"` // "call" | "message"
+	From   string `json:"from"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
 	CallID string `json:"call_id,omitempty"`
 }
 
@@ -2048,7 +2051,9 @@ func (c *Client) readPump(a *App) {
 			a.routeMessage(msg)
 		} else if strings.HasPrefix(msgStr, "typing:") {
 			// typing:{"to":"login"} — пересылаем получателю typing:{"from":"..."}
-			var payload struct{ To string `json:"to"` }
+			var payload struct {
+				To string `json:"to"`
+			}
 			if err := json.Unmarshal([]byte(msgStr[7:]), &payload); err == nil && payload.To != "" {
 				toLogin := strings.ToLower(payload.To)
 				notif, _ := json.Marshal(map[string]string{"from": c.login})
@@ -2060,7 +2065,9 @@ func (c *Client) readPump(a *App) {
 			}
 		} else if strings.HasPrefix(msgStr, "typingstop:") {
 			// typingstop:{"to":"login"} — пересылаем получателю typingstop:{"from":"..."}
-			var payload struct{ To string `json:"to"` }
+			var payload struct {
+				To string `json:"to"`
+			}
 			if err := json.Unmarshal([]byte(msgStr[11:]), &payload); err == nil && payload.To != "" {
 				toLogin := strings.ToLower(payload.To)
 				notif, _ := json.Marshal(map[string]string{"from": c.login})

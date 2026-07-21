@@ -266,3 +266,6 @@ CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user
     ON messenger.fcm_tokens USING btree
     (user_id ASC NULLS LAST)
     TABLESPACE pg_default;
+
+ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS can_channel smallint NOT NULL DEFAULT 0;
+ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS can_files   smallint NOT NULL DEFAULT 0;
