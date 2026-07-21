@@ -23,17 +23,22 @@ import (
 //
 // Мессенджер проксирует к ним запросы под путями /app/files/ и /app/mia/,
 // предварительно проверяя сессию и персональный флаг доступа в БД. Публичный
-// доступ к контейнерам (субдомены) убирается — единственная точка входа теперь
+// доступ к контейнерам (субдомены) убран — единственная точка входа теперь
 // мессенджер, поэтому повторная авторизация внутри приложений не нужна.
+//
+// filebrowser настроен на proxy-auth: он определяет пользователя по заголовку
+// X-User. Этот заголовок ставит ТОЛЬКО прокси (из логина сессии), а любой
+// X-User, присланный клиентом, вырезается — иначе можно было бы притвориться
+// чужим логином. Доверять заголовку безопасно, потому что снаружи к контейнеру
+// доступа нет: только этот прокси через туннель.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // appProxyTransport — общий транспорт для reverse-proxy к контейнерам.
 //
-// Ключевой момент: IdleConnTimeout НАМЕРЕННО меньше keep-alive-таймаута uvicorn
-// (по умолчанию ~5с). Если Go переиспользует соединение, которое uvicorn уже
-// закрыл, запрос через frp-туннель зависает до общего таймаута (не приходит FIN).
-// Закрывая простаивающие соединения раньше сервера, мы гарантированно избегаем
-// «вечной загрузки» после паузы в общении с приложением.
+// IdleConnTimeout НАМЕРЕННО меньше keep-alive-таймаута апстрима: если Go
+// переиспользует соединение, которое апстрим уже закрыл, запрос через
+// frp-туннель зависает до общего таймаута (не приходит FIN). Закрывая
+// простаивающие соединения раньше, избегаем «вечной загрузки» после паузы.
 var appProxyTransport http.RoundTripper = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	DialContext: (&net.Dialer{
@@ -41,7 +46,7 @@ var appProxyTransport http.RoundTripper = &http.Transport{
 		KeepAlive: 30 * time.Second,
 	}).DialContext,
 	MaxIdleConns:          100,
-	IdleConnTimeout:       3 * time.Second, // < uvicorn keep-alive (5с)
+	IdleConnTimeout:       3 * time.Second,
 	TLSHandshakeTimeout:   5 * time.Second,
 	ExpectContinueTimeout: 1 * time.Second,
 }
@@ -59,10 +64,13 @@ func (a *App) userHasFlag(login, column string) bool {
 }
 
 // newAppProxy собирает gated reverse-proxy к одному контейнеру.
-// targetURL — например "http://127.0.0.1:6800"; flagColumn — колонка-флаг доступа.
+//   targetURL   — например "http://127.0.0.1:6800"
+//   flagColumn  — колонка-флаг доступа (can_channel / can_files)
+//   injectUser  — ставить ли заголовок X-User=<логин сессии> (нужно filebrowser,
+//                 не нужно mom-im-asian). При true клиентский X-User вырезается.
 // Путь запроса форвардится как есть (у target нет своего пути), поэтому
 // приложение на той стороне должно слушать под тем же префиксом (/app/mia, /app/files).
-func (a *App) newAppProxy(targetURL, flagColumn string) http.HandlerFunc {
+func (a *App) newAppProxy(targetURL, flagColumn string, injectUser bool) http.HandlerFunc {
 	target, err := url.Parse(targetURL)
 	if err != nil {
 		log.Fatalf("newAppProxy: некорректный targetURL %q: %v", targetURL, err)
@@ -70,8 +78,7 @@ func (a *App) newAppProxy(targetURL, flagColumn string) http.HandlerFunc {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.Transport = appProxyTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) {
-		// Туннель/контейнер недоступен — это ожидаемая ситуация при деградации
-		// канала, не паникуем, просто отдаём 502.
+		// Туннель/контейнер недоступен — ожидаемо при деградации канала, не паникуем.
 		log.Printf("app-proxy %s: %v", targetURL, e)
 		http.Error(w, "Приложение временно недоступно", http.StatusBadGateway)
 	}
@@ -85,6 +92,11 @@ func (a *App) newAppProxy(targetURL, flagColumn string) http.HandlerFunc {
 		if !a.userHasFlag(login, flagColumn) {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
+		}
+		if injectUser {
+			// Вырезаем ЛЮБОЙ клиентский X-User и ставим доверенный логин из сессии.
+			r.Header.Del("X-User")
+			r.Header.Set("X-User", login)
 		}
 		proxy.ServeHTTP(w, r)
 	}
@@ -116,7 +128,7 @@ var appsHealth appsHealthState
 
 // healthProbeClient ходит СВЕЖИМ соединением на каждый замер (как curl):
 // DisableKeepAlives убирает переиспользование, из-за которого зонд натыкался
-// на закрытое uvicorn соединение и висел до таймаута, ложно показывая красный.
+// на закрытое апстримом соединение и висел до таймаута, ложно показывая красный.
 var healthProbeClient = &http.Client{
 	Timeout: healthProbeTimeout,
 	Transport: &http.Transport{
