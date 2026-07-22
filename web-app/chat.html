@@ -1350,6 +1350,88 @@
             cursor: not-allowed;
         }
 
+        /* ── Быстрое фото: кнопка и полноэкранная камера ─────────────────── */
+        #camera-btn {
+            background: none;
+            color: #4a90e2;
+            padding: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+        }
+        #camera-btn:hover  { background: #f0f0f0; }
+        #camera-btn:active { background: #e5e5e5; }
+        #camera-btn:disabled { color: #ccc; background: none; cursor: not-allowed; }
+
+        #camera-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            background: #000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #camera-overlay.open { display: flex; }
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }
+        #camera-controls {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 18px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.65));
+        }
+        .cam-side-btn {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 46px;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .cam-side-btn:active { background: rgba(255,255,255,0.3); }
+        #camera-shoot {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: #fff;
+            border: 5px solid rgba(255,255,255,0.45);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        #camera-shoot:active { transform: scale(0.94); }
+        #camera-error {
+            position: absolute;
+            top: 50%;
+            left: 0; right: 0;
+            transform: translateY(-50%);
+            color: #fff;
+            text-align: center;
+            padding: 0 24px;
+            font-size: 15px;
+            display: none;
+        }
+
         #mic-btn {
             background: none;
             color: #4a90e2;
@@ -2936,6 +3018,27 @@
     <!-- Страница 4 (мобайл): полноэкранное встроенное приложение/игра, выезжает справа -->
     <div id="mob-app-page"><iframe id="mob-app-iframe" src="about:blank" title="Приложение"></iframe></div>
 
+    <!-- Быстрое фото: полноэкранная камера с превью и затвором -->
+    <div id="camera-overlay">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <div id="camera-error"></div>
+        <div id="camera-controls">
+            <button class="cam-side-btn" id="camera-close" type="button" title="Закрыть">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line>
+                </svg>
+            </button>
+            <button id="camera-shoot" type="button" title="Снять"></button>
+            <button class="cam-side-btn" id="camera-flip" type="button" title="Сменить камеру">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
+                    <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
     <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
     <div id="app-layout">
     <!-- ── Левая панель (desktop) ─────────────────────────────────────────── -->
@@ -3241,6 +3344,12 @@
                         <path d="M21 15l-5-5L5 21"></path>
                     </svg>
                 </button>
+                <button id="camera-btn" type="button" title="Сделать фото">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                </button>
                 <button id="mic-btn" type="button" title="Голосовое сообщение">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="9" y="2" width="6" height="12" rx="3"></rect>
@@ -3409,7 +3518,7 @@
         // каждый диалог, т.к. пользователь может переключаться между чатами.
         let replyingTo = null; // {id, from, text}
         let pinnedByUser = {};
-        let defaultReaction = '😭';
+        let defaultReaction = '👍';
 
         // ── Typing indicators ────────────────────────────────────────────────────
         // typingUsers — set логинов, которые сейчас печатают (по данным от сервера)
@@ -5041,6 +5150,89 @@
         const uploadProgressName = document.getElementById('upload-progress-name');
         const uploadProgressCheck = document.getElementById('upload-progress-check');
 
+        /* ── Быстрое фото ──────────────────────────────────────────────────
+           Открывает камеру прямо в приложении (превью + затвор), снимок сразу
+           уходит в чат через обычный путь отправки картинок. Если браузер не
+           даёт доступ к камере (нет разрешения / не https) — откатываемся на
+           системную камеру через file input с capture. */
+        const cameraBtn      = document.getElementById('camera-btn');
+        const cameraOverlay  = document.getElementById('camera-overlay');
+        const cameraVideo    = document.getElementById('camera-video');
+        const cameraShoot    = document.getElementById('camera-shoot');
+        const cameraClose    = document.getElementById('camera-close');
+        const cameraFlip     = document.getElementById('camera-flip');
+        const cameraError    = document.getElementById('camera-error');
+        let cameraStream     = null;
+        let cameraFacing     = 'user';   // фронтальная по умолчанию
+
+        async function startCamera() {
+            stopCamera();
+            cameraError.style.display = 'none';
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: cameraFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                cameraVideo.srcObject = cameraStream;
+            } catch (e) {
+                cameraError.textContent = 'Нет доступа к камере. Разрешите доступ в настройках браузера.';
+                cameraError.style.display = 'block';
+            }
+        }
+
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(t => t.stop());
+                cameraStream = null;
+            }
+            cameraVideo.srcObject = null;
+        }
+
+        function openCamera() {
+            if (!currentUser) { alert('Выберите пользователя'); return; }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                // Запасной путь: системная камера телефона
+                imageInput.setAttribute('capture', 'environment');
+                imageInput.click();
+                setTimeout(() => imageInput.removeAttribute('capture'), 1000);
+                return;
+            }
+            cameraOverlay.classList.add('open');
+            startCamera();
+        }
+
+        function closeCamera() {
+            cameraOverlay.classList.remove('open');
+            stopCamera();
+        }
+
+        if (cameraBtn)   cameraBtn.addEventListener('click', openCamera);
+        if (cameraClose) cameraClose.addEventListener('click', closeCamera);
+        if (cameraFlip)  cameraFlip.addEventListener('click', () => {
+            cameraFacing = (cameraFacing === 'user') ? 'environment' : 'user';
+            startCamera();
+        });
+
+        if (cameraShoot) cameraShoot.addEventListener('click', () => {
+            if (!cameraStream || !cameraVideo.videoWidth) return;
+            const canvas = document.createElement('canvas');
+            canvas.width  = cameraVideo.videoWidth;
+            canvas.height = cameraVideo.videoHeight;
+            const ctx = canvas.getContext('2d');
+            // Фронтальную камеру зеркалим, чтобы снимок совпадал с превью
+            if (cameraFacing === 'user') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const file = new File([blob], 'photo_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+                closeCamera();
+                uploadImage(file);
+            }, 'image/jpeg', 0.9);
+        });
+
         function uploadImage(file) {
             if (!currentUser) return;
 
@@ -6526,7 +6718,7 @@
                 const resp = await fetch('/settings');
                 if (!resp.ok) return;
                 const data = await resp.json();
-                defaultReaction = data.default_reaction || '😭';
+                defaultReaction = data.default_reaction || '👍';
                 renderDefaultReactionGrid();
             } catch (e) {}
         }
