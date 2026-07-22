@@ -1562,8 +1562,8 @@
         #circle-overlay.open { display: flex; }
 
         #circle-frame {
-            width: min(64vw, 280px);
-            height: min(64vw, 280px);
+            width: min(92vw, 440px);
+            height: min(92vw, 440px);
             border-radius: 50%;
             overflow: hidden;
             background: #000;
@@ -1598,16 +1598,23 @@
             animation: dot-blink 1s ease-in-out infinite;
         }
 
-        /* Видеокружок в ленте сообщений */
+        /* Видеокружок в ленте сообщений: в покое компактный, при
+           воспроизведении раскрывается почти на всю ширину экрана. */
         .video-circle {
             position: relative;
-            width: 210px;
-            height: 210px;
+            width: 150px;
+            height: 150px;
             border-radius: 50%;
             overflow: hidden;
             background: #000;
             cursor: pointer;
             flex-shrink: 0;
+            transition: width 0.28s ease, height 0.28s ease;
+        }
+
+        .video-circle.playing {
+            width: min(88vw, 420px);
+            height: min(88vw, 420px);
         }
 
         .video-circle video {
@@ -6794,16 +6801,6 @@
             if (resp && resp.video_id) {
                 const existing = state.messages.find(m => m.video_id === resp.video_id);
                 if (existing) {
-                    if (!existing.local_video_url) {
-                        existing.local_video_url = URL.createObjectURL(blob);
-                        setTimeout(() => {
-                            if (existing.local_video_url) {
-                                URL.revokeObjectURL(existing.local_video_url);
-                                delete existing.local_video_url;
-                                if (currentUser === user) renderMessages(state.messages);
-                            }
-                        }, 5000);
-                    }
                     if (!existing.video_duration) existing.video_duration = resp.video_duration || duration;
                     delete existing.pending;
                     if (currentUser === user) renderMessages(state.messages);
@@ -6816,22 +6813,23 @@
                 from: currentLogin,
                 own: true,
                 isVideo: true,
-                local_video_url: URL.createObjectURL(blob),
                 video_duration: (resp && resp.video_duration) || duration,
                 video_is_circle: !!isCircle,
                 created_at: (resp && resp.created_at) || new Date().toISOString()
             };
 
             if (resp && resp.video_id) {
+                // Играем сразу с сервера: транскодированный MP4 (+faststart) имеет
+                // корректную длительность и moov-атом, поэтому воспроизводится
+                // целиком с первой же секунды. Сырой локальный blob (WebM от
+                // MediaRecorder) до полного проигрывания сообщает браузеру
+                // неизвестную длительность и обрывается на начале — поэтому его
+                // здесь не используем вовсе.
                 msgEntry.video_id = resp.video_id;
-                setTimeout(() => {
-                    if (msgEntry.local_video_url) {
-                        URL.revokeObjectURL(msgEntry.local_video_url);
-                        delete msgEntry.local_video_url;
-                        if (currentUser === user) renderMessages(state.messages);
-                    }
-                }, 5000);
             } else {
+                // Запасной путь на случай, если сервер по какой-то причине не
+                // вернул id: показываем локальную запись, пусть и с оговоркой выше.
+                msgEntry.local_video_url = URL.createObjectURL(blob);
                 msgEntry.pending = true;
             }
 
@@ -6872,7 +6870,15 @@
                 }
             });
 
-            video.addEventListener('play',  () => box.classList.add('playing'));
+            video.addEventListener('play',  () => {
+                box.classList.add('playing');
+                // После раскрытия крупный кружок мог уйти за нижний край —
+                // мягко подтягиваем его в поле зрения. Задержка чуть больше
+                // длительности CSS-перехода размера (0.28s).
+                setTimeout(() => {
+                    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 300);
+            });
             video.addEventListener('pause', () => box.classList.remove('playing'));
             video.addEventListener('ended', () => {
                 box.classList.remove('playing');
