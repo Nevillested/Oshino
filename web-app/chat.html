@@ -751,6 +751,96 @@
         }
 
         #ctx-menu.open { display: block; }
+
+        /* Контекстное меню диалога — та же подача, что у меню сообщения */
+        #dlg-menu {
+            display: none;
+            position: fixed;
+            z-index: 350;
+            min-width: 210px;
+            background: var(--color-ctx-bg, #22252d);
+            border-radius: 12px;
+            padding: 6px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+        }
+        #dlg-menu.open { display: block; }
+        .dialog-pin-mark { margin-left: 6px; opacity: 0.7; font-size: 12px; }
+
+        /* ── Множественный выбор сообщений ─────────────────────────────── */
+        .message-wrap.selected .message,
+        .message-wrap.selected .message-image,
+        .message-wrap.selected .audio-player { outline: 2px solid #4a90e2; outline-offset: 2px; }
+        .message-wrap.selected { background: rgba(74,144,226,0.10); border-radius: 10px; }
+
+        #select-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: var(--color-reply-bar-bg);
+            border-bottom: 1px solid var(--color-reaction-sep);
+            flex-shrink: 0;
+        }
+        #select-bar.show { display: flex; }
+        #select-count { font-weight: 600; margin-right: auto; }
+        .selbar-btn {
+            background: none;
+            border: none;
+            color: #4a90e2;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .selbar-btn:hover { background: rgba(74,144,226,0.12); }
+        .selbar-btn.danger { color: #e05555; }
+        .selbar-btn.danger:hover { background: rgba(224,85,85,0.12); }
+
+        /* ── Своё окно подтверждения (вместо системного confirm) ───────── */
+        #confirm-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 400;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        #confirm-overlay.open { display: flex; }
+        #confirm-box {
+            background: var(--color-settings-bg, #1b1e25);
+            color: var(--color-text, #e8e8e8);
+            border-radius: 14px;
+            max-width: 380px;
+            width: 100%;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+        }
+        #confirm-title { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+        #confirm-text  { font-size: 14px; opacity: 0.85; margin-bottom: 14px; }
+        #confirm-check-row {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin-bottom: 18px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        #confirm-check-row input { width: 17px; height: 17px; cursor: pointer; }
+        #confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .confirm-btn {
+            border: none;
+            border-radius: 8px;
+            padding: 9px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            background: transparent;
+            color: var(--color-text, #e8e8e8);
+        }
+        .confirm-btn.primary { background: #e05555; color: #fff; }
+        .confirm-btn:hover { background: rgba(255,255,255,0.08); }
+        .confirm-btn.primary:hover { background: #c94747; }
         .ctx-item.ctx-danger { color: #e05555; }
         .edited-mark { opacity: 0.65; font-style: italic; margin-right: 4px; }
 
@@ -3303,6 +3393,12 @@
         <div id="files-block" style="display: none;"></div>
 
         <div id="offline-notice">Пользователь не в сети</div>
+        <div id="select-bar">
+            <span id="select-count">Выбрано: 0</span>
+            <button class="selbar-btn" id="selbar-forward">Переслать</button>
+            <button class="selbar-btn danger" id="selbar-delete">Удалить</button>
+            <button class="selbar-btn" id="selbar-cancel">Отмена</button>
+        </div>
         <div id="messages" style="display: none;">
             <div id="load-more-indicator">загрузка...</div>
         </div>
@@ -3413,6 +3509,13 @@
             </svg>
             Изменить
         </button>
+        <button class="ctx-item" id="ctx-select">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 11 12 14 22 4"></polyline>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            Выбрать
+        </button>
         <button class="ctx-item ctx-danger" id="ctx-delete">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"></polyline>
@@ -3422,6 +3525,47 @@
             </svg>
             Удалить
         </button>
+    </div>
+
+    <!-- Контекстное меню диалога (ПКМ на ПК / долгий тап на телефоне) -->
+    <div id="dlg-menu">
+        <button class="ctx-item" id="dlg-pin">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="17" x2="12" y2="22"></line>
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
+            </svg>
+            <span id="dlg-pin-label">Закрепить чат</span>
+        </button>
+        <button class="ctx-item" id="dlg-clear">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M8 6V4h8v2"></path>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            </svg>
+            Очистить историю
+        </button>
+        <button class="ctx-item ctx-danger" id="dlg-delete">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 6L6 18M6 6l12 12"></path>
+            </svg>
+            Удалить чат
+        </button>
+    </div>
+
+    <!-- Своё окно подтверждения (взамен системного confirm) -->
+    <div id="confirm-overlay">
+        <div id="confirm-box">
+            <div id="confirm-title">Удалить сообщения?</div>
+            <div id="confirm-text"></div>
+            <label id="confirm-check-row">
+                <input type="checkbox" id="confirm-check">
+                <span id="confirm-check-label">Удалить также у собеседника</span>
+            </label>
+            <div id="confirm-actions">
+                <button class="confirm-btn" id="confirm-cancel">Отмена</button>
+                <button class="confirm-btn primary" id="confirm-ok">Удалить</button>
+            </div>
+        </div>
     </div>
 
     <!-- Модалка выбора диалога для forward -->
@@ -3595,6 +3739,7 @@
         const ctxForward = document.getElementById('ctx-forward');
         const ctxEdit = document.getElementById('ctx-edit');
         const ctxDelete = document.getElementById('ctx-delete');
+        const ctxSelect = document.getElementById('ctx-select');
         let editingMsg = null;   // сообщение, которое сейчас редактируем
         const forwardModalOverlay = document.getElementById('forward-modal-overlay');
         const forwardModalClose = document.getElementById('forward-modal-close');
@@ -3739,6 +3884,10 @@
                     onPinUpdate(JSON.parse(message.substring(4)));
                 } else if (message.startsWith('unpin:')) {
                     onPinUpdate(JSON.parse(message.substring(6)));
+                } else if (message.startsWith('dialogcleared:')) {
+                    onDialogCleared(JSON.parse(message.substring(14)));
+                } else if (message.startsWith('dialogdeleted:')) {
+                    onDialogDeleted(JSON.parse(message.substring(14)));
                 } else if (message.startsWith('editmsg:')) {
                     onMessageEdited(JSON.parse(message.substring(8)));
                 } else if (message.startsWith('delmsg:')) {
@@ -4174,10 +4323,16 @@
         }
 
         function mergeDialogs(entries) {
-            // entries может быть []string (старый формат) или [{login, last_msg}] (новый)
+            // entries может быть []string (старый формат) или [{login, last_msg, pinned}]
+            const seen = new Set();
             entries.forEach(e => {
                 const login = typeof e === 'string' ? e : e.login;
                 const lastMsg = typeof e === 'string' ? '' : (e.last_msg || '');
+                seen.add(login);
+                // Закрепление приходит с сервера и хранится персонально
+                if (typeof e === 'object' && e.pinned) pinnedDialogs.add(login);
+                else pinnedDialogs.delete(login);
+
                 if (!historyState[login]) {
                     historyState[login] = { oldestId: 0, allLoaded: false, messages: [], lastMsg };
                 } else if (lastMsg) {
@@ -4187,6 +4342,16 @@
                     }
                 }
             });
+
+            // Диалог пропал из серверного списка (удалён/скрыт) — убираем локально
+            Object.keys(historyState).forEach(login => {
+                if (!seen.has(login) && login !== currentUser) {
+                    delete historyState[login];
+                    delete unreadCount[login];
+                    pinnedDialogs.delete(login);
+                }
+            });
+
             renderDialogList();
         }
 
@@ -4231,6 +4396,9 @@
             welcomeDialogsList.innerHTML = '';
 
             const logins = Object.keys(historyState).sort((a, b) => {
+                // Закреплённые чаты всегда сверху, между собой — по времени
+                const pa = pinnedDialogs.has(a), pb = pinnedDialogs.has(b);
+                if (pa !== pb) return pa ? -1 : 1;
                 // Приоритет: lastMsg из БД (пришёл при инициализации),
                 // fallback — последнее загруженное сообщение в памяти
                 const stA = historyState[a], stB = historyState[b];
@@ -4277,6 +4445,13 @@
                     li.appendChild(badge);
                 }
 
+                if (pinnedDialogs.has(user)) {
+                    const pinMark = document.createElement('span');
+                    pinMark.className = 'dialog-pin-mark';
+                    pinMark.textContent = '📌';
+                    li.appendChild(pinMark);
+                }
+                attachDialogMenu(li, user);
                 usersList.appendChild(li);
 
                 // Тот же диалог в центральном приветственном экране
@@ -4304,6 +4479,13 @@
                     welcomeLi.appendChild(welcomeBadge);
                 }
 
+                if (pinnedDialogs.has(user)) {
+                    const wPin = document.createElement('span');
+                    wPin.className = 'dialog-pin-mark';
+                    wPin.textContent = '📌';
+                    welcomeLi.appendChild(wPin);
+                }
+                attachDialogMenu(welcomeLi, user);
                 welcomeDialogsList.appendChild(welcomeLi);
             });
 
@@ -6507,6 +6689,338 @@
 
         // ── Reply ────────────────────────────────────────────────────────────────
 
+        // ══ Множественный выбор сообщений ═══════════════════════════════════
+        // Единая длительность долгого тапа для всего приложения: долгий тап на
+        // телефоне = правый клик на ПК. Используется и для сообщений, и для
+        // диалогов, чтобы поведение везде было одинаковым.
+        const LONG_PRESS_MS = 500;
+        const MAX_SELECTED  = 50;   // ограничитель пакета
+
+        let selectionMode = false;
+        const selectedIds = new Set();
+
+        const selectBar     = document.getElementById('select-bar');
+        const selectCountEl = document.getElementById('select-count');
+
+        function enterSelection(firstId) {
+            selectionMode = true;
+            selectedIds.clear();
+            if (firstId != null) selectedIds.add(firstId);
+            selectBar.classList.add('show');
+            updateSelectionUI();
+        }
+
+        function exitSelection() {
+            selectionMode = false;
+            selectedIds.clear();
+            selectBar.classList.remove('show');
+            document.querySelectorAll('.message-wrap.selected')
+                    .forEach(el => el.classList.remove('selected'));
+        }
+
+        function toggleSelected(id) {
+            if (selectedIds.has(id)) {
+                selectedIds.delete(id);
+            } else {
+                if (selectedIds.size >= MAX_SELECTED) {
+                    showToastLimit();
+                    return;
+                }
+                selectedIds.add(id);
+            }
+            if (selectedIds.size === 0) { exitSelection(); return; }
+            updateSelectionUI();
+        }
+
+        let limitToastShown = 0;
+        function showToastLimit() {
+            const now = Date.now();
+            if (now - limitToastShown < 1500) return;   // не спамим
+            limitToastShown = now;
+            selectCountEl.textContent = 'Максимум ' + MAX_SELECTED + ' сообщений';
+            setTimeout(updateSelectionUI, 1500);
+        }
+
+        function updateSelectionUI() {
+            selectCountEl.textContent = 'Выбрано: ' + selectedIds.size;
+            document.querySelectorAll('.message-wrap').forEach(el => {
+                const id = parseInt(el.dataset.msgId, 10);
+                el.classList.toggle('selected', selectedIds.has(id));
+            });
+        }
+
+        document.getElementById('selbar-cancel').addEventListener('click', exitSelection);
+
+        // ── Выделение мышью (ПК): зажать ЛКМ и провести через 2+ сообщения ──
+        // Режим выбора включается только когда протяжка захватила минимум два
+        // разных сообщения — одиночный клик и обычное выделение текста не мешают.
+        (function initDragSelect() {
+            let dragging = false;
+            let dragIds  = [];
+
+            function msgIdFromPoint(target) {
+                const wrap = target && target.closest ? target.closest('.message-wrap') : null;
+                if (!wrap || !wrap.dataset.msgId) return null;
+                const id = parseInt(wrap.dataset.msgId, 10);
+                return Number.isFinite(id) ? id : null;
+            }
+
+            messagesDiv.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;          // только ЛКМ
+                if (selectionMode) return;           // уже в режиме выбора
+                dragging = true;
+                dragIds = [];
+                const id = msgIdFromPoint(e.target);
+                if (id != null) dragIds.push(id);
+            });
+
+            messagesDiv.addEventListener('mousemove', (e) => {
+                if (!dragging) return;
+                if (e.buttons !== 1) { dragging = false; return; }
+                const id = msgIdFromPoint(e.target);
+                if (id != null && !dragIds.includes(id)) dragIds.push(id);
+
+                // Два разных сообщения под протяжкой — включаем режим выбора
+                if (!selectionMode && dragIds.length >= 2) {
+                    enterSelection(null);
+                    dragIds.slice(0, MAX_SELECTED).forEach(x => selectedIds.add(x));
+                    updateSelectionUI();
+                    // снимаем случайное выделение текста
+                    const sel = window.getSelection && window.getSelection();
+                    if (sel && sel.removeAllRanges) sel.removeAllRanges();
+                } else if (selectionMode && id != null && !selectedIds.has(id)) {
+                    if (selectedIds.size < MAX_SELECTED) {
+                        selectedIds.add(id);
+                        updateSelectionUI();
+                    } else {
+                        showToastLimit();
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', () => { dragging = false; dragIds = []; });
+        })();
+
+        // Переслать выбранные — по одному через существующий /forward
+        document.getElementById('selbar-forward').addEventListener('click', () => {
+            if (!selectedIds.size) return;
+            pendingForwardIds = Array.from(selectedIds).sort((a, b) => a - b);
+            openForwardModal();
+        });
+
+        // Удалить выбранные — своё окно с галочкой «у собеседника»
+        document.getElementById('selbar-delete').addEventListener('click', () => {
+            if (!selectedIds.size) return;
+            const ids = Array.from(selectedIds);
+            const allMine = ids.every(id => {
+                const st = historyState[currentUser];
+                const m = st && st.messages.find(x => x.id === id);
+                return m && m.own;
+            });
+            askDelete(ids.length, allMine, (forAll) => doDeleteMessages(ids, forAll));
+        });
+
+        async function doDeleteMessages(ids, forAll) {
+            try {
+                const fd = new FormData();
+                fd.append('message_ids', ids.join(','));
+                fd.append('for_all', forAll ? '1' : '0');
+                const res = await fetch('/delete-messages', { method: 'POST', body: fd });
+                if (!res.ok) alert('Не удалось удалить сообщения');
+            } catch (e) { alert('Нет соединения'); }
+            exitSelection();
+        }
+
+        // ══ Своё окно подтверждения удаления ════════════════════════════════
+        const confirmOverlay  = document.getElementById('confirm-overlay');
+        const confirmText     = document.getElementById('confirm-text');
+        const confirmCheck    = document.getElementById('confirm-check');
+        const confirmCheckRow = document.getElementById('confirm-check-row');
+        let confirmCallback   = null;
+
+        const confirmTitle      = document.getElementById('confirm-title');
+        const confirmCheckLabel = document.getElementById('confirm-check-label');
+        const confirmOkBtn      = document.getElementById('confirm-ok');
+
+        // Универсальное окно подтверждения с необязательной галочкой
+        function askConfirm(opts, cb) {
+            confirmTitle.textContent = opts.title || 'Подтвердите действие';
+            confirmText.textContent  = opts.text || '';
+            confirmOkBtn.textContent = opts.okText || 'Удалить';
+            if (opts.checkLabel) {
+                confirmCheckLabel.textContent = opts.checkLabel;
+                confirmCheckRow.style.display = 'flex';
+            } else {
+                confirmCheckRow.style.display = 'none';
+            }
+            confirmCheck.checked = false;
+            confirmCallback = cb;
+            confirmOverlay.classList.add('open');
+        }
+
+        function askDelete(count, canDeleteForAll, cb) {
+            askConfirm({
+                title: 'Удалить сообщения?',
+                text: (count === 1)
+                    ? 'Сообщение будет удалено.'
+                    : 'Будет удалено сообщений: ' + count + '.',
+                // Галочку показываем только если ВСЕ выбранные — свои: чужие
+                // сообщения у собеседника удалять нельзя, можно скрыть у себя.
+                checkLabel: canDeleteForAll ? 'Удалить также у собеседника' : null,
+                okText: 'Удалить'
+            }, cb);
+        }
+
+        function closeConfirm() {
+            confirmOverlay.classList.remove('open');
+            confirmCallback = null;
+        }
+
+        document.getElementById('confirm-cancel').addEventListener('click', closeConfirm);
+        confirmOverlay.addEventListener('click', (e) => { if (e.target === confirmOverlay) closeConfirm(); });
+        document.getElementById('confirm-ok').addEventListener('click', () => {
+            const cb = confirmCallback;
+            const forAll = confirmCheckRow.style.display !== 'none' && confirmCheck.checked;
+            closeConfirm();
+            if (cb) cb(forAll);
+        });
+
+        // ══ Контекстное меню диалога ════════════════════════════════════════
+        // Открывается правым кликом на ПК и долгим тапом на телефоне — той же
+        // длительности (LONG_PRESS_MS), что и меню сообщения.
+        const dlgMenu     = document.getElementById('dlg-menu');
+        const dlgPinBtn   = document.getElementById('dlg-pin');
+        const dlgPinLabel = document.getElementById('dlg-pin-label');
+        const dlgClearBtn = document.getElementById('dlg-clear');
+        const dlgDelBtn   = document.getElementById('dlg-delete');
+        let dlgTarget = null;          // логин собеседника
+        const pinnedDialogs = new Set();
+
+        function openDlgMenu(user, x, y) {
+            dlgTarget = user;
+            dlgPinLabel.textContent = pinnedDialogs.has(user) ? 'Открепить чат' : 'Закрепить чат';
+            dlgMenu.classList.add('open');
+            ctxBackdrop.classList.add('open');
+
+            const mw = 210, mh = dlgMenu.offsetHeight || 150;
+            const vw = window.innerWidth, vh = window.innerHeight;
+            dlgMenu.style.left = Math.min(x, vw - mw - 8) + 'px';
+            dlgMenu.style.top  = (y + mh > vh ? Math.max(8, y - mh) : y) + 'px';
+        }
+
+        function closeDlgMenu() {
+            dlgMenu.classList.remove('open');
+            ctxBackdrop.classList.remove('open');
+            dlgTarget = null;
+        }
+
+        // Тот же бэкдроп закрывает оба меню
+        ctxBackdrop.addEventListener('click', closeDlgMenu);
+
+        // Вешается на каждый пункт списка диалогов (сайдбар и приветственный экран)
+        function attachDialogMenu(el, user) {
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                openDlgMenu(user, e.clientX, e.clientY);
+            });
+
+            let t = null, moved = false;
+            el.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) return;
+                moved = false;
+                const touch = e.touches[0];
+                t = setTimeout(() => {
+                    if (!moved) openDlgMenu(user, touch.clientX, touch.clientY);
+                }, LONG_PRESS_MS);
+            }, { passive: true });
+            el.addEventListener('touchmove',   () => { moved = true; clearTimeout(t); }, { passive: true });
+            el.addEventListener('touchend',    () => clearTimeout(t), { passive: true });
+            el.addEventListener('touchcancel', () => clearTimeout(t), { passive: true });
+        }
+
+        ctxItem(dlgPinBtn, async () => {
+            const user = dlgTarget;
+            if (!user) return;
+            const willPin = !pinnedDialogs.has(user);
+            closeDlgMenu();
+            const fd = new FormData();
+            fd.append('with', user);
+            fd.append('pinned', willPin ? '1' : '0');
+            try {
+                const res = await fetch('/dialog/pin', { method: 'POST', body: fd });
+                if (res.ok) {
+                    if (willPin) pinnedDialogs.add(user); else pinnedDialogs.delete(user);
+                    renderDialogList();
+                }
+            } catch (e) {}
+        });
+
+        ctxItem(dlgClearBtn, () => {
+            const user = dlgTarget;
+            if (!user) return;
+            closeDlgMenu();
+            askConfirm({
+                title: 'Очистить историю?',
+                text: 'Все сообщения будут удалены. Сам чат останется в списке.',
+                checkLabel: 'Очистить у собеседника тоже',
+                okText: 'Очистить'
+            }, async (forAll) => {
+                const fd = new FormData();
+                fd.append('with', user);
+                fd.append('for_all', forAll ? '1' : '0');
+                try {
+                    const res = await fetch('/dialog/clear', { method: 'POST', body: fd });
+                    if (!res.ok) alert('Не удалось очистить историю');
+                } catch (e) { alert('Нет соединения'); }
+            });
+        });
+
+        ctxItem(dlgDelBtn, () => {
+            const user = dlgTarget;
+            if (!user) return;
+            closeDlgMenu();
+            askConfirm({
+                title: 'Удалить чат?',
+                text: 'Чат и все его сообщения будут удалены.',
+                checkLabel: 'Удалить у собеседника тоже',
+                okText: 'Удалить'
+            }, async (forAll) => {
+                const fd = new FormData();
+                fd.append('with', user);
+                fd.append('for_all', forAll ? '1' : '0');
+                try {
+                    const res = await fetch('/dialog/delete', { method: 'POST', body: fd });
+                    if (!res.ok) alert('Не удалось удалить чат');
+                } catch (e) { alert('Нет соединения'); }
+            });
+        });
+
+        // ── Реакция на очистку/удаление диалога (с любого устройства) ───────
+        function onDialogCleared(data) {
+            const peer = data && data.with;
+            if (!peer || !historyState[peer]) return;
+            historyState[peer].messages = [];
+            historyState[peer].oldestId = 0;
+            historyState[peer].allLoaded = false;
+            historyState[peer].lastMsg = '';
+            if (currentUser === peer) renderMessages(historyState[peer].messages);
+            renderDialogList();
+        }
+
+        function onDialogDeleted(data) {
+            const peer = data && data.with;
+            if (!peer) return;
+            delete historyState[peer];
+            delete unreadCount[peer];
+            pinnedDialogs.delete(peer);
+            if (currentUser === peer) {
+                currentUser = null;
+                if (typeof showContacts === 'function') showContacts();
+                else location.reload();
+            }
+            renderDialogList();
+        }
+
         // ── Приход правки/удаления сообщения (от себя и от собеседника) ─────
         // Событие приходит на все устройства обеих сторон, поэтому ищем сообщение
         // в диалоге с любым из участников.
@@ -6622,6 +7136,10 @@
 
         // ── Forward ──────────────────────────────────────────────────────────────
 
+        // Пересылка нескольких сообщений: если задан pendingForwardIds — шлём их
+        // по очереди (сервер принимает по одному), сохраняя исходный порядок.
+        let pendingForwardIds = null;
+
         function openForwardModal(msgId) {
             forwardDialogList.innerHTML = '';
             const logins = Object.keys(historyState).filter(u => u !== currentUser);
@@ -6637,10 +7155,16 @@
                     li.textContent = u;
                     li.addEventListener('click', async () => {
                         forwardModalOverlay.style.display = 'none';
-                        const fd = new FormData();
-                        fd.append('message_id', String(msgId));
-                        fd.append('to', u);
-                        await fetch('/forward', { method: 'POST', body: fd });
+                        const ids = (pendingForwardIds && pendingForwardIds.length)
+                                    ? pendingForwardIds : [msgId];
+                        for (const id of ids) {
+                            const fd = new FormData();
+                            fd.append('message_id', String(id));
+                            fd.append('to', u);
+                            await fetch('/forward', { method: 'POST', body: fd });
+                        }
+                        pendingForwardIds = null;
+                        if (selectionMode) exitSelection();
                     });
                     forwardDialogList.appendChild(li);
                 });
@@ -6650,6 +7174,7 @@
 
         forwardModalClose.addEventListener('click', () => {
             forwardModalOverlay.style.display = 'none';
+            pendingForwardIds = null;
         });
         forwardModalOverlay.addEventListener('click', (e) => {
             if (e.target === forwardModalOverlay) forwardModalOverlay.style.display = 'none';
@@ -6788,19 +7313,23 @@
             startEditing(msg);
         });
 
+        // ── Выбрать сообщения (множественный выбор) ─────────────────────────
+        ctxItem(ctxSelect, () => {
+            if (!ctxTargetMsg) return;
+            const id = ctxTargetMsg.id;
+            closeCtxMenu();
+            enterSelection(id);
+        });
+
         // ── Удалить сообщение ───────────────────────────────────────────────
-        ctxItem(ctxDelete, async () => {
+        ctxItem(ctxDelete, () => {
             if (!ctxTargetMsg) return;
             const msgId = ctxTargetMsg.id;
+            const isMine = !!ctxTargetMsg.own;
             closeCtxMenu();
-            if (!confirm('Удалить это сообщение у всех?')) return;
-            try {
-                const fd = new FormData();
-                fd.append('message_id', String(msgId));
-                const res = await fetch('/delete-message', { method: 'POST', body: fd });
-                if (!res.ok) alert('Не удалось удалить сообщение');
-                // Реальное удаление из списка придёт событием delmsg по WebSocket
-            } catch (e) { alert('Нет соединения'); }
+            // Своё окно: чужое сообщение можно только скрыть у себя,
+            // поэтому галочку «у собеседника» показываем лишь для своих.
+            askDelete(1, isMine, (forAll) => doDeleteMessages([msgId], forAll));
         });
 
         // Режим правки: подставляем текст в поле ввода и показываем панель сверху
@@ -6896,13 +7425,23 @@
                 previewText: getMsgPreviewText(msg)
             };
 
+            // В режиме выбора обычный клик/тап переключает выделение,
+            // а не открывает контекстное меню.
+            wrap.addEventListener('click', (e) => {
+                if (!selectionMode) return;
+                e.preventDefault();
+                e.stopPropagation();
+                toggleSelected(msgData.id);
+            });
+
             // Right-click на десктопе
             wrap.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
+                if (selectionMode) { toggleSelected(msgData.id); return; }
                 openCtxMenu(msgData, e.clientX, e.clientY);
             });
 
-            // Long-press на мобайле (≥500мс)
+            // Long-press на мобайле — та же длительность, что и ПКМ на ПК
             let lpTimer = null;
             let lpMoved = false;
 
@@ -6910,6 +7449,9 @@
                 if (e.touches.length !== 1) return;
                 lpMoved = false;
                 const touch = e.touches[0];
+
+                // В режиме выбора тап просто переключает выделение
+                if (selectionMode) return;
 
                 // Двойной тап — реакция по умолчанию
                 const now = Date.now();
@@ -6925,7 +7467,7 @@
                     if (!lpMoved) {
                         openCtxMenu(msgData, touch.clientX, touch.clientY);
                     }
-                }, 500);
+                }, LONG_PRESS_MS);
             }, { passive: true });
 
             wrap.addEventListener('touchmove', () => { lpMoved = true; clearTimeout(lpTimer); }, { passive: true });

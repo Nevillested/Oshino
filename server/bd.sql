@@ -274,3 +274,51 @@ CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user
 -- а связи это выдерживают (реакции — ON DELETE CASCADE, reply_to_id и
 -- pinned_message_id — ON DELETE SET NULL).
 ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS edited_at timestamp without time zone;
+
+-- ── Удаление сообщений «только у себя» ──────────────────────────────────────
+-- «Удалить у всех» — это физическое удаление строки из messages (см. выше).
+-- «Удалить только у меня» строку не трогает: собеседник должен продолжать
+-- видеть сообщение. Поэтому факт скрытия хранится отдельно, по пользователю,
+-- и история просто не отдаёт такие сообщения тому, кто их скрыл.
+CREATE TABLE IF NOT EXISTS messenger.message_deletions
+(
+    message_id integer NOT NULL,
+    user_id    integer NOT NULL,
+    deleted_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT message_deletions_pkey PRIMARY KEY (message_id, user_id),
+    CONSTRAINT message_deletions_message_id_fkey FOREIGN KEY (message_id)
+        REFERENCES messenger.messages (id) ON DELETE CASCADE,
+    CONSTRAINT message_deletions_user_id_fkey FOREIGN KEY (user_id)
+        REFERENCES messenger.users (id) ON DELETE CASCADE
+)
+TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_message_deletions_user
+    ON messenger.message_deletions USING btree (user_id ASC NULLS LAST)
+    TABLESPACE pg_default;
+
+-- ── Состояние диалога у конкретного пользователя ────────────────────────────
+-- Закрепление и «удаление у себя» — вещи персональные: закрепил чат я, а не оба
+-- участника; удалил чат у себя — собеседник его по-прежнему видит. Поэтому
+-- состояние хранится парой (пользователь, диалог), а не на самом диалоге.
+--
+-- hidden_at: момент «удаления у себя». Диалог не показывается в списке, пока в
+-- нём нет сообщений новее этой отметки — то есть при новом сообщении чат
+-- возвращается в список сам, как в Telegram.
+CREATE TABLE IF NOT EXISTS messenger.dialog_states
+(
+    user_id         integer NOT NULL,
+    conversation_id integer NOT NULL,
+    pinned          boolean NOT NULL DEFAULT false,
+    hidden_at       timestamp without time zone,
+    CONSTRAINT dialog_states_pkey PRIMARY KEY (user_id, conversation_id),
+    CONSTRAINT dialog_states_user_id_fkey FOREIGN KEY (user_id)
+        REFERENCES messenger.users (id) ON DELETE CASCADE,
+    CONSTRAINT dialog_states_conversation_id_fkey FOREIGN KEY (conversation_id)
+        REFERENCES messenger.conversations (id) ON DELETE CASCADE
+)
+TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_dialog_states_user
+    ON messenger.dialog_states USING btree (user_id ASC NULLS LAST)
+    TABLESPACE pg_default;

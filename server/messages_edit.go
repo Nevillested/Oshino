@@ -196,3 +196,119 @@ func (a *App) sendToBoth(fromLogin, toLogin, prefix string, data []byte) {
 		c.trySend(append([]byte(prefix), data...))
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Пакетное удаление (множественный выбор сообщений)
+//
+// Два режима:
+//   for_all=1 — «удалить у всех»: физическое удаление строки. Разрешено только
+//               для СВОИХ сообщений; чужие в этом режиме молча пропускаются.
+//   for_all=0 — «удалить только у меня»: строка остаётся, но помечается скрытой
+//               лично для меня (таблица message_deletions), собеседник её видит.
+//               Так можно скрыть и чужие сообщения — но только у себя.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// handleDeleteMessages — POST /delete-messages (form: message_ids="1,2,3", for_all=0|1)
+func (a *App) handleDeleteMessages(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	forAll := r.FormValue("for_all") == "1"
+	idsRaw := r.FormValue("message_ids")
+	if idsRaw == "" {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	if err := a.db.QueryRow(
+		"SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login,
+	).Scan(&myID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Ограничение на размер пакета — защита от случайного «удалить всё».
+	const maxBatch = 50
+
+	deletedForAll := []int{}
+	hiddenForMe := []int{}
+	otherLogin := ""
+
+	for i, part := range strings.Split(idsRaw, ",") {
+		if i >= maxBatch {
+			break
+		}
+		messageID, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || messageID <= 0 {
+			continue
+		}
+
+		// Проверяем, что сообщение из диалога с участием текущего пользователя
+		var convID, senderID int
+		if err := a.db.QueryRow(
+			"SELECT conversation_id, sender_id FROM messenger.messages WHERE id = $1", messageID,
+		).Scan(&convID, &senderID); err != nil {
+			continue
+		}
+		var u1, u2 sql.NullInt64
+		a.db.QueryRow(
+			"SELECT user1_id, user2_id FROM messenger.conversations WHERE id = $1", convID,
+		).Scan(&u1, &u2)
+		if int64(myID) != u1.Int64 && int64(myID) != u2.Int64 {
+			continue
+		}
+		if otherLogin == "" {
+			otherID := u1.Int64
+			if otherID == int64(myID) {
+				otherID = u2.Int64
+			}
+			a.db.QueryRow("SELECT login FROM messenger.users WHERE id = $1", otherID).Scan(&otherLogin)
+		}
+
+		if forAll {
+			// У всех можно удалять только свои сообщения
+			if senderID != myID {
+				continue
+			}
+			a.db.Exec(
+				"UPDATE messenger.conversations SET pinned_message_id = NULL WHERE id = $1 AND pinned_message_id = $2",
+				convID, messageID,
+			)
+			if _, err := a.db.Exec("DELETE FROM messenger.messages WHERE id = $1", messageID); err == nil {
+				deletedForAll = append(deletedForAll, messageID)
+			}
+		} else {
+			if _, err := a.db.Exec(`
+				INSERT INTO messenger.message_deletions (message_id, user_id)
+				VALUES ($1, $2) ON CONFLICT DO NOTHING
+			`, messageID, myID); err == nil {
+				hiddenForMe = append(hiddenForMe, messageID)
+			}
+		}
+	}
+
+	// Удаление у всех — событие обеим сторонам.
+	for _, id := range deletedForAll {
+		a.broadcastMessageDelete(login, otherLogin, id)
+	}
+	// Скрытие у себя — событие только на МОИ устройства (собеседника не трогаем).
+	for _, id := range hiddenForMe {
+		payload, _ := json.Marshal(map[string]interface{}{"message_id": id, "from": login})
+		a.sendToBoth(login, login, "delmsg:", payload)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":         true,
+		"deleted_for_all": len(deletedForAll),
+		"hidden_for_me":   len(hiddenForMe),
+	})
+}

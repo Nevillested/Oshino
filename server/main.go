@@ -156,6 +156,7 @@ type HistoryMessage struct {
 type DialogEntry struct {
 	Login   string `json:"login"`
 	LastMsg string `json:"last_msg"` // ISO8601 или "" если сообщений нет
+	Pinned  bool   `json:"pinned"`   // закреплён вверху списка (у этого пользователя)
 }
 
 // CallSignal — конверт сигналинга звонков (offer/answer/ice/end/reject).
@@ -350,6 +351,10 @@ func main() {
 	http.HandleFunc("/react", app.handleReact)
 	http.HandleFunc("/edit-message", app.handleEditMessage)
 	http.HandleFunc("/delete-message", app.handleDeleteMessage)
+	http.HandleFunc("/delete-messages", app.handleDeleteMessages)
+	http.HandleFunc("/dialog/pin", app.handleDialogPin)
+	http.HandleFunc("/dialog/clear", app.handleDialogClear)
+	http.HandleFunc("/dialog/delete", app.handleDialogDelete)
 	http.HandleFunc("/settings", app.handleSettings)
 	http.HandleFunc("/change-password", app.handleChangePassword)
 	http.HandleFunc("/display-name", app.handleDisplayName)
@@ -543,16 +548,25 @@ func (a *App) handleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
+	// ds — персональное состояние диалога (закреплён / скрыт после «удалить у себя»).
+	// Скрытый диалог возвращается в список сам, если в нём появилось сообщение
+	// новее отметки скрытия — поэтому фильтр по MAX(created_at), а не жёсткий.
 	rows, err := a.db.Query(`
 		SELECT
 			CASE WHEN u1.login = $1 THEN u2.login ELSE u1.login END AS other_login,
-			COALESCE(MAX(m.created_at)::text, '') AS last_msg
+			COALESCE(MAX(m.created_at)::text, '') AS last_msg,
+			COALESCE(BOOL_OR(ds.pinned), false) AS pinned
 		FROM messenger.conversations c
 		JOIN messenger.users u1 ON u1.id = c.user1_id
 		JOIN messenger.users u2 ON u2.id = c.user2_id
 		LEFT JOIN messenger.messages m ON m.conversation_id = c.id
-		WHERE LOWER(u1.login) = LOWER($1) OR LOWER(u2.login) = LOWER($1)
-		GROUP BY other_login
+		LEFT JOIN messenger.dialog_states ds
+		       ON ds.conversation_id = c.id
+		      AND ds.user_id = (SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1))
+		WHERE (LOWER(u1.login) = LOWER($1) OR LOWER(u2.login) = LOWER($1))
+		GROUP BY other_login, ds.hidden_at
+		HAVING MAX(ds.hidden_at) IS NULL
+		    OR MAX(m.created_at) > MAX(ds.hidden_at)
 	`, login)
 	if err != nil {
 		return nil, err
@@ -562,7 +576,7 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 	var dialogs []DialogEntry
 	for rows.Next() {
 		var e DialogEntry
-		rows.Scan(&e.Login, &e.LastMsg)
+		rows.Scan(&e.Login, &e.LastMsg, &e.Pinned)
 		dialogs = append(dialogs, e)
 	}
 	return dialogs, nil
@@ -752,6 +766,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// id текущего пользователя нужен, чтобы не отдавать ему сообщения,
+	// которые он удалил «только у себя» (собеседник их по-прежнему видит).
+	var myUserID int
+	a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", login).Scan(&myUserID)
+
 	var rows *sql.Rows
 	if beforeID == 0 {
 		rows, err = a.db.Query(`
@@ -768,6 +787,10 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 				       reply_to_id, forwarded_from, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1
+				  AND NOT EXISTS (
+				      SELECT 1 FROM messenger.message_deletions d
+				      WHERE d.message_id = messages.id AND d.user_id = $3
+				  )
 				ORDER BY id DESC
 				LIMIT $2
 			) m
@@ -775,7 +798,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN messenger.messages rm ON rm.id = m.reply_to_id
 			LEFT JOIN messenger.users ru ON ru.id = rm.sender_id
 			ORDER BY m.id ASC
-		`, convID, limit)
+		`, convID, limit, myUserID)
 	} else {
 		rows, err = a.db.Query(`
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
@@ -791,6 +814,10 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 				       reply_to_id, forwarded_from, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
+				  AND NOT EXISTS (
+				      SELECT 1 FROM messenger.message_deletions d
+				      WHERE d.message_id = messages.id AND d.user_id = $4
+				  )
 				ORDER BY id DESC
 				LIMIT $3
 			) m
@@ -798,7 +825,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN messenger.messages rm ON rm.id = m.reply_to_id
 			LEFT JOIN messenger.users ru ON ru.id = rm.sender_id
 			ORDER BY m.id ASC
-		`, convID, beforeID, limit)
+		`, convID, beforeID, limit, myUserID)
 	}
 
 	if err != nil {
