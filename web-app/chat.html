@@ -7274,6 +7274,51 @@
                 }, 320);
             }
 
+            // Касания ВНУТРИ iframe не доходят до внешней страницы, поэтому вешаем
+            // детектор свайса-закрытия прямо на документ iframe (он с того же домена).
+            // Свайп слева направо (те же пороги, что у меню) → закрываем приложение.
+            function attachCloseSwipe(doc) {
+                let sx = 0, sy = 0, tr = false, d = null;
+                doc.addEventListener('touchstart', (e) => {
+                    const t = e.touches[0];
+                    sx = t.clientX; sy = t.clientY;
+                    tr = (sx >= 30);   // не от системного края
+                    d = null;
+                }, { passive: true });
+                doc.addEventListener('touchmove', (e) => {
+                    if (!tr) return;
+                    const t = e.touches[0];
+                    const dx = t.clientX - sx;
+                    const dy = Math.abs(t.clientY - sy);
+                    if (d === null && (Math.abs(dx) > 8 || dy > 8)) d = (Math.abs(dx) > dy) ? 'h' : 'v';
+                    if (d !== 'h') return;
+                    if (dx > 0 && mobAppPage) {
+                        mobAppPage.style.transition = 'none';
+                        mobAppPage.style.transform = `translateX(${dx}px)`;
+                    }
+                }, { passive: true });
+                doc.addEventListener('touchend', (e) => {
+                    if (!tr) return;
+                    tr = false;
+                    if (mobAppPage) { mobAppPage.style.transition = ''; mobAppPage.style.transform = ''; }
+                    if (d !== 'h') return;
+                    const t = e.changedTouches[0];
+                    const dx = t.clientX - sx;
+                    const dy = Math.abs(t.clientY - sy);
+                    if (dy > Math.abs(dx) * 0.7) return;
+                    if (dx > 60) closeMobApp();
+                }, { passive: true });
+            }
+            if (mobAppIframe) {
+                mobAppIframe.addEventListener('load', () => {
+                    try {
+                        const idoc = mobAppIframe.contentDocument ||
+                                     (mobAppIframe.contentWindow && mobAppIframe.contentWindow.document);
+                        if (idoc) attachCloseSwipe(idoc);
+                    } catch (e) { /* другой домен — не наш случай */ }
+                });
+            }
+
             if (pgmPacman)   pgmPacman.addEventListener('click',   () => openMobApp('/pacman'));
             if (pgmMiaBtn)   pgmMiaBtn.addEventListener('click',    () => openMobApp('/app/mia/'));
             if (pgmFilesBtn) pgmFilesBtn.addEventListener('click',  () => openMobApp('/app/files/'));

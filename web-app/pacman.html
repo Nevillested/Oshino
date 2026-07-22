@@ -40,19 +40,19 @@ html, body {
 /* D-pad */
 #dpad {
     display: grid;
-    grid-template-columns: repeat(3, 56px);
-    grid-template-rows: repeat(3, 56px);
-    gap: 18px;
+    grid-template-columns: repeat(3, 66px);
+    grid-template-rows: repeat(3, 66px);
+    gap: 26px;
     justify-content: center;
-    padding: 10px 0 16px;
+    padding: 14px 0 22px;
     flex-shrink: 0;
 }
 .dp {
     background: #1a1a1a;
     color: #ffe000;
     border: 1px solid #333;
-    border-radius: 8px;
-    font-size: 22px;
+    border-radius: 10px;
+    font-size: 28px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1369,7 +1369,7 @@ window.addEventListener('load', function() {
         var keyCode = dpMap[id];
         function fire(e) {
             e.preventDefault();
-            if (navigator.vibrate) navigator.vibrate(20);
+            if (navigator.vibrate) navigator.vibrate(35);
             var ev = new KeyboardEvent('keydown', { keyCode: keyCode, which: keyCode, bubbles: true });
             document.dispatchEvent(ev);
         }
