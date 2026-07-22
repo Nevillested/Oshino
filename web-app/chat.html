@@ -2,7 +2,10 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- interactive-widget=resizes-content: при открытии экранной клавиатуры
+         Chrome/Android сжимает layout viewport, поэтому position:fixed-панель
+         ввода поднимается над клавиатурой, а не прячется под ней. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>Oshino</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon_192.png">
@@ -745,7 +748,10 @@
             background: var(--color-ctx-bg);
             border-radius: 12px;
             box-shadow: 0 4px 24px rgba(0,0,0,0.18);
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
+            max-height: calc(100vh - 16px);
+            -webkit-overflow-scrolling: touch;
             min-width: 180px;
             display: none;
         }
@@ -2645,6 +2651,11 @@
                    учётом safe-area. Дочерние #pin-bar и #messages свой отступ
                    больше НЕ добавляют (см. ниже). */
                 padding-top: calc(56px + env(safe-area-inset-top));
+                /* --kb — высота экранной клавиатуры, считается в JS по
+                   visualViewport. На Android остаётся 0 (там работает
+                   interactive-widget=resizes-content), на iOS Safari,
+                   который этот параметр игнорирует, поднимает низ чата. */
+                bottom: var(--kb, 0px);
                 transform: translateX(100%);
                 transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
                 will-change: transform;
@@ -6755,50 +6766,92 @@
         // Режим выбора включается только когда протяжка захватила минимум два
         // разных сообщения — одиночный клик и обычное выделение текста не мешают.
         (function initDragSelect() {
-            let dragging = false;
-            let dragIds  = [];
+            let dragging = false;      // ЛКМ зажата внутри ленты сообщений
+            let armed    = false;      // курсор прошёл порог в 6px
+            let dragIds  = [];         // порядок обхода сообщений
+            let suppressClick = false; // гасим click, который идёт после протяжки
 
-            function msgIdFromPoint(target) {
-                const wrap = target && target.closest ? target.closest('.message-wrap') : null;
+            let startX = 0, startY = 0;
+
+            // Определяем сообщение по координатам курсора, а не по e.target:
+            // при протяжке над картинками и вложенными узлами target скачет,
+            // из-за чего протяжка раньше не набирала два разных сообщения.
+            function msgIdAt(x, y) {
+                const el   = document.elementFromPoint(x, y);
+                const wrap = el && el.closest ? el.closest('.message-wrap') : null;
                 if (!wrap || !wrap.dataset.msgId) return null;
                 const id = parseInt(wrap.dataset.msgId, 10);
                 return Number.isFinite(id) ? id : null;
+            }
+
+            function pushId(id) {
+                if (id == null || dragIds.includes(id)) return;
+                dragIds.push(id);
             }
 
             messagesDiv.addEventListener('mousedown', (e) => {
                 if (e.button !== 0) return;          // только ЛКМ
                 if (selectionMode) return;           // уже в режиме выбора
                 dragging = true;
-                dragIds = [];
-                const id = msgIdFromPoint(e.target);
-                if (id != null) dragIds.push(id);
+                armed    = false;
+                dragIds  = [];
+                startX = e.clientX;
+                startY = e.clientY;
+                pushId(msgIdAt(e.clientX, e.clientY));
             });
 
-            messagesDiv.addEventListener('mousemove', (e) => {
+            // Слушаем на document: если курсор на миг вышел за пределы ленты,
+            // протяжка не должна обрываться.
+            document.addEventListener('mousemove', (e) => {
                 if (!dragging) return;
-                if (e.buttons !== 1) { dragging = false; return; }
-                const id = msgIdFromPoint(e.target);
-                if (id != null && !dragIds.includes(id)) dragIds.push(id);
+                if (!(e.buttons & 1)) { dragging = false; return; }
 
-                // Два разных сообщения под протяжкой — включаем режим выбора
-                if (!selectionMode && dragIds.length >= 2) {
+                if (!armed) {
+                    const dx = e.clientX - startX, dy = e.clientY - startY;
+                    if (dx * dx + dy * dy < 36) return;   // порог 6px
+                    armed = true;
+                }
+
+                pushId(msgIdAt(e.clientX, e.clientY));
+
+                // Режим выбора включается только когда протяжка захватила
+                // минимум два разных сообщения — одиночный клик не мешает.
+                if (!selectionMode) {
+                    if (dragIds.length < 2) return;
                     enterSelection(null);
-                    dragIds.slice(0, MAX_SELECTED).forEach(x => selectedIds.add(x));
-                    updateSelectionUI();
-                    // снимаем случайное выделение текста
                     const sel = window.getSelection && window.getSelection();
                     if (sel && sel.removeAllRanges) sel.removeAllRanges();
-                } else if (selectionMode && id != null && !selectedIds.has(id)) {
-                    if (selectedIds.size < MAX_SELECTED) {
-                        selectedIds.add(id);
-                        updateSelectionUI();
-                    } else {
-                        showToastLimit();
-                    }
                 }
+
+                let overflow = false;
+                dragIds.forEach(id => {
+                    if (selectedIds.has(id)) return;
+                    if (selectedIds.size >= MAX_SELECTED) { overflow = true; return; }
+                    selectedIds.add(id);
+                });
+                updateSelectionUI();
+                if (overflow) showToastLimit();
+
+                suppressClick = true;
+                e.preventDefault();
             });
 
-            document.addEventListener('mouseup', () => { dragging = false; dragIds = []; });
+            document.addEventListener('mouseup', () => {
+                dragging = false;
+                armed    = false;
+                dragIds  = [];
+                // click приходит сразу после mouseup, а таймер — уже после него,
+                // так что флаг успевает сработать ровно один раз.
+                if (suppressClick) setTimeout(() => { suppressClick = false; }, 0);
+            });
+
+            // Иначе click по последнему сообщению протяжки тут же снимал с
+            // него выделение (обработчик выбора в attachContextMenuHandlers).
+            messagesDiv.addEventListener('click', (e) => {
+                if (!suppressClick) return;
+                e.preventDefault();
+                e.stopPropagation();
+            }, true);
         })();
 
         // Переслать выбранные — по одному через существующий /forward
@@ -6914,8 +6967,8 @@
             dlgTarget = null;
         }
 
-        // Тот же бэкдроп закрывает оба меню
-        ctxBackdrop.addEventListener('click', closeDlgMenu);
+        // Бэкдроп закрывает оба меню — единый обработчик объявлен ниже,
+        // рядом с closeCtxMenu (closeAllCtxMenus).
 
         // Вешается на каждый пункт списка диалогов (сайдбар и приветственный экран)
         function attachDialogMenu(el, user) {
@@ -7254,22 +7307,30 @@
             ctxCopy.style.display = msg.text ? 'flex' : 'none';
 
             // Изменить — только своё текстовое сообщение (у медиа и звонков текста нет).
-            // Удалить — любое своё сообщение. Чужие править/удалять нельзя.
+            // Удалить — любое сообщение: своё можно удалить у обоих, чужое —
+            // только скрыть у себя. Выбор даёт галочка в окне подтверждения,
+            // ровно как при пакетном удалении через панель выбора.
             const isMine = !!msg.own;
             const isPlainText = !!msg.text && !msg.image_id && !msg.audio_id && !msg.call_type;
             ctxEdit.style.display   = (isMine && isPlainText) ? 'flex' : 'none';
-            ctxDelete.style.display = isMine ? 'flex' : 'none';
+            ctxDelete.style.display = (msg.id > 0) ? 'flex' : 'none';
 
             buildCtxReactionRow(msg.id);
 
             ctxMenu.classList.add('open');
             ctxBackdrop.classList.add('open');
 
-            // Позиционирование — стараемся не выйти за экран
-            const mw = 220, mh = ctxMenu.offsetHeight || 280;
+            // Позиционирование. Меряем реальные размеры уже открытого меню и
+            // зажимаем их в границы экрана — иначе на невысоком окне ПК низ
+            // меню уходил за край и пункт «Удалить» просто не был виден.
             const vw = window.innerWidth, vh = window.innerHeight;
-            const left = Math.min(x, vw - mw - 8);
-            const top = y + mh > vh ? Math.max(8, y - mh) : y;
+            const rect = ctxMenu.getBoundingClientRect();
+            const mw = rect.width  || 220;
+            const mh = rect.height || 280;
+            let left = Math.min(x, vw - mw - 8);
+            let top  = (y + mh > vh - 8) ? (y - mh) : y;
+            if (top  < 8) top  = Math.max(8, vh - mh - 8);
+            if (left < 8) left = 8;
             ctxMenu.style.left = left + 'px';
             ctxMenu.style.top = top + 'px';
         }
@@ -7280,8 +7341,32 @@
             ctxTargetMsg = null;
         }
 
-        ctxBackdrop.addEventListener('click', closeCtxMenu);
-        ctxBackdrop.addEventListener('touchend', (e) => { e.preventDefault(); closeCtxMenu(); }, { passive: false });
+        // ── Закрытие контекстных меню ───────────────────────────────────────
+        // Раньше на бэкдропе висели два независимых обработчика: click →
+        // closeDlgMenu и touchend → closeCtxMenu с preventDefault. На телефоне
+        // preventDefault гасил синтетический click, поэтому меню диалога не
+        // закрывалось вообще. Теперь одна функция закрывает оба меню, и она же
+        // вызывается при навигации между страницами и по Escape.
+        function closeAllCtxMenus() {
+            closeCtxMenu();
+            closeDlgMenu();
+        }
+
+        ctxBackdrop.addEventListener('click', (e) => { e.preventDefault(); closeAllCtxMenus(); });
+        ctxBackdrop.addEventListener('touchend', (e) => { e.preventDefault(); closeAllCtxMenus(); }, { passive: false });
+        ctxBackdrop.addEventListener('contextmenu', (e) => { e.preventDefault(); closeAllCtxMenus(); });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeAllCtxMenus();
+        });
+
+        // Прокрутка списка диалогов или ленты сообщений тоже закрывает меню —
+        // иначе оно «отклеивается» от элемента, к которому относилось.
+        window.addEventListener('scroll', (e) => {
+            const t = e.target;
+            if (t && t.nodeType === 1 && (ctxMenu.contains(t) || dlgMenu.contains(t))) return;
+            closeAllCtxMenus();
+        }, true);
 
         // Хелпер: вешает и click и touchend (для iOS) на кнопку меню
         function ctxItem(el, handler) {
@@ -8099,6 +8184,36 @@
         })();
 
         // ── bg-anim toggle (settings) ────────────────────────────────────────
+
+        // ══ Высота экранной клавиатуры ══════════════════════════════════════
+        // Android (Chrome 108+) сжимает layout viewport сам — благодаря
+        // interactive-widget=resizes-content в meta viewport, и здесь --kb
+        // остаётся нулевой. iOS Safari этот параметр игнорирует: там layout
+        // viewport не меняется, поэтому высоту клавиатуры считаем как разницу
+        // между окном и визуальным вьюпортом и отдаём её в CSS-переменную.
+        (function trackKeyboard() {
+            const vv = window.visualViewport;
+            if (!vv) return;
+            const update = () => {
+                const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+                // Мелкие расхождения (адресная строка, округление) игнорируем
+                document.documentElement.style.setProperty('--kb', (kb > 80 ? kb : 0) + 'px');
+            };
+            vv.addEventListener('resize', update);
+            vv.addEventListener('scroll', update);
+            update();
+        })();
+
+        // Снять фокус с любого поля ввода — клавиатура закрывается.
+        // Используется при уходе со страницы чата (кнопка ← и свайп вправо).
+        function closeKeyboard() {
+            const el = document.activeElement;
+            if (el && typeof el.blur === 'function' &&
+                (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) {
+                el.blur();
+            }
+        }
+
         // ═══════════════════════════════════════════════════════════════
         // MOBILE: три страницы  <768px
         // Стр.1 = меню (#pg-menu)         ← тянуть вправо со стр.2
@@ -8157,10 +8272,15 @@
 
             // ── переключение страниц ──────────────────────────────────
             function showMenu() {
+                closeKeyboard();
+                if (typeof closeAllCtxMenus === 'function') closeAllCtxMenus();
                 body.classList.add('mob-menu');
                 body.classList.remove('mob-chat');
             }
             function showContacts() {
+                // Чат закрыт — клавиатура и контекстные меню тоже
+                closeKeyboard();
+                if (typeof closeAllCtxMenus === 'function') closeAllCtxMenus();
                 // Закрываем все панели настроек перед уходом
                 if (settingsPanel) { settingsPanel.classList.remove('open'); delete settingsPanel.dataset.fromMenu; }
                 settingsSubmenus.forEach(s => s.classList.remove('open'));
@@ -8407,7 +8527,9 @@
 
                 // Визуальная отзывчивость во время свайпа
                 if (body.classList.contains('mob-chat') && dx > 0) {
-                    // стр.3 → тянем вправо
+                    // стр.3 → тянем вправо. Клавиатуру убираем сразу на старте
+                    // жеста, чтобы она не «висела» поверх уезжающего чата.
+                    if (dx > 20) closeKeyboard();
                     chatEl.style.transition = 'none';
                     chatEl.style.transform = `translateX(${dx}px)`;
                 } else if (body.classList.contains('mob-menu') && dx < 0) {
