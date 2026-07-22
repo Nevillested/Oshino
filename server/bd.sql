@@ -267,5 +267,10 @@ CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user
     (user_id ASC NULLS LAST)
     TABLESPACE pg_default;
 
-ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS can_channel smallint NOT NULL DEFAULT 0;
-ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS can_files   smallint NOT NULL DEFAULT 0;
+-- ── Редактирование сообщений ────────────────────────────────────────────────
+-- edited_at: время последней правки текста. NULL = сообщение не редактировалось.
+-- Нужна, чтобы пометка «изменено» сохранялась и после перезагрузки страницы.
+-- Удаление сообщений отдельной колонки не требует: строка удаляется физически,
+-- а связи это выдерживают (реакции — ON DELETE CASCADE, reply_to_id и
+-- pinned_message_id — ON DELETE SET NULL).
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS edited_at timestamp without time zone;

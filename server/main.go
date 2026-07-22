@@ -35,9 +35,9 @@ import (
 )
 
 type App struct {
-	db      *sql.DB
-	mu      sync.Mutex
-	clients map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
+	db *sql.DB
+	mu sync.Mutex
+	clients  map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
 
 	// defaultContact — логин пользователя с id=1, добавляется всем как контакт по умолчанию.
 	// Читается один раз при старте, чтобы не дёргать БД на каждую отправку списка диалогов.
@@ -99,7 +99,7 @@ type Client struct {
 	conn    *websocket.Conn
 	send    chan []byte
 	done    chan struct{} // закрывается один раз в readPump при отключении
-	focused bool          // true — вкладка видима и в фокусе (браузер на переднем плане)
+	focused bool         // true — вкладка видима и в фокусе (браузер на переднем плане)
 }
 
 type Message struct {
@@ -162,7 +162,7 @@ type DialogEntry struct {
 // Сервер не интерпретирует SDP/ICE содержимое, только маршрутизирует между
 // устройствами from/to — ровно так же, как Message, но без сохранения в БД.
 type CallSignal struct {
-	Type      string `json:"type"` // call-offer | call-answer | call-ice | call-end | call-reject | call-video-on | call-video-on-answer
+	Type      string `json:"type"`                // call-offer | call-answer | call-ice | call-end | call-reject | call-video-on | call-video-on-answer
 	From      string `json:"from"`
 	To        string `json:"to"`
 	CallID    string `json:"call_id"`             // генерируется звонящим, привязывает все сообщения одного звонка
@@ -348,6 +348,8 @@ func main() {
 	http.HandleFunc("/unpin", app.handleUnpin)
 	http.HandleFunc("/forward", app.handleForward)
 	http.HandleFunc("/react", app.handleReact)
+	http.HandleFunc("/edit-message", app.handleEditMessage)
+	http.HandleFunc("/delete-message", app.handleDeleteMessage)
 	http.HandleFunc("/settings", app.handleSettings)
 	http.HandleFunc("/change-password", app.handleChangePassword)
 	http.HandleFunc("/display-name", app.handleDisplayName)
@@ -759,11 +761,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       m.call_type, m.call_status, m.call_duration,
 			       m.reply_to_id, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
-			       m.forwarded_from, m.is_read
+			       m.forwarded_from, m.is_read, m.edited_at
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration, call_type, call_status, call_duration,
-				       reply_to_id, forwarded_from, is_read
+				       reply_to_id, forwarded_from, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				ORDER BY id DESC
@@ -782,11 +784,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       m.call_type, m.call_status, m.call_duration,
 			       m.reply_to_id, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
-			       m.forwarded_from, m.is_read
+			       m.forwarded_from, m.is_read, m.edited_at
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration, call_type, call_status, call_duration,
-				       reply_to_id, forwarded_from, is_read
+				       reply_to_id, forwarded_from, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				ORDER BY id DESC
@@ -823,6 +825,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		ReplyPreview  *ReplyPreview  `json:"reply_preview,omitempty"`
 		ForwardedFrom string         `json:"forwarded_from,omitempty"`
 		IsRead        bool           `json:"is_read"`
+		EditedAt      string         `json:"edited_at,omitempty"`
 		Reactions     []ReactionInfo `json:"reactions,omitempty"`
 	}
 
@@ -841,18 +844,22 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var replyHasImage, replyHasAudio sql.NullBool
 		var replyCallType sql.NullString
 		var forwardedFrom sql.NullString
+		var editedAt sql.NullTime
 		if err := rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
 			&imageMime, &imageFilename, &hasImage,
 			&hasAudio, &audioDuration,
 			&callType, &callStatus, &callDuration,
 			&replyToID, &replyFrom, &replyContent,
 			&replyHasImage, &replyHasAudio, &replyCallType,
-			&forwardedFrom, &m.IsRead); err != nil {
+			&forwardedFrom, &m.IsRead, &editedAt); err != nil {
 			log.Printf("handleHistory Scan error: %v", err)
 			continue
 		}
 		m.Own = strings.EqualFold(m.From, login)
 		m.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		if editedAt.Valid {
+			m.EditedAt = editedAt.Time.UTC().Format(time.RFC3339)
+		}
 		if hasImage {
 			m.ImageID = m.ID
 			m.ImageMime = imageMime.String
@@ -1668,10 +1675,10 @@ func (a *App) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 // pushNotificationPayload — JSON, который попадёт в event.data внутри Service Worker
 // (sw.js его парсит и решает, какой заголовок/текст/действие показать).
 type pushNotificationPayload struct {
-	Type   string `json:"type"` // "call" | "message"
-	From   string `json:"from"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
+	Type  string `json:"type"`            // "call" | "message"
+	From  string `json:"from"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
 	CallID string `json:"call_id,omitempty"`
 }
 
@@ -2053,9 +2060,7 @@ func (c *Client) readPump(a *App) {
 			a.routeMessage(msg)
 		} else if strings.HasPrefix(msgStr, "typing:") {
 			// typing:{"to":"login"} — пересылаем получателю typing:{"from":"..."}
-			var payload struct {
-				To string `json:"to"`
-			}
+			var payload struct{ To string `json:"to"` }
 			if err := json.Unmarshal([]byte(msgStr[7:]), &payload); err == nil && payload.To != "" {
 				toLogin := strings.ToLower(payload.To)
 				notif, _ := json.Marshal(map[string]string{"from": c.login})
@@ -2067,9 +2072,7 @@ func (c *Client) readPump(a *App) {
 			}
 		} else if strings.HasPrefix(msgStr, "typingstop:") {
 			// typingstop:{"to":"login"} — пересылаем получателю typingstop:{"from":"..."}
-			var payload struct {
-				To string `json:"to"`
-			}
+			var payload struct{ To string `json:"to"` }
 			if err := json.Unmarshal([]byte(msgStr[11:]), &payload); err == nil && payload.To != "" {
 				toLogin := strings.ToLower(payload.To)
 				notif, _ := json.Marshal(map[string]string{"from": c.login})
