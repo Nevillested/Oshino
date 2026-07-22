@@ -1374,7 +1374,31 @@
             display: flex;
             align-items: center;
             width: 100%;
-            gap: 10px;
+            gap: 6px;
+        }
+
+        /* Группа медиа-кнопок */
+        #attach-btn, #camera-btn, #mic-btn, #video-btn {
+            background: none;
+            color: #4a90e2;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            min-width: 36px;
+            min-height: 36px;
+        }
+
+        #attach-btn:hover, #camera-btn:hover, #mic-btn:hover, #video-btn:hover {
+            background: rgba(74, 144, 226, 0.1);
+        }
+
+        #attach-btn:active, #camera-btn:active, #mic-btn:active, #video-btn:active {
+            background: rgba(74, 144, 226, 0.2);
         }
 
         #form-area textarea {
@@ -1388,6 +1412,11 @@
             background: var(--color-input-bar-bg);
             color: var(--color-input-text);
             transition: background 0.3s, color 0.3s, border-color 0.3s;
+            resize: none;
+            overflow-y: auto;
+            min-height: 44px;
+            max-height: 120px;
+            line-height: 1.4;
         }
 
         #form-area textarea:disabled {
@@ -1396,7 +1425,7 @@
         }
 
         #send-btn {
-            padding: 9px 18px;
+            padding: 0 18px;
             background: #4a90e2;
             color: white;
             border: none;
@@ -1406,6 +1435,11 @@
             font-weight: 600;
             white-space: nowrap;
             flex-shrink: 0;
+            min-height: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #send-btn:active {
@@ -1444,26 +1478,16 @@
 
         #attach-btn:disabled {
             color: #ccc;
-            background: none;
+            opacity: 0.5;
             cursor: not-allowed;
         }
 
         /* ── Быстрое фото: кнопка и полноэкранная камера ─────────────────── */
-        #camera-btn {
-            background: none;
-            color: #4a90e2;
-            padding: 9px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
+        #camera-btn:disabled, #mic-btn:disabled, #video-btn:disabled {
+            color: #ccc;
+            opacity: 0.5;
+            cursor: not-allowed;
         }
-        #camera-btn:hover  { background: #f0f0f0; }
-        #camera-btn:active { background: #e5e5e5; }
-        #camera-btn:disabled { color: #ccc; background: none; cursor: not-allowed; }
 
         #camera-overlay {
             position: fixed;
@@ -1530,7 +1554,137 @@
             display: none;
         }
 
-        #mic-btn {
+        /* ── Видеокружок ───────────────────────────────────────────────── */
+        #video-circle-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            background: #000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #video-circle-overlay.open { display: flex; }
+        #video-circle-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+            transform: scaleX(-1); /* зеркалим фронтальную камеру */
+        }
+        #video-circle-timer {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 24px;
+            font-weight: 600;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+            z-index: 2001;
+        }
+        #video-circle-controls {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 18px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.65));
+        }
+        #video-circle-record-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+        #video-circle-record {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: #e63946;
+            border: 5px solid rgba(230,57,70,0.45);
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.2s;
+        }
+        #video-circle-record:active { transform: scale(0.94); }
+        #video-circle-record.recording {
+            background: #fff;
+            border-color: rgba(255,255,255,0.45);
+            animation: pulse-record 1.5s ease-in-out infinite;
+        }
+        #video-circle-record.locked {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            background: #e63946;
+            border: none;
+        }
+        @keyframes pulse-record {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        #video-circle-lock-hint {
+            display: none;
+            color: #fff;
+            font-size: 13px;
+            opacity: 0.8;
+        }
+        #video-circle-lock-hint.show {
+            display: block;
+            animation: slide-up 0.3s ease-out;
+        }
+        @keyframes slide-up {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 0.8; }
+        }
+        #video-circle-actions {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 18px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.65));
+        }
+        #video-circle-actions button {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #video-circle-cancel {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+        }
+        #video-circle-send {
+            background: #4a90e2;
+            color: #fff;
+        }
+        #video-circle-error {
+            position: absolute;
+            top: 50%;
+            left: 0; right: 0;
+            transform: translateY(-50%);
+            color: #fff;
+            text-align: center;
+            padding: 0 24px;
+            font-size: 15px;
+            display: none;
+        }
+
+        #mic-btn, #video-btn {
             background: none;
             color: #4a90e2;
             padding: 9px;
@@ -1543,8 +1697,8 @@
             cursor: pointer;
         }
 
-        #mic-btn:hover { background: #f0f0f0; }
-        #mic-btn:active { background: #e5e5e5; }
+        #mic-btn:hover, #video-btn:hover { background: #f0f0f0; }
+        #mic-btn:active, #video-btn:active { background: #e5e5e5; }
         #mic-btn.recording {
             color: #e74c3c;
             animation: mic-pulse 1.2s ease-in-out infinite;
@@ -3142,6 +3296,40 @@
         </div>
     </div>
 
+    <!-- Запись видеокружка: полноэкранная камера с таймером и управлением -->
+    <div id="video-circle-overlay">
+        <video id="video-circle-video" autoplay playsinline muted></video>
+        <div id="video-circle-error"></div>
+        <div id="video-circle-timer">0:00</div>
+        <div id="video-circle-controls">
+            <button class="cam-side-btn" id="video-circle-close" type="button" title="Закрыть">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line>
+                </svg>
+            </button>
+            <div id="video-circle-record-wrapper">
+                <button id="video-circle-record" type="button" title="Удерживайте для записи"></button>
+                <div id="video-circle-lock-hint">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                </div>
+            </div>
+            <button class="cam-side-btn" id="video-circle-flip" type="button" title="Перевернуть камеру">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
+                    <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"></path>
+                </svg>
+            </button>
+        </div>
+        <div id="video-circle-actions" style="display: none;">
+            <button id="video-circle-cancel" type="button">Отменить</button>
+            <button id="video-circle-send" type="button">Отправить</button>
+        </div>
+    </div>
+
     <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
     <div id="app-layout">
     <!-- ── Левая панель (desktop) ─────────────────────────────────────────── -->
@@ -3465,6 +3653,13 @@
                         <path d="M5 10a7 7 0 0 0 14 0"></path>
                         <line x1="12" y1="19" x2="12" y2="22"></line>
                         <line x1="8" y1="22" x2="16" y2="22"></line>
+                    </svg>
+                </button>
+                <button id="video-btn" type="button" title="Видеокружок">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <line x1="12" y1="2" x2="12" y2="4"></line>
                     </svg>
                 </button>
                 <textarea placeholder="Сообщение..."></textarea>
@@ -4040,6 +4235,15 @@
                     ws.send('typingstop:' + JSON.stringify({ to: currentUser }));
                 }
             }, 2500);
+        }
+
+        // Авторастяжение textarea и синхронизация высоты кнопки "Отправить"
+        function autoResizeTextarea() {
+            inputField.style.height = 'auto';
+            const newHeight = Math.min(inputField.scrollHeight, 120); // max-height: 120px
+            inputField.style.height = newHeight + 'px';
+            // Синхронизируем высоту кнопки "Отправить" с textarea
+            sendBtn.style.height = newHeight + 'px';
         }
 
         // Прочитать текущий открытый диалог при возврате фокуса
@@ -5015,7 +5219,10 @@
             }
         });
 
-        inputField.addEventListener('input', handleInputTyping);
+        inputField.addEventListener('input', () => {
+            handleInputTyping();
+            autoResizeTextarea();
+        });
 
         // Тап по кнопке «Отправить» по умолчанию переводит фокус на саму кнопку,
         // а уход фокуса из textarea закрывает экранную клавиатуру. preventDefault
@@ -5087,6 +5294,7 @@
             }
 
             inputField.value = '';
+            autoResizeTextarea(); // Возвращаем textarea к минимальной высоте
             // Сбрасываем typing indicator при отправке
             clearTimeout(myTypingTimer);
             if (myTypingSent && wsReady) {
@@ -5425,6 +5633,7 @@
                 return;
             }
             imageInput.click();
+            attachBtn.blur(); // Убираем фокус с кнопки после нажатия
         });
 
         imageInput.addEventListener('change', () => {
@@ -5508,7 +5717,10 @@
             stopCamera();
         }
 
-        if (cameraBtn)   cameraBtn.addEventListener('click', openCamera);
+        if (cameraBtn)   cameraBtn.addEventListener('click', () => {
+            openCamera();
+            cameraBtn.blur(); // Убираем фокус с кнопки после нажатия
+        });
         if (cameraClose) cameraClose.addEventListener('click', closeCamera);
         if (cameraFlip)  cameraFlip.addEventListener('click', () => {
             cameraFacing = (cameraFacing === 'user') ? 'environment' : 'user';
@@ -5664,6 +5876,7 @@
 
         micBtn.addEventListener('click', async () => {
             if (!currentUser) { alert('Выберите пользователя'); return; }
+            micBtn.blur(); // Убираем фокус с кнопки после нажатия
             if (isRecording) {
                 stopRecording(false); // false = отправить
             } else {
@@ -5851,6 +6064,311 @@
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
         }
+
+        /* ── Видеокружки ──────────────────────────────────────────────────
+           Запись видеокружка с камерой, возможностью блокировки записи
+           и переворота камеры во время съёмки. */
+        const videoBtn = document.getElementById('video-btn');
+        const videoCircleOverlay = document.getElementById('video-circle-overlay');
+        const videoCircleVideo = document.getElementById('video-circle-video');
+        const videoCircleTimer = document.getElementById('video-circle-timer');
+        const videoCircleRecord = document.getElementById('video-circle-record');
+        const videoCircleClose = document.getElementById('video-circle-close');
+        const videoCircleFlip = document.getElementById('video-circle-flip');
+        const videoCircleLockHint = document.getElementById('video-circle-lock-hint');
+        const videoCircleActions = document.getElementById('video-circle-actions');
+        const videoCircleCancel = document.getElementById('video-circle-cancel');
+        const videoCircleSend = document.getElementById('video-circle-send');
+        const videoCircleError = document.getElementById('video-circle-error');
+
+        let videoCircleStream = null;
+        let videoCircleFacing = 'user'; // фронтальная по умолчанию
+        let videoCircleRecorder = null;
+        let videoCircleChunks = [];
+        let videoCircleRecording = false;
+        let videoCircleLocked = false;
+        let videoCircleSeconds = 0;
+        let videoCircleTimerInterval = null;
+        let videoCircleRecordBlob = null;
+        let videoCirclePressTimer = null;
+
+        async function startVideoCircleCamera() {
+            stopVideoCircleCamera();
+            videoCircleError.style.display = 'none';
+            try {
+                videoCircleStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: videoCircleFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: true
+                });
+                videoCircleVideo.srcObject = videoCircleStream;
+            } catch (e) {
+                videoCircleError.textContent = 'Нет доступа к камере или микрофону. Разрешите доступ в настройках браузера.';
+                videoCircleError.style.display = 'block';
+            }
+        }
+
+        function stopVideoCircleCamera() {
+            if (videoCircleStream) {
+                videoCircleStream.getTracks().forEach(t => t.stop());
+                videoCircleStream = null;
+            }
+            videoCircleVideo.srcObject = null;
+        }
+
+        function openVideoCircle() {
+            if (!currentUser) { alert('Выберите пользователя'); return; }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Ваш браузер не поддерживает запись видео');
+                return;
+            }
+            videoCircleOverlay.classList.add('open');
+            startVideoCircleCamera();
+        }
+
+        function closeVideoCircle() {
+            stopVideoCircleRecording(true); // отменяем запись если была
+            videoCircleOverlay.classList.remove('open');
+            stopVideoCircleCamera();
+            videoCircleRecordBlob = null;
+            videoCircleActions.style.display = 'none';
+            videoCircleRecord.parentElement.style.display = 'flex';
+        }
+
+        function startVideoCircleRecording() {
+            if (!videoCircleStream || videoCircleRecording) return;
+
+            const mimeType = getSupportedVideoMime();
+            const options = mimeType ? { mimeType, videoBitsPerSecond: 2500000 } : {};
+
+            try {
+                videoCircleRecorder = new MediaRecorder(videoCircleStream, options);
+            } catch (e) {
+                alert('Ошибка инициализации записи видео');
+                return;
+            }
+
+            videoCircleChunks = [];
+
+            videoCircleRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) videoCircleChunks.push(e.data);
+            };
+
+            videoCircleRecorder.onstop = () => {
+                // Обработка завершения записи
+            };
+
+            videoCircleRecorder.start(250);
+            videoCircleRecording = true;
+            videoCircleSeconds = 0;
+            videoCircleRecord.classList.add('recording');
+            updateVideoCircleTimer();
+            videoCircleTimerInterval = setInterval(updateVideoCircleTimer, 1000);
+
+            // Показываем подсказку о блокировке
+            if (!videoCircleLocked) {
+                videoCircleLockHint.classList.add('show');
+            }
+        }
+
+        function stopVideoCircleRecording(cancel) {
+            if (!videoCircleRecorder || !videoCircleRecording) return;
+            videoCircleRecording = false;
+            videoCircleLocked = false;
+
+            clearInterval(videoCircleTimerInterval);
+            videoCircleTimerInterval = null;
+
+            const duration = videoCircleSeconds;
+
+            videoCircleRecorder.onstop = () => {
+                if (!cancel && videoCircleChunks.length > 0) {
+                    const mimeType = videoCircleRecorder.mimeType || getSupportedVideoMime() || 'video/webm';
+                    videoCircleRecordBlob = new Blob(videoCircleChunks, { type: mimeType });
+
+                    // Показываем кнопки отправки/отмены
+                    videoCircleActions.style.display = 'flex';
+                    videoCircleRecord.parentElement.style.display = 'none';
+                }
+                videoCircleChunks = [];
+            };
+
+            videoCircleRecorder.stop();
+            videoCircleRecord.classList.remove('recording');
+            videoCircleLockHint.classList.remove('show');
+        }
+
+        function updateVideoCircleTimer() {
+            const m = Math.floor(videoCircleSeconds / 60);
+            const s = videoCircleSeconds % 60;
+            videoCircleTimer.textContent = m + ':' + String(s).padStart(2, '0');
+            videoCircleSeconds++;
+
+            // Автостоп через 60 секунд
+            if (videoCircleSeconds >= 60) {
+                stopVideoCircleRecording(false);
+            }
+        }
+
+        function getSupportedVideoMime() {
+            const candidates = [
+                'video/webm;codecs=vp9,opus',
+                'video/webm;codecs=vp8,opus',
+                'video/webm;codecs=h264,opus',
+                'video/webm',
+                'video/mp4'
+            ];
+            for (const c of candidates) {
+                if (MediaRecorder.isTypeSupported(c)) return c;
+            }
+            return '';
+        }
+
+        function uploadVideoCircle(blob, duration) {
+            if (!currentUser) return;
+
+            const cleanMime = (videoCircleRecorder?.mimeType || getSupportedVideoMime() || 'video/webm').split(';')[0].trim();
+
+            const formData = new FormData();
+            const ext = cleanMime.includes('mp4') ? 'mp4' : 'webm';
+            formData.append('file', blob, 'video_circle.' + ext);
+            formData.append('to', currentUser);
+            formData.append('duration', String(duration));
+            if (replyingTo) formData.append('reply_to', String(replyingTo.id));
+
+            const xhr = new XMLHttpRequest();
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    let resp = {};
+                    try { resp = JSON.parse(xhr.responseText); } catch (e) {}
+                    addPendingVideoMessage(currentUser, blob, cleanMime, duration, resp);
+                } else {
+                    alert('Ошибка отправки видеокружка');
+                }
+            });
+            xhr.addEventListener('error', () => alert('Ошибка соединения'));
+            xhr.open('POST', '/upload-video-circle');
+            xhr.send(formData);
+
+            closeVideoCircle();
+        }
+
+        function addPendingVideoMessage(user, blob, mimeType, duration, resp) {
+            const state = historyState[user];
+            if (!state) return;
+
+            if (resp && resp.video_id) {
+                const existing = state.messages.find(m => m.video_id === resp.video_id);
+                if (existing) {
+                    if (!existing.local_video_url) {
+                        existing.local_video_url = URL.createObjectURL(blob);
+                        setTimeout(() => {
+                            if (existing.local_video_url) {
+                                URL.revokeObjectURL(existing.local_video_url);
+                                delete existing.local_video_url;
+                                if (currentUser === user) renderMessages(state.messages);
+                            }
+                        }, 5000);
+                    }
+                    if (!existing.video_duration) existing.video_duration = duration;
+                    delete existing.pending;
+                    if (currentUser === user) renderMessages(state.messages);
+                    return;
+                }
+            }
+
+            const tmpId = -(Date.now());
+            const localUrl = URL.createObjectURL(blob);
+
+            const msgEntry = {
+                id: tmpId,
+                from: currentLogin,
+                own: true,
+                isVideoCircle: true,
+                local_video_url: localUrl,
+                video_duration: duration,
+                created_at: resp.created_at || new Date().toISOString()
+            };
+
+            if (resp.video_id) {
+                msgEntry.video_id = resp.video_id;
+                setTimeout(() => {
+                    if (msgEntry.local_video_url) {
+                        URL.revokeObjectURL(msgEntry.local_video_url);
+                        delete msgEntry.local_video_url;
+                        if (currentUser === user) renderMessages(state.messages);
+                    }
+                }, 5000);
+            } else {
+                msgEntry.pending = true;
+            }
+
+            state.messages.push(msgEntry);
+            if (currentUser === user) {
+                renderMessages(state.messages);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        // Обработчики событий для видеокружков
+        if (videoBtn) videoBtn.addEventListener('click', () => {
+            openVideoCircle();
+            videoBtn.blur();
+        });
+
+        if (videoCircleClose) videoCircleClose.addEventListener('click', closeVideoCircle);
+
+        if (videoCircleFlip) videoCircleFlip.addEventListener('click', () => {
+            videoCircleFacing = (videoCircleFacing === 'user') ? 'environment' : 'user';
+            // Зеркалим видео для фронтальной камеры
+            videoCircleVideo.style.transform = (videoCircleFacing === 'user') ? 'scaleX(-1)' : 'scaleX(1)';
+            startVideoCircleCamera();
+        });
+
+        // Удержание кнопки записи
+        if (videoCircleRecord) {
+            videoCircleRecord.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                if (videoCircleRecording) return;
+
+                videoCirclePressTimer = setTimeout(() => {
+                    // Долгое удержание — блокируем запись
+                    videoCircleLocked = true;
+                    videoCircleRecord.classList.add('locked');
+                    videoCircleLockHint.classList.remove('show');
+                }, 500);
+
+                startVideoCircleRecording();
+            });
+
+            videoCircleRecord.addEventListener('pointerup', (e) => {
+                e.preventDefault();
+                clearTimeout(videoCirclePressTimer);
+
+                if (!videoCircleLocked && videoCircleRecording) {
+                    // Отпустили без блокировки — останавливаем и отправляем
+                    stopVideoCircleRecording(false);
+                }
+            });
+
+            videoCircleRecord.addEventListener('pointercancel', (e) => {
+                clearTimeout(videoCirclePressTimer);
+                if (!videoCircleLocked && videoCircleRecording) {
+                    stopVideoCircleRecording(true);
+                }
+            });
+        }
+
+        if (videoCircleCancel) videoCircleCancel.addEventListener('click', () => {
+            videoCircleRecordBlob = null;
+            videoCircleActions.style.display = 'none';
+            videoCircleRecord.parentElement.style.display = 'flex';
+        });
+
+        if (videoCircleSend) videoCircleSend.addEventListener('click', () => {
+            if (videoCircleRecordBlob) {
+                uploadVideoCircle(videoCircleRecordBlob, videoCircleSeconds);
+            }
+        });
 
         // ── Состояние формы ──────────────────────────────────────────────────────
 
@@ -7453,6 +7971,7 @@
             replyPreviewText.textContent = msg.text || '';
             replyBar.classList.add('show');
             inputField.value = msg.text || '';
+            autoResizeTextarea(); // Подгоняем высоту под текст редактируемого сообщения
             inputField.focus();
         }
 
@@ -7461,6 +7980,7 @@
             editingMsg = null;
             replyBar.classList.remove('show');
             inputField.value = '';
+            autoResizeTextarea(); // Возвращаем textarea к минимальной высоте
         }
 
         ctxItem(ctxPin, async () => {
