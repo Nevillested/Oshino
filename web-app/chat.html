@@ -7264,6 +7264,8 @@
             function openMobApp(url) {
                 if (mobAppIframe) mobAppIframe.src = url;
                 body.classList.add('mob-app');
+                // подключаем свайп-закрытие сразу, как появится документ iframe
+                if (typeof watchIframeForSwipe === 'function') watchIframeForSwipe();
             }
             function closeMobApp() {
                 if (!body.classList.contains('mob-app')) return;
@@ -7278,6 +7280,8 @@
             // детектор свайса-закрытия прямо на документ iframe (он с того же домена).
             // Свайп слева направо (те же пороги, что у меню) → закрываем приложение.
             function attachCloseSwipe(doc) {
+                if (!doc || doc.__mobSwipeAttached) return;   // не вешаем дважды
+                doc.__mobSwipeAttached = true;
                 let sx = 0, sy = 0, tr = false, d = null;
                 doc.addEventListener('touchstart', (e) => {
                     const t = e.touches[0];
@@ -7309,14 +7313,26 @@
                     if (dx > 60) closeMobApp();
                 }, { passive: true });
             }
+            // Событие 'load' у iframe ждёт ВСЕ ресурсы (в канале — медиа через туннель),
+            // поэтому свайп подключался с задержкой. Цепляемся, как только появился
+            // документ iframe — не дожидаясь картинок/видео.
+            function tryAttachIframeSwipe() {
+                if (!mobAppIframe) return false;
+                try {
+                    const idoc = mobAppIframe.contentDocument ||
+                                 (mobAppIframe.contentWindow && mobAppIframe.contentWindow.document);
+                    if (idoc && idoc.body) { attachCloseSwipe(idoc); return true; }
+                } catch (e) { /* другой домен — не наш случай */ }
+                return false;
+            }
+            function watchIframeForSwipe() {
+                let tries = 0;
+                const timer = setInterval(() => {
+                    if (tryAttachIframeSwipe() || ++tries > 100) clearInterval(timer);
+                }, 50);   // максимум ~5 сек ожидания появления документа
+            }
             if (mobAppIframe) {
-                mobAppIframe.addEventListener('load', () => {
-                    try {
-                        const idoc = mobAppIframe.contentDocument ||
-                                     (mobAppIframe.contentWindow && mobAppIframe.contentWindow.document);
-                        if (idoc) attachCloseSwipe(idoc);
-                    } catch (e) { /* другой домен — не наш случай */ }
-                });
+                mobAppIframe.addEventListener('load', tryAttachIframeSwipe);
             }
 
             if (pgmPacman)   pgmPacman.addEventListener('click',   () => openMobApp('/pacman'));
