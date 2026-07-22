@@ -3409,7 +3409,7 @@
         // каждый диалог, т.к. пользователь может переключаться между чатами.
         let replyingTo = null; // {id, from, text}
         let pinnedByUser = {};
-        let defaultReaction = '👍';
+        let defaultReaction = '😭';
 
         // ── Typing indicators ────────────────────────────────────────────────────
         // typingUsers — set логинов, которые сейчас печатают (по данным от сервера)
@@ -4761,6 +4761,20 @@
                     forwarded_from: msg.forwarded_from
                 });
             } else if (msg.image_id) {
+                // Защита от дубля: если картинка уже добавлена локально (сервер вернул
+                // image_id сразу при загрузке), эхо по WebSocket не должно её удваивать.
+                let alreadyImg = null;
+                for (const m of state.messages) {
+                    if (msg.image_id && m.image_id === msg.image_id) { alreadyImg = m; break; }
+                }
+                if (alreadyImg) {
+                    alreadyImg.id         = msg.msg_id || alreadyImg.id;
+                    alreadyImg.created_at = msg.created_at || alreadyImg.created_at;
+                    if (msg.image_name)    alreadyImg.image_name   = msg.image_name;
+                    if (msg.reply_to_id)   alreadyImg.reply_to_id  = msg.reply_to_id;
+                    if (msg.reply_preview) alreadyImg.reply_preview = msg.reply_preview;
+                    delete alreadyImg.pending;
+                } else {
                 // Сопоставляем с самым старым ожидающим подтверждения сообщением-картинкой.
                 // Если плейсхолдер не найден — это второе устройство того же отправителя,
                 // вставляем как новое сообщение (own: true).
@@ -4796,7 +4810,23 @@
                         reply_preview: msg.reply_preview || undefined
                     });
                 }
+                }
             } else if (msg.audio_id) {
+                // Защита от дубля: если это сообщение уже есть локально (мы сами его
+                // загрузили и сервер сразу вернул audio_id), эхо по WebSocket не должно
+                // создавать вторую копию — просто обновляем серверные поля.
+                let already = null;
+                for (const m of state.messages) {
+                    if (msg.audio_id && m.audio_id === msg.audio_id) { already = m; break; }
+                }
+                if (already) {
+                    already.id             = msg.msg_id || already.id;
+                    already.audio_duration = msg.audio_duration || already.audio_duration;
+                    already.created_at     = msg.created_at || already.created_at;
+                    if (msg.reply_to_id)   already.reply_to_id   = msg.reply_to_id;
+                    if (msg.reply_preview) already.reply_preview = msg.reply_preview;
+                    delete already.pending;
+                } else {
                 // Сопоставляем с самым старым ожидающим аудио-сообщением.
                 // Если плейсхолдер не найден — второе устройство, вставляем как новое.
                 let matched = false;
@@ -4831,6 +4861,7 @@
                         reply_to_id: msg.reply_to_id || undefined,
                         reply_preview: msg.reply_preview || undefined
                     });
+                }
                 }
             } else if (msg.call_type) {
                 // Запись о звонке не рисуется оптимистично заранее (в отличие от
@@ -6260,7 +6291,7 @@
 
         // ── Reactions ────────────────────────────────────────────────────────────
 
-        const EMOJI_SET = ['👍','👎','❤️','😂','😮','😢','😡','🔥','🎉','👏','🙏','💯','✅','❌','🤔','😍','😎','🥳','😱','🙌'];
+        const EMOJI_SET = ['😭','👍','👎','❤️','😂','😮','😢','😡','🔥','🎉','👏','🙏','💯','✅','❌','🤔','😍','😎','🥳','😱','🙌'];
 
         async function postReact(msgId, emoji) {
             const fd = new FormData();
@@ -6495,7 +6526,7 @@
                 const resp = await fetch('/settings');
                 if (!resp.ok) return;
                 const data = await resp.json();
-                defaultReaction = data.default_reaction || '👍';
+                defaultReaction = data.default_reaction || '😭';
                 renderDefaultReactionGrid();
             } catch (e) {}
         }
@@ -7062,7 +7093,7 @@
             } catch (e) { /* тихо: сеть/сервер временно недоступны */ }
         }
         refreshAppsHealth();
-        setInterval(refreshAppsHealth, 15000);
+        setInterval(refreshAppsHealth, 5000);
 
         // Desktop header call buttons → переиспользуем существующие кнопки
         const dhCallBtn  = document.getElementById('dh-call-btn');

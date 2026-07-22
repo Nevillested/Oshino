@@ -102,80 +102,118 @@ func (a *App) newAppProxy(targetURL, flagColumn string, injectUser bool) http.Ha
 	}
 }
 
-// ─── Зонд состояния туннеля («огонёк») ───────────────────────────────────────
+// ─── Зонд доступности приложений («огонёк») ─────────────────────────────────
 //
-// Один общий зонд: канал РФ↔JP душит именно крупные передачи, поэтому меряем
-// не пинг, а реальную загрузку файла >100 КБ через туннель. Оба приложения идут
-// через один и тот же frpc, так что результат общий для обоих огоньков.
+// Проверяем КАЖДОЕ приложение отдельно и лёгким запросом: важно быстро понять
+// «отвечает или нет», а не мерить пропускную способность. Раньше зонд тянул
+// 150 КБ и красил в красный при задержке >4с — из-за случайных всплесков огонёк
+// врал, хотя приложение открывалось нормально. Теперь красный только если
+// приложение реально не ответило (ошибка/таймаут/5xx), причём два раза подряд —
+// одиночный сетевой всплеск огонёк не дёргает.
 
 const (
-	healthProbeURL      = "http://127.0.0.1:6800/app/mia/__healthz"
-	healthProbeInterval = 15 * time.Second
-	healthProbeTimeout  = 6 * time.Second
-	healthMinBytes      = 100 * 1024 // пейлоад должен прийти целиком (>100 КБ)
-	healthOkThresholdMs = 4000       // дольше — считаем канал деградировавшим
+	probeIntervalFast = 3 * time.Second // как часто проверяем
+	probeTimeout      = 4 * time.Second // сколько ждём ответа
+	probeFailsToRed   = 2               // столько подряд неудач → красный
+	probeReadLimit    = 4096            // читаем только начало ответа
 )
 
-type appsHealthState struct {
-	mu       sync.RWMutex
-	tunnelOK bool
-	lastMs   int64
-	lastErr  string
-	checked  time.Time
+var probeTargets = map[string]string{
+	"mia":   "http://127.0.0.1:6800/app/mia/",
+	"files": "http://127.0.0.1:6555/app/files/",
 }
 
-var appsHealth appsHealthState
+type appProbe struct {
+	ok     bool
+	ms     int64
+	fails  int
+	lastAt time.Time
+	err    string
+}
 
-// healthProbeClient ходит СВЕЖИМ соединением на каждый замер (как curl):
-// DisableKeepAlives убирает переиспользование, из-за которого зонд натыкался
-// на закрытое апстримом соединение и висел до таймаута, ложно показывая красный.
+type appsHealthState struct {
+	mu    sync.RWMutex
+	state map[string]*appProbe
+}
+
+var appsHealth = appsHealthState{state: map[string]*appProbe{}}
+
+// Свежее соединение на каждый замер (как curl): переиспользование соединения,
+// уже закрытого апстримом, зависало через frp-туннель и врало красным.
 var healthProbeClient = &http.Client{
-	Timeout: healthProbeTimeout,
+	Timeout: probeTimeout,
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
 	},
 }
 
-// startAppsHealthProbe запускает фоновый зонд. Вызывать один раз при старте.
+// startAppsHealthProbe запускает фоновые зонды. Вызывать один раз при старте.
 func (a *App) startAppsHealthProbe() {
-	go func() {
-		for {
-			ok, ms, errStr := probeTunnelOnce(healthProbeClient)
-			appsHealth.mu.Lock()
-			appsHealth.tunnelOK = ok
-			appsHealth.lastMs = ms
-			appsHealth.lastErr = errStr
-			appsHealth.checked = time.Now()
-			appsHealth.mu.Unlock()
-			time.Sleep(healthProbeInterval)
-		}
-	}()
+	for name, url := range probeTargets {
+		go func(name, url string) {
+			for {
+				ok, ms, errStr := probeOnce(url)
+
+				appsHealth.mu.Lock()
+				st := appsHealth.state[name]
+				if st == nil {
+					st = &appProbe{ok: true} // до первой проверки не пугаем красным
+					appsHealth.state[name] = st
+				}
+				if ok {
+					st.fails = 0
+					st.ok = true
+					st.err = ""
+				} else {
+					st.fails++
+					st.err = errStr
+					if st.fails >= probeFailsToRed {
+						st.ok = false
+					}
+				}
+				st.ms = ms
+				st.lastAt = time.Now()
+				appsHealth.mu.Unlock()
+
+				time.Sleep(probeIntervalFast)
+			}
+		}(name, url)
+	}
 }
 
-func probeTunnelOnce(client *http.Client) (ok bool, ms int64, errStr string) {
+// probeOnce — лёгкая проверка «отвечает ли приложение».
+// Любой ответ кроме 5xx считаем живым: 401/403 от filebrowser означает, что
+// сервис на месте (просто мы стучимся без заголовка пользователя).
+func probeOnce(url string) (ok bool, ms int64, errStr string) {
 	start := time.Now()
-	resp, err := client.Get(healthProbeURL)
+	resp, err := healthProbeClient.Get(url)
 	if err != nil {
 		return false, time.Since(start).Milliseconds(), err.Error()
 	}
-	n, _ := io.Copy(io.Discard, resp.Body)
+	io.CopyN(io.Discard, resp.Body, probeReadLimit)
 	resp.Body.Close()
 	ms = time.Since(start).Milliseconds()
 
-	switch {
-	case resp.StatusCode == 200 && n >= healthMinBytes && ms <= healthOkThresholdMs:
-		return true, ms, ""
-	case resp.StatusCode == 200 && n >= healthMinBytes:
-		return false, ms, "slow"
-	default:
-		return false, ms, fmt.Sprintf("status=%d size=%d", resp.StatusCode, n)
+	if resp.StatusCode >= 500 {
+		return false, ms, fmt.Sprintf("status=%d", resp.StatusCode)
 	}
+	return true, ms, ""
+}
+
+func probeStatus(name string) (bool, int64) {
+	appsHealth.mu.RLock()
+	defer appsHealth.mu.RUnlock()
+	st := appsHealth.state[name]
+	if st == nil {
+		return true, 0 // ещё не проверяли — не показываем красный зря
+	}
+	return st.ok, st.ms
 }
 
 // handleAppsHealth отдаёт фронту всё для сайдбара за один запрос:
 // какие кнопки рисовать (по правам) и какой цвет огонька (по зонду).
-//   status: "green"  — доступ есть и туннель жив
-//           "red"    — доступ есть, но туннель деградировал/недоступен
+//   status: "green"  — доступ есть и приложение отвечает
+//           "red"    — доступ есть, но приложение недоступно
 //           "none"   — у пользователя нет доступа, кнопку не показываем
 func (a *App) handleAppsHealth(w http.ResponseWriter, r *http.Request) {
 	login := a.getSessionLogin(r)
@@ -184,19 +222,17 @@ func (a *App) handleAppsHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appsHealth.mu.RLock()
-	tunnelOK := appsHealth.tunnelOK
-	ms := appsHealth.lastMs
-	appsHealth.mu.RUnlock()
+	miaOK, miaMs := probeStatus("mia")
+	filesOK, filesMs := probeStatus("files")
 
 	canChannel := a.userHasFlag(login, "can_channel")
 	canFiles := a.userHasFlag(login, "can_files")
 
-	status := func(allowed bool) string {
+	status := func(allowed, alive bool) string {
 		if !allowed {
 			return "none"
 		}
-		if tunnelOK {
+		if alive {
 			return "green"
 		}
 		return "red"
@@ -204,10 +240,11 @@ func (a *App) handleAppsHealth(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"mia":         status(canChannel),
-		"files":       status(canFiles),
+		"mia":         status(canChannel, miaOK),
+		"files":       status(canFiles, filesOK),
 		"can_channel": canChannel,
 		"can_files":   canFiles,
-		"probe_ms":    ms,
+		"mia_ms":      miaMs,
+		"files_ms":    filesMs,
 	})
 }
