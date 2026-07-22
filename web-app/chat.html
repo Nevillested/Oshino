@@ -7315,21 +7315,35 @@
             }
             // Событие 'load' у iframe ждёт ВСЕ ресурсы (в канале — медиа через туннель),
             // поэтому свайп подключался с задержкой. Цепляемся, как только появился
-            // документ iframe — не дожидаясь картинок/видео.
+            // РЕАЛЬНЫЙ документ приложения — не дожидаясь картинок/видео.
+            // Важно: сразу после смены src внутри iframe короткое время живёт пустой
+            // about:blank — к нему цепляться нельзя, иначе настоящий документ пропустим.
             function tryAttachIframeSwipe() {
                 if (!mobAppIframe) return false;
                 try {
                     const idoc = mobAppIframe.contentDocument ||
                                  (mobAppIframe.contentWindow && mobAppIframe.contentWindow.document);
-                    if (idoc && idoc.body) { attachCloseSwipe(idoc); return true; }
+                    if (!idoc || !idoc.body) return false;
+                    const u = idoc.URL || '';
+                    if (!u || u === 'about:blank') return false;   // ещё не наш документ
+                    attachCloseSwipe(idoc);
+                    return true;
                 } catch (e) { /* другой домен — не наш случай */ }
                 return false;
             }
             function watchIframeForSwipe() {
                 let tries = 0;
                 const timer = setInterval(() => {
-                    if (tryAttachIframeSwipe() || ++tries > 100) clearInterval(timer);
-                }, 50);   // максимум ~5 сек ожидания появления документа
+                    if (tryAttachIframeSwipe() || ++tries > 400) clearInterval(timer);
+                    // подстраховка: цепляемся и по готовности DOM внутри iframe
+                    try {
+                        const w = mobAppIframe && mobAppIframe.contentWindow;
+                        if (w && !w.__mobSwipeHooked) {
+                            w.__mobSwipeHooked = true;
+                            w.addEventListener('DOMContentLoaded', tryAttachIframeSwipe);
+                        }
+                    } catch (e) { /* ещё не доступно */ }
+                }, 25);   // проверяем часто, чтобы поймать документ сразу
             }
             if (mobAppIframe) {
                 mobAppIframe.addEventListener('load', tryAttachIframeSwipe);
