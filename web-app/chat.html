@@ -5017,12 +5017,26 @@
 
         inputField.addEventListener('input', handleInputTyping);
 
+        // Тап по кнопке «Отправить» по умолчанию переводит фокус на саму кнопку,
+        // а уход фокуса из textarea закрывает экранную клавиатуру. preventDefault
+        // на pointerdown/mousedown гасит именно перевод фокуса — событие click при
+        // этом продолжает приходить, поэтому отправка работает как прежде.
+        // Клавиатуру теперь закрывает только системная кнопка «назад» или наш
+        // свайп вправо (выход к списку диалогов).
+        const keepInputFocus = (e) => { e.preventDefault(); };
+        sendBtn.addEventListener('pointerdown', keepInputFocus);
+        sendBtn.addEventListener('mousedown', keepInputFocus);
+
         sendBtn.addEventListener('click', sendMessage);
 
         function sendMessage() {
             if (!currentUser) return;
             const text = inputField.value.trim();
             if (!text) return;
+
+            // Было ли поле в фокусе до отправки — чтобы вернуть его в конце,
+            // если какой-то движок всё же успел фокус увести.
+            const hadFocus = (document.activeElement === inputField);
 
             // Режим правки: меняем существующее сообщение вместо отправки нового
             if (editingMsg) {
@@ -5034,6 +5048,9 @@
                     .then(res => { if (!res.ok) alert('Не удалось изменить сообщение'); })
                     .catch(() => alert('Нет соединения'));
                 cancelEditing();
+                if (hadFocus && document.activeElement !== inputField) {
+                    inputField.focus({ preventScroll: true });
+                }
                 return;
             }
             if (!wsReady) {
@@ -5079,6 +5096,11 @@
             cancelReply();
             renderMessages(historyState[currentUser].messages);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // Страховка: поле остаётся активным, клавиатура не схлопывается
+            if (hadFocus && document.activeElement !== inputField) {
+                inputField.focus({ preventScroll: true });
+            }
         }
 
         // Серверное подтверждение отправленного сообщения с реальным created_at из БД
@@ -6773,15 +6795,25 @@
 
             let startX = 0, startY = 0;
 
-            // Определяем сообщение по координатам курсора, а не по e.target:
-            // при протяжке над картинками и вложенными узлами target скачет,
-            // из-за чего протяжка раньше не набирала два разных сообщения.
+            // Снимок геометрии строк на время протяжки: перестраиваем его
+            // только при прокрутке ленты, иначе getBoundingClientRect на каждое
+            // движение мыши заставлял бы браузер пересчитывать layout.
+            let rowsCache = null;
+            let cacheScrollTop = -1;
+
+            function rows() {
+                if (rowsCache === null || cacheScrollTop !== messagesDiv.scrollTop) {
+                    rowsCache = collectMsgRows();
+                    cacheScrollTop = messagesDiv.scrollTop;
+                }
+                return rowsCache;
+            }
+
+            // Цель определяем по всей горизонтальной полосе строки, а не по
+            // самому пузырю: пустое место на уровне сообщения принадлежит ему.
             function msgIdAt(x, y) {
-                const el   = document.elementFromPoint(x, y);
-                const wrap = el && el.closest ? el.closest('.message-wrap') : null;
-                if (!wrap || !wrap.dataset.msgId) return null;
-                const id = parseInt(wrap.dataset.msgId, 10);
-                return Number.isFinite(id) ? id : null;
+                const wrap = msgWrapAtPoint(x, y, rows());
+                return wrap ? wrap.__msg.id : null;
             }
 
             function pushId(id) {
@@ -6795,6 +6827,7 @@
                 dragging = true;
                 armed    = false;
                 dragIds  = [];
+                rowsCache = null;        // геометрия могла измениться
                 startX = e.clientX;
                 startY = e.clientY;
                 pushId(msgIdAt(e.clientX, e.clientY));
@@ -6865,12 +6898,7 @@
         document.getElementById('selbar-delete').addEventListener('click', () => {
             if (!selectedIds.size) return;
             const ids = Array.from(selectedIds);
-            const allMine = ids.every(id => {
-                const st = historyState[currentUser];
-                const m = st && st.messages.find(x => x.id === id);
-                return m && m.own;
-            });
-            askDelete(ids.length, allMine, (forAll) => doDeleteMessages(ids, forAll));
+            askDelete(ids.length, (forAll) => doDeleteMessages(ids, forAll));
         });
 
         async function doDeleteMessages(ids, forAll) {
@@ -6911,15 +6939,16 @@
             confirmOverlay.classList.add('open');
         }
 
-        function askDelete(count, canDeleteForAll, cb) {
+        // Галочка «у собеседника» доступна всегда и для любых сообщений —
+        // и своих, и чужих, и при одиночном, и при пакетном удалении.
+        // Мессенджер закрытый, доверенный круг: обе стороны равноправны.
+        function askDelete(count, cb) {
             askConfirm({
-                title: 'Удалить сообщения?',
+                title: count === 1 ? 'Удалить сообщение?' : 'Удалить сообщения?',
                 text: (count === 1)
                     ? 'Сообщение будет удалено.'
                     : 'Будет удалено сообщений: ' + count + '.',
-                // Галочку показываем только если ВСЕ выбранные — свои: чужие
-                // сообщения у собеседника удалять нельзя, можно скрыть у себя.
-                checkLabel: canDeleteForAll ? 'Удалить также у собеседника' : null,
+                checkLabel: 'Удалить также у собеседника',
                 okText: 'Удалить'
             }, cb);
         }
@@ -7410,11 +7439,10 @@
         ctxItem(ctxDelete, () => {
             if (!ctxTargetMsg) return;
             const msgId = ctxTargetMsg.id;
-            const isMine = !!ctxTargetMsg.own;
             closeCtxMenu();
-            // Своё окно: чужое сообщение можно только скрыть у себя,
-            // поэтому галочку «у собеседника» показываем лишь для своих.
-            askDelete(1, isMine, (forAll) => doDeleteMessages([msgId], forAll));
+            // Удалять можно любое сообщение диалога — и своё, и собеседника.
+            // Режим определяет только галочка в окне подтверждения.
+            askDelete(1, (forAll) => doDeleteMessages([msgId], forAll));
         });
 
         // Режим правки: подставляем текст в поле ввода и показываем панель сверху
@@ -7499,8 +7527,52 @@
             return msg.text || '';
         }
 
+        // ══ Полоса сообщения ═══════════════════════════════════════════════
+        // Пузырь занимает лишь часть ширины ленты, но сообщением считается вся
+        // горизонтальная полоса на его уровне: пустое место слева от своего
+        // сообщения и справа от чужого принадлежит ему же. Поэтому цель ищем не
+        // по e.target, а по вертикальной координате — тогда и контекстное меню,
+        // и протяжка мышью срабатывают в любой точке строки.
+        const ROW_GAP_TOLERANCE = 6;   // промежуток между строками делим пополам
+
+        // Снимок геометрии строк. Во время протяжки мышью пересчитывать его на
+        // каждое движение дорого, поэтому строим один раз и обновляем только
+        // при прокрутке ленты.
+        function collectMsgRows() {
+            const rows = [];
+            messagesDiv.querySelectorAll('.message-wrap').forEach(el => {
+                if (!el.__msg) return;
+                const r = el.getBoundingClientRect();
+                rows.push({ el: el, top: r.top, bottom: r.bottom });
+            });
+            return rows;
+        }
+
+        function pickRowAtY(rows, y) {
+            let best = null, bestDist = Infinity;
+            for (let i = 0; i < rows.length; i++) {
+                const r = rows[i];
+                if (y >= r.top && y <= r.bottom) return r.el;
+                const d = (y < r.top) ? (r.top - y) : (y - r.bottom);
+                if (d < bestDist) { bestDist = d; best = r.el; }
+            }
+            return (bestDist <= ROW_GAP_TOLERANCE) ? best : null;
+        }
+
+        // rows — необязательный готовый снимок (см. протяжку мышью)
+        function msgWrapAtPoint(x, y, rows) {
+            const box = messagesDiv.getBoundingClientRect();
+            if (x < box.left || x > box.right || y < box.top || y > box.bottom) return null;
+            // Плашка звонка — не сообщение: не отдаём её соседней строке
+            const hit = document.elementFromPoint(x, y);
+            if (hit && hit.closest && hit.closest('.call-log-wrap')) return null;
+            return pickRowAtY(rows || collectMsgRows(), y);
+        }
+
+        // Данные сообщения кладём на сам элемент — обработчики делегированы
+        // на всю ленту (см. initMessageGestures ниже).
         function attachContextMenuHandlers(wrap, msg) {
-            const msgData = {
+            wrap.__msg = {
                 id: msg.id,
                 from: msg.from || currentLogin,
                 text: msg.text || '',
@@ -7509,31 +7581,38 @@
                 reactions: msg.reactions || [],
                 previewText: getMsgPreviewText(msg)
             };
+        }
 
-            // В режиме выбора обычный клик/тап переключает выделение,
-            // а не открывает контекстное меню.
-            wrap.addEventListener('click', (e) => {
+        (function initMessageGestures() {
+            // В режиме выбора обычный клик/тап по строке переключает выделение
+            messagesDiv.addEventListener('click', (e) => {
                 if (!selectionMode) return;
+                const wrap = msgWrapAtPoint(e.clientX, e.clientY);
+                if (!wrap) return;
                 e.preventDefault();
                 e.stopPropagation();
-                toggleSelected(msgData.id);
+                toggleSelected(wrap.__msg.id);
             });
 
             // Right-click на десктопе
-            wrap.addEventListener('contextmenu', (e) => {
+            messagesDiv.addEventListener('contextmenu', (e) => {
+                const wrap = msgWrapAtPoint(e.clientX, e.clientY);
+                if (!wrap) return;
                 e.preventDefault();
-                if (selectionMode) { toggleSelected(msgData.id); return; }
-                openCtxMenu(msgData, e.clientX, e.clientY);
+                if (selectionMode) { toggleSelected(wrap.__msg.id); return; }
+                openCtxMenu(wrap.__msg, e.clientX, e.clientY);
             });
 
             // Long-press на мобайле — та же длительность, что и ПКМ на ПК
             let lpTimer = null;
             let lpMoved = false;
 
-            wrap.addEventListener('touchstart', (e) => {
+            messagesDiv.addEventListener('touchstart', (e) => {
                 if (e.touches.length !== 1) return;
                 lpMoved = false;
                 const touch = e.touches[0];
+                const wrap = msgWrapAtPoint(touch.clientX, touch.clientY);
+                if (!wrap) return;
 
                 // В режиме выбора тап просто переключает выделение
                 if (selectionMode) return;
@@ -7542,23 +7621,22 @@
                 const now = Date.now();
                 if (lastTapTarget === wrap && now - lastTapTime < 300) {
                     lastTapTarget = null;
-                    postReact(msgData.id, defaultReaction);
+                    postReact(wrap.__msg.id, defaultReaction);
                     return;
                 }
                 lastTapTarget = wrap;
                 lastTapTime = now;
 
+                const data = wrap.__msg;
                 lpTimer = setTimeout(() => {
-                    if (!lpMoved) {
-                        openCtxMenu(msgData, touch.clientX, touch.clientY);
-                    }
+                    if (!lpMoved) openCtxMenu(data, touch.clientX, touch.clientY);
                 }, LONG_PRESS_MS);
             }, { passive: true });
 
-            wrap.addEventListener('touchmove', () => { lpMoved = true; clearTimeout(lpTimer); }, { passive: true });
-            wrap.addEventListener('touchend', () => clearTimeout(lpTimer), { passive: true });
-            wrap.addEventListener('touchcancel', () => clearTimeout(lpTimer), { passive: true });
-        }
+            messagesDiv.addEventListener('touchmove', () => { lpMoved = true; clearTimeout(lpTimer); }, { passive: true });
+            messagesDiv.addEventListener('touchend', () => clearTimeout(lpTimer), { passive: true });
+            messagesDiv.addEventListener('touchcancel', () => clearTimeout(lpTimer), { passive: true });
+        })();
 
         // ── Settings ─────────────────────────────────────────────────────────────
 
