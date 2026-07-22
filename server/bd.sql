@@ -322,3 +322,17 @@ TABLESPACE pg_default;
 CREATE INDEX IF NOT EXISTS idx_dialog_states_user
     ON messenger.dialog_states USING btree (user_id ASC NULLS LAST)
     TABLESPACE pg_default;
+
+-- ── Видеосообщения ──────────────────────────────────────────────────────────
+-- Один набор колонок на два случая:
+--   video_is_circle = true  — видеокружок, записанный прямо в мессенджере
+--                             (сервер обрезает кадр в квадрат, клиент рисует круг);
+--   video_is_circle = false — обычное видео, приложенное из галереи.
+-- Само видео, как картинки и голосовые, лежит в bytea: отдельного файлового
+-- хранилища у проекта нет, а бэкап базы заодно бэкапит и вложения.
+-- Формат всегда один — H.264 + AAC в MP4 (приводится через ffmpeg при загрузке),
+-- потому что браузеры пишут кто во что горазд, а Safari/iOS не умеет WebM.
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_data bytea;
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_mime character varying(50);
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_duration integer;
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_is_circle boolean NOT NULL DEFAULT false;

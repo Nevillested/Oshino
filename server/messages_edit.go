@@ -90,13 +90,13 @@ func (a *App) handleEditMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Редактируем только текстовые сообщения: у медиа и записей о звонках
 	// текста нет, править там нечего.
-	var hasImage, hasAudio bool
+	var hasImage, hasAudio, hasVideo bool
 	var callType sql.NullString
 	a.db.QueryRow(`
-		SELECT (image_data IS NOT NULL), (audio_data IS NOT NULL), call_type
+		SELECT (image_data IS NOT NULL), (audio_data IS NOT NULL), (video_data IS NOT NULL), call_type
 		FROM messenger.messages WHERE id = $1
-	`, messageID).Scan(&hasImage, &hasAudio, &callType)
-	if hasImage || hasAudio || callType.Valid {
+	`, messageID).Scan(&hasImage, &hasAudio, &hasVideo, &callType)
+	if hasImage || hasAudio || hasVideo || callType.Valid {
 		http.Error(w, "Это сообщение нельзя редактировать", http.StatusBadRequest)
 		return
 	}

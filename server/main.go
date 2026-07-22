@@ -35,9 +35,9 @@ import (
 )
 
 type App struct {
-	db *sql.DB
-	mu sync.Mutex
-	clients  map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
+	db      *sql.DB
+	mu      sync.Mutex
+	clients map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
 
 	// defaultContact — логин пользователя с id=1, добавляется всем как контакт по умолчанию.
 	// Читается один раз при старте, чтобы не дёргать БД на каждую отправку списка диалогов.
@@ -99,7 +99,7 @@ type Client struct {
 	conn    *websocket.Conn
 	send    chan []byte
 	done    chan struct{} // закрывается один раз в readPump при отключении
-	focused bool         // true — вкладка видима и в фокусе (браузер на переднем плане)
+	focused bool          // true — вкладка видима и в фокусе (браузер на переднем плане)
 }
 
 type Message struct {
@@ -112,6 +112,9 @@ type Message struct {
 	ImageMime     string `json:"image_mime,omitempty"`
 	AudioID       int    `json:"audio_id,omitempty"`
 	AudioDuration int    `json:"audio_duration,omitempty"`
+	VideoID       int    `json:"video_id,omitempty"`
+	VideoDuration int    `json:"video_duration,omitempty"`
+	VideoIsCircle bool   `json:"video_is_circle,omitempty"`
 	// Поля системной записи о звонке (см. saveCallMessage) — звонок логируется как
 	// сообщение без текста, с этими полями, и отображается в чате отдельной
 	// "системной" отметкой, как в Telegram, а не обычным пузырём.
@@ -163,7 +166,7 @@ type DialogEntry struct {
 // Сервер не интерпретирует SDP/ICE содержимое, только маршрутизирует между
 // устройствами from/to — ровно так же, как Message, но без сохранения в БД.
 type CallSignal struct {
-	Type      string `json:"type"`                // call-offer | call-answer | call-ice | call-end | call-reject | call-video-on | call-video-on-answer
+	Type      string `json:"type"` // call-offer | call-answer | call-ice | call-end | call-reject | call-video-on | call-video-on-answer
 	From      string `json:"from"`
 	To        string `json:"to"`
 	CallID    string `json:"call_id"`             // генерируется звонящим, привязывает все сообщения одного звонка
@@ -180,6 +183,12 @@ var upgrader = websocket.Upgrader{
 
 const maxImageSize = 10 << 20 // 10 МБ
 const maxAudioSize = 20 << 20 // 20 МБ
+
+// maxVideoSize — потолок на входящий файл ДО транскодирования. Видеокружок в
+// 60 секунд весит единицы мегабайт, но через ту же ручку идёт и видео из
+// галереи телефона, где минута 4K легко занимает сотни мегабайт. Совсем без
+// потолка нельзя: файл целиком читается в память и кладётся в bytea-колонку.
+const maxVideoSize = 100 << 20 // 100 МБ
 
 var allowedImageMimes = map[string]bool{
 	"image/jpeg": true,
@@ -338,6 +347,8 @@ func main() {
 	http.HandleFunc("/image/", app.handleGetImage)
 	http.HandleFunc("/upload-audio", app.handleUploadAudio)
 	http.HandleFunc("/audio/", app.handleGetAudio)
+	http.HandleFunc("/upload-video", app.handleUploadVideo)
+	http.HandleFunc("/video/", app.handleGetVideo)
 	http.HandleFunc("/turn-credentials", app.handleTurnCredentials)
 	http.HandleFunc("/push-public-key", app.handlePushPublicKey)
 	http.HandleFunc("/push-subscribe", app.handlePushSubscribe)
@@ -625,13 +636,17 @@ func (a *App) getOrCreateConversation(login1, login2 string) (int, error) {
 // посередине символа), либо иконка+подпись для нетекстовых сообщений.
 const maxPreviewRunes = 120
 
-func buildPreviewText(content string, hasImage, hasAudio bool, callType sql.NullString) string {
+func buildPreviewText(content string, hasImage, hasAudio, hasVideo, videoIsCircle bool, callType sql.NullString) string {
 	text := content
 	switch {
 	case hasImage:
 		text = "📷 Фото"
 	case hasAudio:
 		text = "🎤 Голосовое сообщение"
+	case hasVideo && videoIsCircle:
+		text = "📹 Видеосообщение"
+	case hasVideo:
+		text = "🎬 Видео"
 	case callType.Valid:
 		if callType.String == "video" {
 			text = "📹 Видеозвонок"
@@ -651,18 +666,20 @@ func buildPreviewText(content string, hasImage, hasAudio bool, callType sql.Null
 // pin (что закреплено).
 func (a *App) getMessagePreview(msgID int) (*ReplyPreview, error) {
 	var senderLogin, content string
-	var hasImage, hasAudio bool
+	var hasImage, hasAudio, hasVideo bool
+	var videoIsCircle sql.NullBool
 	var callType sql.NullString
 	err := a.db.QueryRow(`
-		SELECT u.login, m.content, (m.image_data IS NOT NULL), (m.audio_data IS NOT NULL), m.call_type
+		SELECT u.login, m.content, (m.image_data IS NOT NULL), (m.audio_data IS NOT NULL),
+		       (m.video_data IS NOT NULL), m.video_is_circle, m.call_type
 		FROM messenger.messages m
 		JOIN messenger.users u ON u.id = m.sender_id
 		WHERE m.id = $1
-	`, msgID).Scan(&senderLogin, &content, &hasImage, &hasAudio, &callType)
+	`, msgID).Scan(&senderLogin, &content, &hasImage, &hasAudio, &hasVideo, &videoIsCircle, &callType)
 	if err != nil {
 		return nil, err
 	}
-	return &ReplyPreview{From: senderLogin, Text: buildPreviewText(content, hasImage, hasAudio, callType)}, nil
+	return &ReplyPreview{From: senderLogin, Text: buildPreviewText(content, hasImage, hasAudio, hasVideo, videoIsCircle.Bool, callType)}, nil
 }
 
 // saveMessage сохраняет текстовое сообщение и возвращает его id и время
@@ -777,13 +794,17 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
 			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
 			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
+			       m.has_video, m.video_duration, m.video_is_circle,
 			       m.call_type, m.call_status, m.call_duration,
 			       m.reply_to_id, ru.login, rm.content,
-			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
+			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
+			       (rm.video_data IS NOT NULL), rm.video_is_circle, rm.call_type,
 			       m.forwarded_from, m.is_read, m.edited_at
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
-				       audio_data, audio_duration, call_type, call_status, call_duration,
+				       audio_data, audio_duration,
+				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
+				       call_type, call_status, call_duration,
 				       reply_to_id, forwarded_from, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1
@@ -804,13 +825,17 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			SELECT m.id, u.login, m.content, m.created_at AT TIME ZONE 'UTC',
 			       m.image_mime, m.image_filename, (m.image_data IS NOT NULL) AS has_image,
 			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
+			       m.has_video, m.video_duration, m.video_is_circle,
 			       m.call_type, m.call_status, m.call_duration,
 			       m.reply_to_id, ru.login, rm.content,
-			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL), rm.call_type,
+			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
+			       (rm.video_data IS NOT NULL), rm.video_is_circle, rm.call_type,
 			       m.forwarded_from, m.is_read, m.edited_at
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
-				       audio_data, audio_duration, call_type, call_status, call_duration,
+				       audio_data, audio_duration,
+				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
+				       call_type, call_status, call_duration,
 				       reply_to_id, forwarded_from, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
@@ -845,6 +870,9 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		ImageMime     string         `json:"image_mime,omitempty"`
 		AudioID       int            `json:"audio_id,omitempty"`
 		AudioDuration int            `json:"audio_duration,omitempty"`
+		VideoID       int            `json:"video_id,omitempty"`
+		VideoDuration int            `json:"video_duration,omitempty"`
+		VideoIsCircle bool           `json:"video_is_circle,omitempty"`
 		CallType      string         `json:"call_type,omitempty"`
 		CallStatus    string         `json:"call_status,omitempty"`
 		CallDuration  *int           `json:"call_duration,omitempty"`
@@ -862,22 +890,25 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var m HistMsg
 		var createdAt time.Time
 		var imageMime, imageFilename sql.NullString
-		var hasImage, hasAudio bool
-		var audioDuration sql.NullInt64
+		var hasImage, hasAudio, hasVideo bool
+		var audioDuration, videoDuration sql.NullInt64
+		var videoIsCircle sql.NullBool
 		var callType, callStatus sql.NullString
 		var callDuration sql.NullInt64
 		var replyToID sql.NullInt64
 		var replyFrom, replyContent sql.NullString
-		var replyHasImage, replyHasAudio sql.NullBool
+		var replyHasImage, replyHasAudio, replyHasVideo, replyVideoIsCircle sql.NullBool
 		var replyCallType sql.NullString
 		var forwardedFrom sql.NullString
 		var editedAt sql.NullTime
 		if err := rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
 			&imageMime, &imageFilename, &hasImage,
 			&hasAudio, &audioDuration,
+			&hasVideo, &videoDuration, &videoIsCircle,
 			&callType, &callStatus, &callDuration,
 			&replyToID, &replyFrom, &replyContent,
-			&replyHasImage, &replyHasAudio, &replyCallType,
+			&replyHasImage, &replyHasAudio,
+			&replyHasVideo, &replyVideoIsCircle, &replyCallType,
 			&forwardedFrom, &m.IsRead, &editedAt); err != nil {
 			log.Printf("handleHistory Scan error: %v", err)
 			continue
@@ -896,6 +927,11 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			m.AudioID = m.ID
 			m.AudioDuration = int(audioDuration.Int64)
 		}
+		if hasVideo {
+			m.VideoID = m.ID
+			m.VideoDuration = int(videoDuration.Int64)
+			m.VideoIsCircle = videoIsCircle.Bool
+		}
 		if callType.Valid {
 			m.CallType = callType.String
 			m.CallStatus = callStatus.String
@@ -912,7 +948,8 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			if replyFrom.Valid {
 				m.ReplyPreview = &ReplyPreview{
 					From: replyFrom.String,
-					Text: buildPreviewText(replyContent.String, replyHasImage.Bool, replyHasAudio.Bool, replyCallType),
+					Text: buildPreviewText(replyContent.String, replyHasImage.Bool, replyHasAudio.Bool,
+						replyHasVideo.Bool, replyVideoIsCircle.Bool, replyCallType),
 				}
 			}
 		}
@@ -1281,20 +1318,25 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 	var msg Message
 
 	var senderLogin, content string
-	var imageData, audioData []byte
-	var imageMime, imageFilename, audioMime sql.NullString
-	var audioDuration sql.NullInt64
+	var imageData, audioData, videoData []byte
+	var imageMime, imageFilename, audioMime, videoMime sql.NullString
+	var audioDuration, videoDuration sql.NullInt64
+	var videoIsCircle sql.NullBool
 	var callType sql.NullString
 	var existingForwardedFrom sql.NullString
 
 	err := a.db.QueryRow(`
 		SELECT u.login, m.content, m.image_data, m.image_mime, m.image_filename,
-		       m.audio_data, m.audio_mime, m.audio_duration, m.call_type, m.forwarded_from
+		       m.audio_data, m.audio_mime, m.audio_duration,
+		       m.video_data, m.video_mime, m.video_duration, m.video_is_circle,
+		       m.call_type, m.forwarded_from
 		FROM messenger.messages m
 		JOIN messenger.users u ON u.id = m.sender_id
 		WHERE m.id = $1
 	`, sourceMsgID).Scan(&senderLogin, &content, &imageData, &imageMime, &imageFilename,
-		&audioData, &audioMime, &audioDuration, &callType, &existingForwardedFrom)
+		&audioData, &audioMime, &audioDuration,
+		&videoData, &videoMime, &videoDuration, &videoIsCircle,
+		&callType, &existingForwardedFrom)
 	if err != nil {
 		return msg, err
 	}
@@ -1323,11 +1365,14 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 	err = a.db.QueryRow(`
 		INSERT INTO messenger.messages
 			(conversation_id, sender_id, content, image_data, image_mime, image_filename,
-			 audio_data, audio_mime, audio_duration, forwarded_from)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			 audio_data, audio_mime, audio_duration,
+			 video_data, video_mime, video_duration, video_is_circle, forwarded_from)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
 	`, convID, forwarderID, content, imageData, imageMime, imageFilename,
-		audioData, audioMime, audioDuration, originLogin).Scan(&msgID, &createdAt)
+		audioData, audioMime, audioDuration,
+		videoData, videoMime, videoDuration, videoIsCircle,
+		originLogin).Scan(&msgID, &createdAt)
 	if err != nil {
 		return msg, err
 	}
@@ -1348,6 +1393,11 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 	if audioData != nil {
 		msg.AudioID = msgID
 		msg.AudioDuration = int(audioDuration.Int64)
+	}
+	if videoData != nil {
+		msg.VideoID = msgID
+		msg.VideoDuration = int(videoDuration.Int64)
+		msg.VideoIsCircle = videoIsCircle.Bool
 	}
 
 	return msg, nil
@@ -1553,6 +1603,302 @@ func (a *App) handleUploadAudio(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ── Видеосообщения ──────────────────────────────────────────────────────────
+// Через одну ручку идут два разных случая: видеокружок (записан прямо в
+// браузере, обрезается в квадрат) и обычное видео из галереи телефона.
+// В обоих случаях результат приводится к H.264 + AAC в MP4: это единственный
+// формат, который без сюрпризов играет и в Chrome, и в Safari/iOS, тогда как
+// браузеры пишут кто во что горазд (WebM/VP8, WebM/VP9, MP4/H.264, MOV/HEVC).
+
+const outputVideoMime = "video/mp4"
+
+// transcodeVideoTimeout — минута видео с телефона на слабом VPS кодируется
+// заметно дольше аудио, поэтому запас больше. Без таймаута битый файл может
+// подвесить ffmpeg навсегда.
+const transcodeVideoTimeout = 3 * time.Minute
+
+// circleVideoSize — сторона квадрата для видеокружка. 400px хватает: в чате
+// кружок показывается примерно 210px, с запасом на экраны с высокой плотностью.
+const circleVideoSize = 400
+
+// transcodeVideo прогоняет входящее видео через ffmpeg и возвращает MP4 и
+// длительность в секундах. Для кружка кадр обрезается по центру в квадрат —
+// круглым он становится уже на клиенте, маской CSS.
+func transcodeVideo(input []byte, isCircle bool) ([]byte, int, error) {
+	tmpDir, err := os.MkdirTemp("", "oshino-video-*")
+	if err != nil {
+		return nil, 0, fmt.Errorf("создание временной директории: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	inPath := filepath.Join(tmpDir, "in")
+	outPath := filepath.Join(tmpDir, "out.mp4")
+
+	if err := os.WriteFile(inPath, input, 0o600); err != nil {
+		return nil, 0, fmt.Errorf("запись входного файла: %w", err)
+	}
+
+	// crop='min(iw,ih)' — берём центральный квадрат независимо от того, как
+	// был повёрнут телефон; scale с -2 держит чётную высоту (требование H.264).
+	filter := "scale='min(1280,iw)':-2"
+	if isCircle {
+		filter = fmt.Sprintf("crop='min(iw,ih)':'min(iw,ih)',scale=%d:%d", circleVideoSize, circleVideoSize)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), transcodeVideoTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-y",
+		"-hide_banner", "-loglevel", "error",
+		"-i", inPath,
+		"-vf", filter,
+		"-c:v", "libx264",
+		"-preset", "veryfast",
+		"-crf", "28",
+		"-pix_fmt", "yuv420p", // без этого Safari отказывается играть файл
+		"-c:a", "aac",
+		"-b:a", "64k",
+		"-ac", "1",
+		"-movflags", "+faststart",
+		outPath,
+	)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, 0, fmt.Errorf("ffmpeg: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	out, err := os.ReadFile(outPath)
+	if err != nil {
+		return nil, 0, fmt.Errorf("чтение результата транскодирования: %w", err)
+	}
+
+	return out, probeDurationSec(outPath), nil
+}
+
+// probeDurationSec возвращает длительность файла в секундах. Ошибку наверх не
+// поднимаем: если ffprobe не установлен или не понял файл, длительность просто
+// останется неизвестной — на воспроизведение это не влияет, клиент возьмёт её
+// из метаданных самого видео.
+func probeDurationSec(path string) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		path,
+	).Output()
+	if err != nil {
+		return 0
+	}
+
+	sec, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil || sec <= 0 {
+		return 0
+	}
+	return int(sec + 0.5)
+}
+
+// saveVideoMessage сохраняет видеосообщение в БД
+func (a *App) saveVideoMessage(from, to string, videoData []byte, mime string, duration int, isCircle bool, replyToID int) (int, string, error) {
+	convID, err := a.getOrCreateConversation(from, to)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var senderID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var replyTo *int
+	if replyToID > 0 {
+		replyTo = &replyToID
+	}
+
+	var msgID int
+	var createdAt time.Time
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.messages
+			(conversation_id, sender_id, content, video_data, video_mime, video_duration, video_is_circle, reply_to_id)
+		VALUES ($1, $2, '', $3, $4, $5, $6, $7)
+		RETURNING id, created_at AT TIME ZONE 'UTC'
+	`, convID, senderID, videoData, mime, duration, isCircle, replyTo).Scan(&msgID, &createdAt)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return msgID, createdAt.UTC().Format(time.RFC3339), nil
+}
+
+// handleUploadVideo — POST /upload-video (multipart: file, to, duration, circle)
+func (a *App) handleUploadVideo(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxVideoSize+(1<<20))
+	if err := r.ParseMultipartForm(maxVideoSize + (1 << 20)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой или форма повреждена"})
+		return
+	}
+
+	to := r.FormValue("to")
+	if to == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не указан получатель"})
+		return
+	}
+
+	isCircle := r.FormValue("circle") == "1"
+
+	durationSec := 0
+	if d, err := strconv.Atoi(r.FormValue("duration")); err == nil && d > 0 {
+		durationSec = d
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл не найден"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxVideoSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 100 МБ)"})
+		return
+	}
+
+	videoData, err := io.ReadAll(io.LimitReader(file, maxVideoSize+1))
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	if len(videoData) > maxVideoSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 100 МБ)"})
+		return
+	}
+
+	transcoded, probed, err := transcodeVideo(videoData, isCircle)
+	if err != nil {
+		log.Println("Ошибка транскодирования видео:", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось обработать видеофайл"})
+		return
+	}
+
+	// Длительность, посчитанная по готовому файлу, точнее секундомера на
+	// клиенте; клиентская остаётся запасным вариантом (например, если в
+	// системе нет ffprobe).
+	if probed > 0 {
+		durationSec = probed
+	}
+
+	replyToID, _ := strconv.Atoi(r.FormValue("reply_to"))
+
+	msgID, createdAt, err := a.saveVideoMessage(login, to, transcoded, outputVideoMime, durationSec, isCircle, replyToID)
+	if err != nil {
+		log.Println("Ошибка сохранения видеосообщения:", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	msg := Message{
+		From:          login,
+		To:            to,
+		CreatedAt:     createdAt,
+		MsgID:         msgID,
+		VideoID:       msgID,
+		VideoDuration: durationSec,
+		VideoIsCircle: isCircle,
+		ReplyToID:     replyToID,
+	}
+	if replyToID > 0 {
+		if preview, err := a.getMessagePreview(replyToID); err == nil {
+			msg.ReplyPreview = preview
+		}
+	}
+
+	a.routeMessage(msg)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":         true,
+		"video_id":        msgID,
+		"video_duration":  durationSec,
+		"video_is_circle": isCircle,
+		"created_at":      createdAt,
+	})
+}
+
+// handleGetVideo — GET /video/<id>
+func (a *App) handleGetVideo(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/video/")
+	msgID, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&myID)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	var videoData []byte
+	var mime string
+	err = a.db.QueryRow(`
+		SELECT m.video_data, m.video_mime
+		FROM messenger.messages m
+		JOIN messenger.conversations c ON c.id = m.conversation_id
+		WHERE m.id = $1
+		  AND m.video_data IS NOT NULL
+		  AND (c.user1_id = $2 OR c.user2_id = $2)
+	`, msgID, myID).Scan(&videoData, &mime)
+
+	if err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	// Видео браузеры почти всегда тянут через Range-запросы (перемотка, iOS
+	// вообще не начинает воспроизведение без 206) — ServeContent это умеет.
+	http.ServeContent(w, r, "video", time.Now(), bytes.NewReader(videoData))
+}
+
 // handleGetAudio — GET /audio/<id>
 func (a *App) handleGetAudio(w http.ResponseWriter, r *http.Request) {
 	login := a.getSessionLogin(r)
@@ -1702,10 +2048,10 @@ func (a *App) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 // pushNotificationPayload — JSON, который попадёт в event.data внутри Service Worker
 // (sw.js его парсит и решает, какой заголовок/текст/действие показать).
 type pushNotificationPayload struct {
-	Type  string `json:"type"`            // "call" | "message"
-	From  string `json:"from"`
-	Title string `json:"title"`
-	Body  string `json:"body"`
+	Type   string `json:"type"` // "call" | "message"
+	From   string `json:"from"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
 	CallID string `json:"call_id,omitempty"`
 }
 
@@ -2087,7 +2433,9 @@ func (c *Client) readPump(a *App) {
 			a.routeMessage(msg)
 		} else if strings.HasPrefix(msgStr, "typing:") {
 			// typing:{"to":"login"} — пересылаем получателю typing:{"from":"..."}
-			var payload struct{ To string `json:"to"` }
+			var payload struct {
+				To string `json:"to"`
+			}
 			if err := json.Unmarshal([]byte(msgStr[7:]), &payload); err == nil && payload.To != "" {
 				toLogin := strings.ToLower(payload.To)
 				notif, _ := json.Marshal(map[string]string{"from": c.login})
@@ -2099,7 +2447,9 @@ func (c *Client) readPump(a *App) {
 			}
 		} else if strings.HasPrefix(msgStr, "typingstop:") {
 			// typingstop:{"to":"login"} — пересылаем получателю typingstop:{"from":"..."}
-			var payload struct{ To string `json:"to"` }
+			var payload struct {
+				To string `json:"to"`
+			}
 			if err := json.Unmarshal([]byte(msgStr[11:]), &payload); err == nil && payload.To != "" {
 				toLogin := strings.ToLower(payload.To)
 				notif, _ := json.Marshal(map[string]string{"from": c.login})
@@ -2246,6 +2596,10 @@ func (a *App) routeMessage(msg Message) {
 			body = "📷 Фото"
 		case msg.AudioID != 0:
 			body = "🎤 Голосовое сообщение"
+		case msg.VideoID != 0 && msg.VideoIsCircle:
+			body = "📹 Видеосообщение"
+		case msg.VideoID != 0:
+			body = "🎬 Видео"
 		case body == "":
 			body = "Новое сообщение"
 		}
