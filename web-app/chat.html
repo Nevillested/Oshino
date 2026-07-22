@@ -4535,7 +4535,49 @@
                 : (isVideo ? 'Пропущенный видеозвонок' : 'Пропущенный звонок');
         }
 
+        // Страховка от дублей медиа: при гонке «HTTP-ответ ↔ эхо WebSocket» одно и то же
+        // вложение могло попасть в список дважды (локальный плейсхолдер + серверное).
+        // Схлопываем их в одну запись: берём серверную (положительный id), но переносим
+        // локальное превью, чтобы картинка/аудио не мигали до подгрузки с сервера.
+        function dedupeMediaMessages(msgs) {
+            const seen = new Map();   // ключ вида "img:815" / "aud:42" -> запись
+            const out  = [];
+            for (const m of msgs) {
+                const key = m.image_id ? ('img:' + m.image_id)
+                          : m.audio_id ? ('aud:' + m.audio_id)
+                          : null;
+                if (!key) { out.push(m); continue; }
+
+                const prev = seen.get(key);
+                if (!prev) { seen.set(key, m); out.push(m); continue; }
+
+                // Оставляем серверную запись (id > 0), локальные данные переносим
+                const server = (m.id > 0) ? m : prev;
+                const local  = (m.id > 0) ? prev : m;
+                if (local.local_preview   && !server.local_preview)   server.local_preview   = local.local_preview;
+                if (local.local_audio_url && !server.local_audio_url) server.local_audio_url = local.local_audio_url;
+                if (local.audio_duration  && !server.audio_duration)  server.audio_duration  = local.audio_duration;
+                delete server.pending;
+
+                if (server !== prev) {
+                    const i = out.indexOf(prev);
+                    if (i !== -1) out[i] = server;
+                    seen.set(key, server);
+                }
+            }
+            return out;
+        }
+
         function renderMessages(msgs) {
+            // Схлопываем возможные дубли вложений перед отрисовкой
+            if (Array.isArray(msgs)) {
+                const cleaned = dedupeMediaMessages(msgs);
+                if (cleaned.length !== msgs.length) {
+                    msgs.length = 0;
+                    msgs.push(...cleaned);
+                }
+            }
+
             // Сохраняем позицию скролла для подгрузки вверх
             const prevScrollHeight = messagesDiv.scrollHeight;
             const prevScrollTop = messagesDiv.scrollTop;
@@ -5289,6 +5331,27 @@
             const state = historyState[user];
             if (!state) return;
 
+            // Гонка: эхо по WebSocket могло прийти РАНЬШЕ, чем завершилась HTTP-загрузка.
+            // Тогда сообщение уже есть в списке — второй раз добавлять нельзя (был дубль).
+            if (resp && resp.image_id) {
+                const existing = state.messages.find(m => m.image_id === resp.image_id);
+                if (existing) {
+                    if (!existing.local_preview) {
+                        existing.local_preview = URL.createObjectURL(file);
+                        setTimeout(() => {
+                            if (existing.local_preview) {
+                                URL.revokeObjectURL(existing.local_preview);
+                                delete existing.local_preview;
+                                if (currentUser === user) renderMessages(state.messages);
+                            }
+                        }, 5000);
+                    }
+                    delete existing.pending;
+                    if (currentUser === user) renderMessages(state.messages);
+                    return;
+                }
+            }
+
             const tmpId = -(Date.now());
             const localPreview = URL.createObjectURL(file);
 
@@ -5472,6 +5535,28 @@
         function addPendingAudioMessage(user, blob, mimeType, duration, resp) {
             const state = historyState[user];
             if (!state) return;
+
+            // Та же гонка, что и с картинками: эхо по WebSocket могло прийти раньше
+            // ответа HTTP-загрузки — тогда сообщение уже в списке, дубль не создаём.
+            if (resp && resp.audio_id) {
+                const existing = state.messages.find(m => m.audio_id === resp.audio_id);
+                if (existing) {
+                    if (!existing.local_audio_url) {
+                        existing.local_audio_url = URL.createObjectURL(blob);
+                        setTimeout(() => {
+                            if (existing.local_audio_url) {
+                                URL.revokeObjectURL(existing.local_audio_url);
+                                delete existing.local_audio_url;
+                                if (currentUser === user) renderMessages(state.messages);
+                            }
+                        }, 5000);
+                    }
+                    if (!existing.audio_duration) existing.audio_duration = duration;
+                    delete existing.pending;
+                    if (currentUser === user) renderMessages(state.messages);
+                    return;
+                }
+            }
 
             const tmpId = -(Date.now());
             const localUrl = URL.createObjectURL(blob);
