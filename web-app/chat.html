@@ -1079,20 +1079,33 @@
             max-width: 100%;
         }
 
+        /* Ссылкой служит вся плашка целиком, а не только имя внутри неё: по
+           узкому тексту тяжело попасть пальцем, а цель тут одна. Класс вешается
+           только когда переход действительно возможен (есть от кого и куда) —
+           у старых сообщений без id первоисточника плашка остаётся обычной
+           подписью, и курсор об этом честно сообщает. */
+        .msg-forward-label.linked {
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: filter 0.15s ease, opacity 0.15s ease;
+        }
+
+        .msg-forward-label.linked:active { opacity: 0.65; }
+
+        @media (hover: hover) {
+            .msg-forward-label.linked:hover { filter: brightness(1.12); }
+        }
+
+        /* Подчёркивания больше нет: подчёркнутое имя внутри кликабельной плашки
+           читалось как «ссылка только здесь» — ровно то, от чего уходим. */
         .msg-forward-from {
             font-style: normal;
             font-weight: 600;
             color: var(--color-fwd-link);
-            cursor: pointer;
-            text-decoration: underline;
-            text-underline-offset: 2px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            -webkit-tap-highlight-color: transparent;
         }
-
-        .msg-forward-from:active { opacity: 0.7; }
 
         /* ── Закреплённое сообщение (pin-панель под топбаром) ───────────────── */
 
@@ -1174,8 +1187,9 @@
             padding-bottom: 26px;
         }
 
-        /* Картинка и аудио — margin снизу вместо padding (они не текстовые блоки) */
+        /* Картинка, аудио и файл — margin снизу вместо padding (они не текстовые блоки) */
         .message-wrap.has-reactions .message-image,
+        .message-wrap.has-reactions .file-card,
         .message-wrap.has-reactions .audio-player {
             margin-bottom: 20px;
         }
@@ -2151,18 +2165,22 @@
 
         #attach-options {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             padding: 0 16px 20px;
         }
 
+        /* Пунктов три (камера / галерея / файл), поэтому отступы внутри плитки
+           заметно скромнее, чем были при двух — иначе на узких экранах подписи
+           начинают переноситься. */
         .attach-opt {
             flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 10px;
-            padding: 26px 8px;
+            gap: 9px;
+            padding: 22px 6px;
             border: none;
             border-radius: 14px;
             background: var(--color-composer-btn-hover);
@@ -2173,7 +2191,7 @@
         }
 
         .attach-opt:active { opacity: 0.75; }
-        .attach-opt svg { color: #4a90e2; }
+        .attach-opt svg { color: #4a90e2; flex-shrink: 0; }
 
         #attach-note {
             padding: 0 20px;
@@ -2182,7 +2200,150 @@
             text-align: center;
         }
 
+        /* ── Файл в чате ───────────────────────────────────────────────────
+           Оформлен как обычный пузырь, но целиком кликабелен (скачивание).
+           Ширина ограничена, длинное имя обрезается многоточием — иначе один
+           файл с полотном вместо названия растягивает всю ленту. */
+        .message-file {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            max-width: 320px;
+            padding: 10px 13px;
+            border-radius: 14px;
+            text-decoration: none;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .message-file.own {
+            background: var(--color-msg-own-bg);
+            color: var(--color-msg-own-text);
+        }
+
+        .message-file.other {
+            background: var(--color-msg-other-bg);
+            color: var(--color-msg-other-text);
+        }
+
+        .message-file:active { opacity: 0.75; }
+
+        .message-file-icon {
+            flex-shrink: 0;
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(127, 127, 127, 0.22);
+        }
+
+        .message-file-body {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .message-file-name {
+            font-size: 14px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .message-file-meta {
+            font-size: 12px;
+            opacity: 0.72;
+        }
+
         /* Аудио-плеер в чате */
+        /* ── Файловое вложение ───────────────────────────────────────────────
+           Оформлено как аудиоплеер (та же ширина, тот же радиус, те же цвета
+           своего/чужого пузыря) — чтобы лента не выглядела лоскутной. Ссылка,
+           а не кнопка: браузер сам умеет скачивать по href, а сервер отдаёт
+           файл с Content-Disposition: attachment. */
+        .file-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            min-width: 200px;
+            max-width: 280px;
+            text-decoration: none;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .file-card.own {
+            background: #4a90e2;
+            color: #ffffff;
+        }
+
+        .file-card.other {
+            background: var(--color-bubble-other);
+            border: 1px solid var(--color-reaction-sep);
+            color: var(--color-bubble-text);
+        }
+
+        .file-card:active { opacity: 0.75; }
+
+        @media (hover: hover) {
+            .file-card:hover { filter: brightness(1.08); }
+        }
+
+        .file-card-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .file-card.other .file-card-icon {
+            background: #4a90e2;
+            color: #ffffff;
+        }
+
+        /* min-width: 0 обязателен: без него flex-элемент не даёт себя сжать и
+           ellipsis у длинного имени файла не срабатывает — карточка просто
+           разъезжается по ширине. */
+        .file-card-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .file-card-name {
+            font-size: 14px;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-card-meta {
+            font-size: 12px;
+            opacity: 0.75;
+        }
+
+        /* Пока файл заливается — карточка неактивна: скачивать ещё нечего. */
+        .file-card.pending {
+            pointer-events: none;
+            opacity: 0.65;
+        }
+
+        .message-wrap.selected .file-card { outline: 2px solid #4a90e2; outline-offset: 2px; }
+
         .audio-player {
             display: flex;
             align-items: center;
@@ -3745,6 +3906,12 @@
                 </svg>
                 Фото или видео
             </button>
+            <button class="attach-opt" id="attach-file" type="button">
+                <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
+                Файл
+            </button>
         </div>
         <div id="attach-note">Смахните шторку вниз, чтобы закрыть</div>
     </div>
@@ -4063,6 +4230,8 @@
             <div id="form-area" style="display: none;">
                 <input type="file" id="image-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
                 <input type="file" id="media-input" accept="image/*,video/*" hidden>
+                <!-- Без accept: через этот вход идёт любой файл, ограничение только по размеру -->
+                <input type="file" id="file-input" hidden>
                 <div id="composer">
                     <button id="emoji-btn" class="composer-btn" type="button" title="Эмодзи"></button>
                     <textarea id="msg-input" rows="1" placeholder="Сообщение"></textarea>
@@ -4179,6 +4348,14 @@
                 <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
             </svg>
             <span id="dlg-pin-label">Закрепить чат</span>
+        </button>
+        <button class="ctx-item" id="dlg-mute">
+            <svg id="dlg-mute-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                <line id="dlg-mute-slash" x1="3" y1="3" x2="21" y2="21"></line>
+            </svg>
+            <span id="dlg-mute-label">Отключить звук</span>
         </button>
         <button class="ctx-item" id="dlg-clear">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4357,6 +4534,7 @@
         const attachBtn = document.getElementById('attach-btn');
         const imageInput = document.getElementById('image-input');
         const mediaInput = document.getElementById('media-input');
+        const fileInput = document.getElementById('file-input');
         const micBtn = document.getElementById('mic-btn');
         const emojiBtn = document.getElementById('emoji-btn');
         const emojiPanel = document.getElementById('emoji-panel');
@@ -5055,6 +5233,54 @@
             else openDialog(login);
         }
 
+        // Логины приходят из разных мест (список диалогов, сообщения, ответы
+        // сервера) и не всегда в одном регистре, а historyState — обычный
+        // объект, для которого «Ivan» и «ivan» это два разных чата. Приводим к
+        // уже существующему ключу, чтобы не открыть пустой диалог-двойник.
+        function resolveDialogKey(login) {
+            if (!login || historyState[login]) return login;
+            const lower = login.toLowerCase();
+            return Object.keys(historyState).find(k => k.toLowerCase() === lower) || login;
+        }
+
+        // Сообщение, к которому нужно прыгнуть сразу после открытия диалога.
+        // Открытие асинхронное (подгружается история), поэтому прыжок нельзя
+        // сделать прямо по клику — он откладывается до конца openDialog.
+        let pendingScrollMsgId = null;
+
+        // Переход по плашке «Переслано от…».
+        //
+        // Оригинал доступен далеко не всегда: он мог быть удалён или лежать в
+        // переписке, к которой у нас нет доступа (А написал Б, Б переслал нам —
+        // сообщения А↔Б у нас нет и быть не должно). Спрашиваем сервер, и если
+        // он говорит «нет» — молча откатываемся к прежнему поведению и просто
+        // открываем чат с автором. Это честнее, чем показывать ошибку: человек
+        // всё равно попадает туда, куда собирался.
+        async function openForwardSource(login, srcMsgId) {
+            if (!login) return;
+            if (!srcMsgId) { openChatWith(resolveDialogKey(login)); return; }
+
+            let loc = null;
+            try {
+                const res = await fetch('/message-location?id=' + encodeURIComponent(srcMsgId));
+                if (res.ok) loc = await res.json();
+            } catch (e) {}
+
+            if (!loc || !loc.found || !loc.peer) {
+                openChatWith(resolveDialogKey(login));
+                return;
+            }
+
+            const peer = resolveDialogKey(loc.peer);
+            if (currentUser && currentUser.toLowerCase() === peer.toLowerCase()) {
+                // Уже в нужном чате — прыгаем без перезагрузки диалога.
+                scrollToMessage(srcMsgId);
+                return;
+            }
+            pendingScrollMsgId = srcMsgId;
+            openChatWith(peer);
+        }
+
         welcomeDialogsList.addEventListener('click', (e) => {
             const li = e.target.closest('li');
             if (!li) return;
@@ -5084,15 +5310,19 @@
                 const login = typeof e === 'string' ? e : e.login;
                 const lastMsg = typeof e === 'string' ? '' : (e.last_msg || '');
                 seen.add(login);
-                // Закрепление приходит с сервера и хранится персонально
+                // Закрепление и mute приходят с сервера и хранятся персонально
                 if (typeof e === 'object' && e.pinned) pinnedDialogs.add(login);
                 else pinnedDialogs.delete(login);
+                if (typeof e === 'object' && e.muted) mutedDialogs.add(login);
+                else mutedDialogs.delete(login);
 
                 if (!historyState[login]) {
                     historyState[login] = { oldestId: 0, allLoaded: false, messages: [], lastMsg };
                 } else if (lastMsg) {
-                    // Обновляем lastMsg только если новое значение свежее
-                    if (!historyState[login].lastMsg || lastMsg > historyState[login].lastMsg) {
+                    // Обновляем lastMsg только если новое значение свежее.
+                    // Сравнение по разобранному времени, а не по строке: см.
+                    // tsValue — источники присылают разный формат записи.
+                    if (tsValue(lastMsg) > tsValue(historyState[login].lastMsg)) {
                         historyState[login].lastMsg = lastMsg;
                     }
                 }
@@ -5104,6 +5334,7 @@
                     delete historyState[login];
                     delete unreadCount[login];
                     pinnedDialogs.delete(login);
+                    mutedDialogs.delete(login);
                 }
             });
 
@@ -5154,6 +5385,45 @@
             return displayNames[login.toLowerCase()] || login.toLowerCase();
         }
 
+        // Метки времени приходят из двух источников и раньше сравнивались как
+        // строки. Это было ошибкой: список диалогов отдаёт время в одном виде,
+        // живые сообщения по WebSocket — в другом ("2026-01-01 10:00:00" против
+        // "2026-01-01T10:00:00Z"). Посимвольно пробел меньше буквы «T», поэтому
+        // любой чат с «живой» меткой всплывал выше чата с меткой из базы,
+        // независимо от реальных дат. Теперь обе метки разбираются в число, и
+        // сравнение идёт по времени, а не по написанию.
+        function tsValue(s) {
+            if (!s) return 0;
+            let v = Date.parse(s);
+            if (!isNaN(v)) return v;
+            // Запасной разбор для формата с пробелом вместо «T» и без зоны:
+            // такие метки могли осесть в памяти вкладки, открытой до обновления.
+            v = Date.parse(String(s).replace(' ', 'T') + 'Z');
+            return isNaN(v) ? 0 : v;
+        }
+
+        // Время последнего события в чате: сначала метка из списка диалогов
+        // (она приходит с сервера и учитывает всю переписку), иначе — последнее
+        // сообщение, лежащее в памяти.
+        function dialogSortTs(login) {
+            const st = historyState[login];
+            if (!st) return 0;
+            const fromList = tsValue(st.lastMsg);
+            const msgs = st.messages || [];
+            const fromMem = msgs.length ? tsValue(msgs[msgs.length - 1].created_at) : 0;
+            return Math.max(fromList, fromMem);
+        }
+
+        // Отмечает чат как «только что затронутый»: и отправка, и получение
+        // поднимают его наверх одинаково. Назад время не двигаем — запоздавшее
+        // подтверждение старого сообщения не должно ронять чат вниз.
+        function touchDialogTs(login, createdAt) {
+            if (!createdAt) return;
+            const st = historyState[login];
+            if (!st) return;
+            if (tsValue(createdAt) > tsValue(st.lastMsg)) st.lastMsg = createdAt;
+        }
+
         function renderDialogList() {
             usersList.innerHTML = '';
             welcomeDialogsList.innerHTML = '';
@@ -5162,15 +5432,11 @@
                 // Закреплённые чаты всегда сверху, между собой — по времени
                 const pa = pinnedDialogs.has(a), pb = pinnedDialogs.has(b);
                 if (pa !== pb) return pa ? -1 : 1;
-                // Приоритет: lastMsg из БД (пришёл при инициализации),
-                // fallback — последнее загруженное сообщение в памяти
-                const stA = historyState[a], stB = historyState[b];
-                const msgsA = stA.messages, msgsB = stB.messages;
-                const tsA = stA.lastMsg ||
-                    (msgsA.length ? msgsA[msgsA.length - 1].created_at : '');
-                const tsB = stB.lastMsg ||
-                    (msgsB.length ? msgsB[msgsB.length - 1].created_at : '');
-                if (tsA && tsB) return tsB.localeCompare(tsA);
+                // Дальше — строго по времени последнего события в чате, без
+                // разницы, отправлено оно или получено, и без исключений для
+                // «Заметок»: свежее наверх.
+                const tsA = dialogSortTs(a), tsB = dialogSortTs(b);
+                if (tsA && tsB) return tsB - tsA;
                 if (tsA) return -1;
                 if (tsB) return  1;
                 return a.localeCompare(b);
@@ -5211,6 +5477,14 @@
                     li.appendChild(badge);
                 }
 
+                if (mutedDialogs.has(user)) {
+                    const muteMark = document.createElement('span');
+                    muteMark.className = 'dialog-pin-mark';
+                    muteMark.textContent = '🔇';
+                    muteMark.title = 'Звук отключён';
+                    li.appendChild(muteMark);
+                }
+
                 if (pinnedDialogs.has(user)) {
                     const pinMark = document.createElement('span');
                     pinMark.className = 'dialog-pin-mark';
@@ -5243,6 +5517,14 @@
                     welcomeBadge.className = 'unread-badge';
                     welcomeBadge.textContent = count;
                     welcomeLi.appendChild(welcomeBadge);
+                }
+
+                if (mutedDialogs.has(user)) {
+                    const wMute = document.createElement('span');
+                    wMute.className = 'dialog-pin-mark';
+                    wMute.textContent = '🔇';
+                    wMute.title = 'Звук отключён';
+                    welcomeLi.appendChild(wMute);
                 }
 
                 if (pinnedDialogs.has(user)) {
@@ -5310,6 +5592,16 @@
                 loadMoreIndicator.style.display = 'none';
                 // Первая загрузка
                 await loadHistory(user, 0, 20);
+            }
+
+            // Отложенный переход к конкретному сообщению (плашка «Переслано
+            // от…»). Раньше этого момента прыгать некуда: нужного элемента в
+            // ленте ещё нет. Если за время загрузки диалог успели сменить,
+            // запрос просто сбрасывается.
+            if (pendingScrollMsgId) {
+                const target = pendingScrollMsgId;
+                pendingScrollMsgId = null;
+                if (currentUser === user) scrollToMessage(target);
             }
         }
 
@@ -5636,12 +5928,22 @@
                         ? 'вас'
                         : getDisplayName(msg.forwarded_from);
                     fwdFrom.dataset.login = msg.forwarded_from;
-                    fwdFrom.title = 'Открыть чат';
-                    fwdFrom.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        openChatWith(msg.forwarded_from);
-                    });
                     fwd.appendChild(fwdFrom);
+
+                    // Кликабельна вся плашка. Куда именно она ведёт, заранее
+                    // неизвестно: оригинал может лежать в переписке, которой у
+                    // нас нет (А написал Б, Б переслал нам), или быть удалён —
+                    // это выясняет сервер уже по клику. Поэтому подпись у
+                    // подсказки нейтральная.
+                    const srcId = msg.forwarded_from_id || 0;
+                    fwd.classList.add('linked');
+                    fwd.title = srcId
+                        ? 'Перейти к исходному сообщению'
+                        : 'Открыть чат';
+                    fwd.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openForwardSource(msg.forwarded_from, srcId);
+                    });
                     wrap.appendChild(fwd);
                 }
 
@@ -5674,6 +5976,11 @@
                     wrap.appendChild(msg.video_is_circle
                         ? buildVideoCircle(videoSrc, msg.video_duration || 0)
                         : buildVideoPlayer(videoSrc));
+                } else if (msg.file_id || msg.isFile) {
+                    if (msg.reply_preview) {
+                        wrap.appendChild(buildReplyQuote(msg.reply_preview, msg.own, msg.reply_to_id));
+                    }
+                    wrap.appendChild(buildFileCard(msg));
                 } else {
                     const bubble = document.createElement('div');
                     bubble.className = 'message ' + (msg.own ? 'own' : 'other');
@@ -5743,6 +6050,73 @@
         }
 
         // ── Вспомогательные функции для сообщений ────────────────────────────────
+
+        // Размер файла человеческим языком. Границу переводим на следующую
+        // единицу с 1024, а не с 1000: 1023 Б показать как «1,0 КБ» было бы
+        // враньём в большую сторону.
+        function formatFileSize(bytes) {
+            const n = Number(bytes) || 0;
+            if (n < 1024) return n + ' Б';
+            const units = ['КБ', 'МБ', 'ГБ'];
+            let v = n / 1024, i = 0;
+            while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+            // До 10 единиц дробная часть ещё несёт смысл (2,4 МБ), дальше — шум.
+            return (v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)) + ' ' + units[i];
+        }
+
+        // Карточка файла. Скачивание идёт обычной ссылкой: сервер отдаёт
+        // /file/<id> с Content-Disposition: attachment, поэтому браузер сам
+        // сохранит файл под нужным именем и не станет открывать его во вкладке.
+        function buildFileCard(msg) {
+            const card = document.createElement('a');
+            card.className = 'file-card ' + (msg.own ? 'own' : 'other');
+
+            if (msg.file_id) {
+                card.href = '/file/' + msg.file_id;
+                // download нужен ради имени на случай, если файл придёт из
+                // кэша без заголовков; для кириллицы имя берём как есть.
+                card.setAttribute('download', msg.file_name || 'file');
+            } else {
+                // Файл ещё заливается — ссылки пока нет.
+                card.classList.add('pending');
+                card.href = '#';
+            }
+
+            const icon = document.createElement('span');
+            icon.className = 'file-card-icon';
+            icon.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>`;
+
+            const info = document.createElement('div');
+            info.className = 'file-card-info';
+
+            const name = document.createElement('div');
+            name.className = 'file-card-name';
+            name.textContent = msg.file_name || 'Файл';
+            // Полное имя длинного файла обрезано многоточием — отдаём его
+            // целиком хотя бы во всплывающей подсказке.
+            name.title = msg.file_name || 'Файл';
+
+            const meta = document.createElement('div');
+            meta.className = 'file-card-meta';
+            meta.textContent = msg.file_id
+                ? formatFileSize(msg.file_size)
+                : 'Отправка…';
+
+            info.appendChild(name);
+            info.appendChild(meta);
+            card.appendChild(icon);
+            card.appendChild(info);
+
+            // Клик по карточке не должен попутно выделять сообщение или
+            // открывать контекстное меню — обработчики ленты делегированы
+            // на всю строку.
+            card.addEventListener('click', (e) => e.stopPropagation());
+
+            return card;
+        }
 
         function buildReplyQuote(preview, isOwn, replyToId) {
             const q = document.createElement('div');
@@ -6004,7 +6378,7 @@
             // Защищает от двойной вставки если msgack пришёл на то же устройство, которое
             // уже подтвердило плейсхолдер, и от гонок при быстрой отправке.
             if (msg.msg_id && state.messages.some(m => m.id === msg.msg_id)) {
-                if (msg.created_at) historyState[msg.to].lastMsg = msg.created_at;
+                touchDialogTs(msg.to, msg.created_at);
                 return;
             }
 
@@ -6026,8 +6400,45 @@
                     video_id: msg.video_id || undefined,
                     video_duration: msg.video_duration || undefined,
                     video_is_circle: msg.video_is_circle || undefined,
-                    forwarded_from: msg.forwarded_from
+                    file_id: msg.file_id || undefined,
+                    file_name: msg.file_name || undefined,
+                    file_mime: msg.file_mime || undefined,
+                    file_size: msg.file_size || undefined,
+                    forwarded_from: msg.forwarded_from,
+                    forwarded_from_id: msg.forwarded_from_id
                 });
+            } else if (msg.file_id) {
+                // Как и у картинок: файл уже мог быть добавлен локально по
+                // ответу на загрузку, тогда эхо по WebSocket только уточняет
+                // запись, а не создаёт вторую.
+                let alreadyFile = null;
+                for (const m of state.messages) {
+                    if (m.file_id === msg.file_id) { alreadyFile = m; break; }
+                }
+                if (alreadyFile) {
+                    alreadyFile.id         = msg.msg_id || alreadyFile.id;
+                    alreadyFile.created_at = msg.created_at || alreadyFile.created_at;
+                    if (msg.file_name)     alreadyFile.file_name    = msg.file_name;
+                    if (msg.file_size)     alreadyFile.file_size    = msg.file_size;
+                    if (msg.reply_to_id)   alreadyFile.reply_to_id  = msg.reply_to_id;
+                    if (msg.reply_preview) alreadyFile.reply_preview = msg.reply_preview;
+                    delete alreadyFile.pending;
+                } else {
+                    // Плейсхолдер второго устройства того же логина — вставляем
+                    // как новое своё сообщение.
+                    state.messages.push({
+                        id: msg.msg_id,
+                        from: msg.from,
+                        own: true,
+                        created_at: msg.created_at,
+                        file_id: msg.file_id,
+                        file_name: msg.file_name,
+                        file_mime: msg.file_mime,
+                        file_size: msg.file_size,
+                        reply_to_id: msg.reply_to_id,
+                        reply_preview: msg.reply_preview
+                    });
+                }
             } else if (msg.image_id) {
                 // Защита от дубля: если картинка уже добавлена локально (сервер вернул
                 // image_id сразу при загрузке), эхо по WebSocket не должно её удваивать.
@@ -6233,7 +6644,7 @@
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
             // Обновляем lastMsg для корректной сортировки списка
-            if (msg.created_at) historyState[msg.to].lastMsg = msg.created_at;
+            touchDialogTs(msg.to, msg.created_at);
             renderDialogList();
         }
 
@@ -6260,7 +6671,8 @@
                     image_name: msg.image_name,
                     reply_to_id: msg.reply_to_id,
                     reply_preview: msg.reply_preview,
-                    forwarded_from: msg.forwarded_from
+                    forwarded_from: msg.forwarded_from,
+                    forwarded_from_id: msg.forwarded_from_id
                 });
             } else if (msg.audio_id) {
                 state.messages.push({
@@ -6272,7 +6684,8 @@
                     audio_duration: msg.audio_duration,
                     reply_to_id: msg.reply_to_id,
                     reply_preview: msg.reply_preview,
-                    forwarded_from: msg.forwarded_from
+                    forwarded_from: msg.forwarded_from,
+                    forwarded_from_id: msg.forwarded_from_id
                 });
             } else if (msg.video_id) {
                 state.messages.push({
@@ -6285,7 +6698,23 @@
                     video_is_circle: !!msg.video_is_circle,
                     reply_to_id: msg.reply_to_id,
                     reply_preview: msg.reply_preview,
-                    forwarded_from: msg.forwarded_from
+                    forwarded_from: msg.forwarded_from,
+                    forwarded_from_id: msg.forwarded_from_id
+                });
+            } else if (msg.file_id) {
+                state.messages.push({
+                    id: realId,
+                    from: msg.from,
+                    own: false,
+                    created_at: msg.created_at,
+                    file_id: msg.file_id,
+                    file_name: msg.file_name,
+                    file_mime: msg.file_mime,
+                    file_size: msg.file_size,
+                    reply_to_id: msg.reply_to_id,
+                    reply_preview: msg.reply_preview,
+                    forwarded_from: msg.forwarded_from,
+                    forwarded_from_id: msg.forwarded_from_id
                 });
             } else if (msg.call_type) {
                 state.messages.push({
@@ -6306,7 +6735,8 @@
                     created_at: msg.created_at,
                     reply_to_id: msg.reply_to_id,
                     reply_preview: msg.reply_preview,
-                    forwarded_from: msg.forwarded_from
+                    forwarded_from: msg.forwarded_from,
+                    forwarded_from_id: msg.forwarded_from_id
                 });
             }
 
@@ -6315,12 +6745,15 @@
             }
             // Звук: играем если вкладка скрыта или окно браузера не в фокусе,
             // либо открыт другой диалог — в любом случае не звонок.
-            if (!msg.call_type && (document.hidden || !document.hasFocus() || currentUser !== msg.from)) {
+            // Замьюченный чат молчит: бейдж непрочитанных при этом остаётся,
+            // глушится только сигнал (push для него отсекает сервер).
+            if (!msg.call_type && !isDialogMuted(msg.from) &&
+                (document.hidden || !document.hasFocus() || currentUser !== msg.from)) {
                 playMessageSound();
             }
 
             // Обновляем lastMsg для корректной сортировки списка
-            if (msg.created_at) historyState[msg.from].lastMsg = msg.created_at;
+            touchDialogTs(msg.from, msg.created_at);
 
             renderDialogList();
 
@@ -6499,6 +6932,111 @@
 
             xhr.open('POST', '/upload-image');
             xhr.send(formData);
+        }
+
+        // Загрузка произвольного файла. Отличий от картинки два: превью строить
+        // не из чего (показываем имя и «Отправка…»), и типа файла мы не знаем —
+        // проверять нечего.
+        function uploadFile(file) {
+            if (!currentUser) return;
+
+            const targetUser = currentUser;
+            const replyToId = replyingTo ? replyingTo.id : 0;
+
+            uploadProgressBar.style.display = 'block';
+            uploadProgressFill.style.width = '0%';
+            uploadProgressName.textContent = file.name;
+            uploadProgressCheck.classList.remove('show');
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('to', targetUser);
+            if (replyToId) formData.append('reply_to', String(replyToId));
+
+            const xhr = new XMLHttpRequest();
+
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    uploadProgressFill.style.width = pct + '%';
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    uploadProgressFill.style.width = '100%';
+                    uploadProgressCheck.classList.add('show');
+
+                    let resp = {};
+                    try { resp = JSON.parse(xhr.responseText); } catch (e) {}
+
+                    addPendingFileMessage(targetUser, file, resp);
+
+                    setTimeout(() => {
+                        uploadProgressBar.style.display = 'none';
+                    }, 900);
+                } else {
+                    let errMsg = 'Ошибка загрузки файла';
+                    try { errMsg = JSON.parse(xhr.responseText).error || errMsg; } catch (e) {}
+                    alert(errMsg);
+                    uploadProgressBar.style.display = 'none';
+                }
+            });
+
+            xhr.addEventListener('error', () => {
+                alert('Ошибка соединения при загрузке файла');
+                uploadProgressBar.style.display = 'none';
+            });
+
+            xhr.open('POST', '/upload-file');
+            xhr.send(formData);
+
+            // Ответ на файл — одноразовый, как и у остальных вложений: цитата
+            // уже ушла вместе с запросом, держать её в поле ввода незачем.
+            if (replyToId) cancelReply();
+        }
+
+        function addPendingFileMessage(user, file, resp) {
+            const state = historyState[user];
+            if (!state) return;
+
+            // Гонка: эхо по WebSocket могло прийти раньше ответа на POST —
+            // тогда сообщение уже в ленте и второй раз добавлять его нельзя.
+            if (resp && resp.file_id) {
+                const existing = state.messages.find(m => m.file_id === resp.file_id);
+                if (existing) {
+                    delete existing.pending;
+                    if (currentUser === user) renderMessages(state.messages);
+                    return;
+                }
+            }
+
+            const msgEntry = {
+                id: resp.file_id || -(Date.now()),
+                from: currentLogin,
+                own: true,
+                isFile: true,
+                file_name: resp.file_name || file.name,
+                file_mime: resp.file_mime || file.type || '',
+                file_size: (resp.file_size != null) ? resp.file_size : file.size,
+                created_at: resp.created_at || new Date().toISOString()
+            };
+
+            if (resp.file_id) {
+                msgEntry.file_id = resp.file_id;
+            } else {
+                msgEntry.pending = true;
+            }
+
+            state.messages.push(msgEntry);
+
+            if (currentUser === user) {
+                renderMessages(state.messages);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
+            if (msgEntry.created_at) state.lastMsg = msgEntry.created_at;
+            renderDialogList();
         }
 
         function addPendingImageMessage(user, file, resp) {
@@ -6893,6 +7431,30 @@
             mediaInput.click();
         });
 
+        document.getElementById('attach-file').addEventListener('click', () => {
+            closeAttachSheet();
+            fileInput.click();
+        });
+
+        // Произвольный файл. В отличие от галереи тип не проверяем совсем —
+        // ограничение только по размеру. Картинку, выбранную здесь, тоже
+        // отправляем файлом, а не превращаем в фото: раз человек полез в
+        // «Файл», он хочет отдать оригинал, а не сжатую копию в ленте.
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files[0];
+            fileInput.value = '';
+            if (!file) return;
+            if (file.size > MAX_FILE_BYTES) {
+                alert('Файл слишком большой (максимум 100 МБ)');
+                return;
+            }
+            if (file.size === 0) {
+                alert('Файл пустой');
+                return;
+            }
+            uploadFile(file);
+        });
+
         // Свайп шторки вниз
         (function setupSheetDrag() {
             const grabAreas = [document.getElementById('attach-handle'), document.getElementById('attach-title')];
@@ -6965,6 +7527,10 @@
         const LOCK_DY      = -60;    // сдвиг вверх для блокировки
         const MAX_REC_SEC  = 60;     // и голос, и видеокружок — не больше минуты
         const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+        // Тот же потолок, что и у видео, и тот же, что на сервере (maxFileSize).
+        // Проверка здесь — чтобы не гнать 200 МБ по сети ради ответа «слишком
+        // большой»; настоящая проверка всё равно на сервере.
+        const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
         let holdTimer   = null;
         let pressActive = false;
@@ -8576,12 +9142,37 @@
         const dlgPinLabel = document.getElementById('dlg-pin-label');
         const dlgClearBtn = document.getElementById('dlg-clear');
         const dlgDelBtn   = document.getElementById('dlg-delete');
+        const dlgMuteBtn   = document.getElementById('dlg-mute');
+        const dlgMuteLabel = document.getElementById('dlg-mute-label');
+        const dlgMuteSlash = document.getElementById('dlg-mute-slash');
         let dlgTarget = null;          // логин собеседника
         const pinnedDialogs = new Set();
+        // Замьюченные чаты. Состояние персональное и живёт на сервере
+        // (dialog_states.muted), сюда приходит вместе со списком диалогов —
+        // поэтому мьют, поставленный на телефоне, виден и на ПК.
+        const mutedDialogs = new Set();
+
+        function isDialogMuted(user) {
+            return !!user && mutedDialogs.has(user);
+        }
 
         function openDlgMenu(user, x, y) {
             dlgTarget = user;
             dlgPinLabel.textContent = pinnedDialogs.has(user) ? 'Открепить чат' : 'Закрепить чат';
+            // В «Заметках» звучать нечему: свои же сообщения звука не дают,
+            // push себе не отправляется. Прячем пункт, чтобы не предлагать
+            // выключить то, чего нет.
+            if (dlgMuteBtn) {
+                const notes = isNotesChat(user);
+                dlgMuteBtn.style.display = notes ? 'none' : '';
+                if (!notes) {
+                    const muted = isDialogMuted(user);
+                    dlgMuteLabel.textContent = muted ? 'Включить звук' : 'Отключить звук';
+                    // Перечёркнутый колокольчик показывает текущее состояние
+                    // чата, а не действие: в замьюченном чате он зачёркнут.
+                    if (dlgMuteSlash) dlgMuteSlash.style.display = muted ? '' : 'none';
+                }
+            }
             // «Заметки» удалить нельзя — прячем пункт целиком
             if (dlgDelBtn) dlgDelBtn.style.display = isNotesChat(user) ? 'none' : '';
             dlgMenu.classList.add('open');
@@ -8638,6 +9229,25 @@
                     renderDialogList();
                 }
             } catch (e) {}
+        });
+
+        ctxItem(dlgMuteBtn, async () => {
+            const user = dlgTarget;
+            if (!user) return;
+            const willMute = !isDialogMuted(user);
+            closeDlgMenu();
+            const fd = new FormData();
+            fd.append('with', user);
+            fd.append('muted', willMute ? '1' : '0');
+            try {
+                const res = await fetch('/dialog/mute', { method: 'POST', body: fd });
+                if (res.ok) {
+                    if (willMute) mutedDialogs.add(user); else mutedDialogs.delete(user);
+                    renderDialogList();
+                } else {
+                    alert('Не удалось изменить настройку звука');
+                }
+            } catch (e) { alert('Нет соединения'); }
         });
 
         ctxItem(dlgClearBtn, () => {
@@ -8698,6 +9308,7 @@
             delete historyState[peer];
             delete unreadCount[peer];
             pinnedDialogs.delete(peer);
+            mutedDialogs.delete(peer);
             if (currentUser === peer) {
                 currentUser = null;
                 if (typeof showContacts === 'function') showContacts();
@@ -9168,6 +9779,7 @@
             if (msg.image_id) return '📷 Фото';
             if (msg.audio_id) return '🎤 Голосовое сообщение';
             if (msg.video_id) return msg.video_is_circle ? '📹 Видеосообщение' : '🎬 Видео';
+            if (msg.file_id) return '📎 ' + (msg.file_name || 'Файл');
             return msg.text || '';
         }
 

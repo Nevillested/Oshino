@@ -336,3 +336,42 @@ ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_data bytea;
 ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_mime character varying(50);
 ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_duration integer;
 ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS video_is_circle boolean NOT NULL DEFAULT false;
+
+-- ── Переход к исходнику пересланного сообщения ──────────────────────────────
+-- forwarded_from хранит только ЛОГИН первоисточника — этого хватало, пока
+-- плашка «Переслано от…» просто открывала чат. Теперь вся плашка — ссылка,
+-- ведущая к конкретному сообщению, поэтому нужен и его id.
+--
+-- Как и forwarded_from, id указывает на ПЕРВОИСТОЧНИК, а не на промежуточное
+-- звено: если пересылают уже пересланное, значение копируется как есть.
+--
+-- Внешнего ключа здесь намеренно нет: оригинал может быть удалён (в том числе
+-- «только у себя» у одной из сторон), а плашка при этом должна остаться —
+-- просто перестанет никуда вести. Проверку доступности делает сервер
+-- (см. handleMessageLocation): показать сообщение можно только тому, кто
+-- состоит в диалоге, где оно лежит.
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS forwarded_from_id integer;
+
+-- ── Произвольные файлы во вложениях ─────────────────────────────────────────
+-- Отдельный набор колонок, а не переиспользование image_*/video_*: у файла нет
+-- ни превью, ни длительности, зато нужен размер (показывается в пузыре) и
+-- исходное имя (под ним файл скачивается). Тип не ограничен ничем, кроме
+-- размера — 100 МБ, как у видео.
+--
+-- Данные, как и остальные вложения, лежат в bytea: отдельного файлового
+-- хранилища у проекта нет, а бэкап базы заодно бэкапит и вложения.
+-- file_size хранится отдельно от octet_length(file_data), чтобы список чатов
+-- и превью не приходилось считать по самому блобу.
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS file_data bytea;
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS file_name character varying(255);
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS file_mime character varying(255);
+ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS file_size bigint;
+
+-- ── Беззвучный чат (mute) ───────────────────────────────────────────────────
+-- Настройка персональная, как закрепление: замьютил чат я — у собеседника
+-- ничего не изменилось. Поэтому колонка живёт в dialog_states, а не в
+-- conversations.
+--
+-- Замьюченный чат по-прежнему считает непрочитанные и показывает бейдж —
+-- глушится только звук в открытой вкладке и push на устройства.
+ALTER TABLE messenger.dialog_states ADD COLUMN IF NOT EXISTS muted boolean NOT NULL DEFAULT false;

@@ -118,6 +118,38 @@ func (a *App) handleDialogPin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "pinned": pinned})
 }
 
+// handleDialogMute — POST /dialog/mute (form: with, muted=0|1).
+// Как и закрепление, настройка персональная: замьютил чат я — у собеседника
+// ничего не меняется. Глушится только сигнал (звук во вкладке и push);
+// счётчик непрочитанных продолжает работать, как в Telegram.
+func (a *App) handleDialogMute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+	d, ok := a.resolveDialog(r)
+	if !ok {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	muted := r.FormValue("muted") == "1"
+	if _, err := a.db.Exec(`
+		INSERT INTO messenger.dialog_states (user_id, conversation_id, muted)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, conversation_id) DO UPDATE SET muted = EXCLUDED.muted
+	`, d.myID, d.convID, muted); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Рассылаем на все свои устройства: замьютил на телефоне — на ПК тоже тихо.
+	a.refreshDialogsFor(d.myLogin)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "muted": muted})
+}
+
 // handleDialogClear — POST /dialog/clear (form: with, for_all=0|1).
 // Сообщения удаляются, сам диалог остаётся в списке (пустым).
 func (a *App) handleDialogClear(w http.ResponseWriter, r *http.Request) {

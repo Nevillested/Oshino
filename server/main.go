@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,6 +118,12 @@ type Message struct {
 	VideoID       int    `json:"video_id,omitempty"`
 	VideoDuration int    `json:"video_duration,omitempty"`
 	VideoIsCircle bool   `json:"video_is_circle,omitempty"`
+	// Произвольный файл во вложении. FileID, как и остальные *ID вложений, —
+	// это id самого сообщения: файл лежит в той же строке.
+	FileID   int    `json:"file_id,omitempty"`
+	FileName string `json:"file_name,omitempty"`
+	FileMime string `json:"file_mime,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
 	// Поля системной записи о звонке (см. saveCallMessage) — звонок логируется как
 	// сообщение без текста, с этими полями, и отображается в чате отдельной
 	// "системной" отметкой, как в Telegram, а не обычным пузырём.
@@ -133,7 +140,12 @@ type Message struct {
 	ReplyToID     int           `json:"reply_to_id,omitempty"`
 	ReplyPreview  *ReplyPreview `json:"reply_preview,omitempty"`
 	ForwardedFrom string        `json:"forwarded_from,omitempty"`
-	IsRead        bool          `json:"is_read,omitempty"`
+	// ForwardedFromID — id ИСХОДНОГО сообщения (первоисточника цепочки).
+	// Нужен, чтобы плашка «Переслано от…» вела не просто в чат, а прямо к
+	// сообщению. Может указывать на уже удалённый оригинал или на диалог, в
+	// котором получатель не состоит — доступность проверяет /message-location.
+	ForwardedFromID int  `json:"forwarded_from_id,omitempty"`
+	IsRead          bool `json:"is_read,omitempty"`
 }
 
 // ReplyPreview — краткое представление сообщения, на которое отвечают
@@ -159,9 +171,18 @@ type HistoryMessage struct {
 
 // DialogEntry — один диалог с датой последнего сообщения для сортировки на фронте.
 type DialogEntry struct {
-	Login   string `json:"login"`
-	LastMsg string `json:"last_msg"` // ISO8601 или "" если сообщений нет
+	Login string `json:"login"`
+	// LastMsg — время последнего сообщения строго в RFC3339 UTC
+	// ("2006-01-02T15:04:05Z"), тем же форматом, что и Message.CreatedAt.
+	// Это важно: клиент сортирует список диалогов, сравнивая метки времени из
+	// двух источников — из этого списка и из живых сообщений по WebSocket.
+	// Пока здесь отдавался сырой ::text ("2006-01-02 15:04:05"), форматы не
+	// совпадали, и посимвольное сравнение ставило любой живой RFC3339 выше
+	// любого «старого» формата (пробел < 'T'), из-за чего чат с самым свежим
+	// сообщением мог не подняться наверх.
+	LastMsg string `json:"last_msg"` // RFC3339 UTC или "" если сообщений нет
 	Pinned  bool   `json:"pinned"`   // закреплён вверху списка (у этого пользователя)
+	Muted   bool   `json:"muted"`    // беззвучный: без звука в браузере и без push
 }
 
 // CallSignal — конверт сигналинга звонков (offer/answer/ice/end/reject).
@@ -191,6 +212,12 @@ const maxAudioSize = 20 << 20 // 20 МБ
 // галереи телефона, где минута 4K легко занимает сотни мегабайт. Совсем без
 // потолка нельзя: файл целиком читается в память и кладётся в bytea-колонку.
 const maxVideoSize = 100 << 20 // 100 МБ
+
+// maxFileSize — потолок на произвольное вложение из скрепки. Тип файла не
+// ограничен ничем: это закрытый мессенджер на узкий круг, фильтровать
+// расширения тут не от кого. Ограничен только размер — файл читается в память
+// целиком и кладётся в bytea, как и остальные вложения.
+const maxFileSize = 100 << 20 // 100 МБ
 
 var allowedImageMimes = map[string]bool{
 	"image/jpeg": true,
@@ -351,6 +378,9 @@ func main() {
 	http.HandleFunc("/audio/", app.handleGetAudio)
 	http.HandleFunc("/upload-video", app.handleUploadVideo)
 	http.HandleFunc("/video/", app.handleGetVideo)
+	http.HandleFunc("/upload-file", app.handleUploadFile)
+	http.HandleFunc("/file/", app.handleGetFile)
+	http.HandleFunc("/message-location", app.handleMessageLocation)
 	http.HandleFunc("/turn-credentials", app.handleTurnCredentials)
 	http.HandleFunc("/push-public-key", app.handlePushPublicKey)
 	http.HandleFunc("/push-subscribe", app.handlePushSubscribe)
@@ -366,6 +396,7 @@ func main() {
 	http.HandleFunc("/delete-message", app.handleDeleteMessage)
 	http.HandleFunc("/delete-messages", app.handleDeleteMessages)
 	http.HandleFunc("/dialog/pin", app.handleDialogPin)
+	http.HandleFunc("/dialog/mute", app.handleDialogMute)
 	http.HandleFunc("/dialog/clear", app.handleDialogClear)
 	http.HandleFunc("/dialog/delete", app.handleDialogDelete)
 	http.HandleFunc("/settings", app.handleSettings)
@@ -567,8 +598,12 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 	rows, err := a.db.Query(`
 		SELECT
 			CASE WHEN u1.login = $1 THEN u2.login ELSE u1.login END AS other_login,
-			COALESCE(MAX(m.created_at)::text, '') AS last_msg,
-			COALESCE(BOOL_OR(ds.pinned), false) AS pinned
+			-- Значения created_at по всему проекту трактуются как UTC (см. везде
+			-- "AT TIME ZONE 'UTC'" + Format(time.RFC3339)), поэтому здесь ничего
+			-- не пересчитываем, а только приводим к тому же виду посекундно.
+			COALESCE(to_char(MAX(m.created_at), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_msg,
+			COALESCE(BOOL_OR(ds.pinned), false) AS pinned,
+			COALESCE(BOOL_OR(ds.muted),  false) AS muted
 		FROM messenger.conversations c
 		JOIN messenger.users u1 ON u1.id = c.user1_id
 		JOIN messenger.users u2 ON u2.id = c.user2_id
@@ -589,7 +624,7 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 	var dialogs []DialogEntry
 	for rows.Next() {
 		var e DialogEntry
-		rows.Scan(&e.Login, &e.LastMsg, &e.Pinned)
+		rows.Scan(&e.Login, &e.LastMsg, &e.Pinned, &e.Muted)
 		dialogs = append(dialogs, e)
 	}
 	return dialogs, nil
@@ -638,7 +673,7 @@ func (a *App) getOrCreateConversation(login1, login2 string) (int, error) {
 // посередине символа), либо иконка+подпись для нетекстовых сообщений.
 const maxPreviewRunes = 120
 
-func buildPreviewText(content string, hasImage, hasAudio, hasVideo, videoIsCircle bool, callType sql.NullString) string {
+func buildPreviewText(content string, hasImage, hasAudio, hasVideo, videoIsCircle, hasFile bool, callType sql.NullString) string {
 	text := content
 	switch {
 	case hasImage:
@@ -649,6 +684,8 @@ func buildPreviewText(content string, hasImage, hasAudio, hasVideo, videoIsCircl
 		text = "📹 Видеосообщение"
 	case hasVideo:
 		text = "🎬 Видео"
+	case hasFile:
+		text = "📎 Файл"
 	case callType.Valid:
 		if callType.String == "video" {
 			text = "📹 Видеозвонок"
@@ -668,20 +705,20 @@ func buildPreviewText(content string, hasImage, hasAudio, hasVideo, videoIsCircl
 // pin (что закреплено).
 func (a *App) getMessagePreview(msgID int) (*ReplyPreview, error) {
 	var senderLogin, content string
-	var hasImage, hasAudio, hasVideo bool
+	var hasImage, hasAudio, hasVideo, hasFile bool
 	var videoIsCircle sql.NullBool
 	var callType sql.NullString
 	err := a.db.QueryRow(`
 		SELECT u.login, m.content, (m.image_data IS NOT NULL), (m.audio_data IS NOT NULL),
-		       (m.video_data IS NOT NULL), m.video_is_circle, m.call_type
+		       (m.video_data IS NOT NULL), m.video_is_circle, (m.file_data IS NOT NULL), m.call_type
 		FROM messenger.messages m
 		JOIN messenger.users u ON u.id = m.sender_id
 		WHERE m.id = $1
-	`, msgID).Scan(&senderLogin, &content, &hasImage, &hasAudio, &hasVideo, &videoIsCircle, &callType)
+	`, msgID).Scan(&senderLogin, &content, &hasImage, &hasAudio, &hasVideo, &videoIsCircle, &hasFile, &callType)
 	if err != nil {
 		return nil, err
 	}
-	return &ReplyPreview{From: senderLogin, Text: buildPreviewText(content, hasImage, hasAudio, hasVideo, videoIsCircle.Bool, callType)}, nil
+	return &ReplyPreview{From: senderLogin, Text: buildPreviewText(content, hasImage, hasAudio, hasVideo, videoIsCircle.Bool, hasFile, callType)}, nil
 }
 
 // saveMessage сохраняет текстовое сообщение и возвращает его id и время
@@ -798,16 +835,19 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
 			       m.has_video, m.video_duration, m.video_is_circle,
 			       m.call_type, m.call_status, m.call_duration,
+			       m.has_file, m.file_name, m.file_mime, m.file_size,
 			       m.reply_to_id, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
-			       (rm.video_data IS NOT NULL), rm.video_is_circle, rm.call_type,
-			       m.forwarded_from, m.is_read, m.edited_at
+			       (rm.video_data IS NOT NULL), rm.video_is_circle,
+			       (rm.file_data IS NOT NULL), rm.call_type,
+			       m.forwarded_from, m.forwarded_from_id, m.is_read, m.edited_at
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration,
 				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
 				       call_type, call_status, call_duration,
-				       reply_to_id, forwarded_from, is_read, edited_at
+				       (file_data IS NOT NULL) AS has_file, file_name, file_mime, file_size,
+				       reply_to_id, forwarded_from, forwarded_from_id, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				  AND NOT EXISTS (
@@ -829,16 +869,19 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       (m.audio_data IS NOT NULL) AS has_audio, m.audio_duration,
 			       m.has_video, m.video_duration, m.video_is_circle,
 			       m.call_type, m.call_status, m.call_duration,
+			       m.has_file, m.file_name, m.file_mime, m.file_size,
 			       m.reply_to_id, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
-			       (rm.video_data IS NOT NULL), rm.video_is_circle, rm.call_type,
-			       m.forwarded_from, m.is_read, m.edited_at
+			       (rm.video_data IS NOT NULL), rm.video_is_circle,
+			       (rm.file_data IS NOT NULL), rm.call_type,
+			       m.forwarded_from, m.forwarded_from_id, m.is_read, m.edited_at
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration,
 				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
 				       call_type, call_status, call_duration,
-				       reply_to_id, forwarded_from, is_read, edited_at
+				       (file_data IS NOT NULL) AS has_file, file_name, file_mime, file_size,
+				       reply_to_id, forwarded_from, forwarded_from_id, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				  AND NOT EXISTS (
@@ -875,15 +918,22 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		VideoID       int            `json:"video_id,omitempty"`
 		VideoDuration int            `json:"video_duration,omitempty"`
 		VideoIsCircle bool           `json:"video_is_circle,omitempty"`
+		FileID        int            `json:"file_id,omitempty"`
+		FileName      string         `json:"file_name,omitempty"`
+		FileMime      string         `json:"file_mime,omitempty"`
+		FileSize      int64          `json:"file_size,omitempty"`
 		CallType      string         `json:"call_type,omitempty"`
 		CallStatus    string         `json:"call_status,omitempty"`
 		CallDuration  *int           `json:"call_duration,omitempty"`
 		ReplyToID     int            `json:"reply_to_id,omitempty"`
 		ReplyPreview  *ReplyPreview  `json:"reply_preview,omitempty"`
 		ForwardedFrom string         `json:"forwarded_from,omitempty"`
-		IsRead        bool           `json:"is_read"`
-		EditedAt      string         `json:"edited_at,omitempty"`
-		Reactions     []ReactionInfo `json:"reactions,omitempty"`
+		// id первоисточника: по нему плашка «Переслано от…» прыгает к
+		// оригиналу. У сообщений, пересланных до появления колонки, его нет.
+		ForwardedFromID int            `json:"forwarded_from_id,omitempty"`
+		IsRead          bool           `json:"is_read"`
+		EditedAt        string         `json:"edited_at,omitempty"`
+		Reactions       []ReactionInfo `json:"reactions,omitempty"`
 	}
 
 	var messages []HistMsg
@@ -897,21 +947,26 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var videoIsCircle sql.NullBool
 		var callType, callStatus sql.NullString
 		var callDuration sql.NullInt64
+		var hasFile bool
+		var fileName, fileMime sql.NullString
+		var fileSize sql.NullInt64
 		var replyToID sql.NullInt64
 		var replyFrom, replyContent sql.NullString
-		var replyHasImage, replyHasAudio, replyHasVideo, replyVideoIsCircle sql.NullBool
+		var replyHasImage, replyHasAudio, replyHasVideo, replyVideoIsCircle, replyHasFile sql.NullBool
 		var replyCallType sql.NullString
 		var forwardedFrom sql.NullString
+		var forwardedFromID sql.NullInt64
 		var editedAt sql.NullTime
 		if err := rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
 			&imageMime, &imageFilename, &hasImage,
 			&hasAudio, &audioDuration,
 			&hasVideo, &videoDuration, &videoIsCircle,
 			&callType, &callStatus, &callDuration,
+			&hasFile, &fileName, &fileMime, &fileSize,
 			&replyToID, &replyFrom, &replyContent,
 			&replyHasImage, &replyHasAudio,
-			&replyHasVideo, &replyVideoIsCircle, &replyCallType,
-			&forwardedFrom, &m.IsRead, &editedAt); err != nil {
+			&replyHasVideo, &replyVideoIsCircle, &replyHasFile, &replyCallType,
+			&forwardedFrom, &forwardedFromID, &m.IsRead, &editedAt); err != nil {
 			log.Printf("handleHistory Scan error: %v", err)
 			continue
 		}
@@ -934,6 +989,12 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			m.VideoDuration = int(videoDuration.Int64)
 			m.VideoIsCircle = videoIsCircle.Bool
 		}
+		if hasFile {
+			m.FileID = m.ID
+			m.FileName = fileName.String
+			m.FileMime = fileMime.String
+			m.FileSize = fileSize.Int64
+		}
 		if callType.Valid {
 			m.CallType = callType.String
 			m.CallStatus = callStatus.String
@@ -951,12 +1012,15 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 				m.ReplyPreview = &ReplyPreview{
 					From: replyFrom.String,
 					Text: buildPreviewText(replyContent.String, replyHasImage.Bool, replyHasAudio.Bool,
-						replyHasVideo.Bool, replyVideoIsCircle.Bool, replyCallType),
+						replyHasVideo.Bool, replyVideoIsCircle.Bool, replyHasFile.Bool, replyCallType),
 				}
 			}
 		}
 		if forwardedFrom.Valid {
 			m.ForwardedFrom = forwardedFrom.String
+		}
+		if forwardedFromID.Valid {
+			m.ForwardedFromID = int(forwardedFromID.Int64)
 		}
 		ids = append(ids, m.ID)
 		messages = append(messages, m)
@@ -1320,25 +1384,30 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 	var msg Message
 
 	var senderLogin, content string
-	var imageData, audioData, videoData []byte
+	var imageData, audioData, videoData, fileData []byte
 	var imageMime, imageFilename, audioMime, videoMime sql.NullString
+	var fileName, fileMime sql.NullString
+	var fileSize sql.NullInt64
 	var audioDuration, videoDuration sql.NullInt64
 	var videoIsCircle sql.NullBool
 	var callType sql.NullString
 	var existingForwardedFrom sql.NullString
+	var existingForwardedFromID sql.NullInt64
 
 	err := a.db.QueryRow(`
 		SELECT u.login, m.content, m.image_data, m.image_mime, m.image_filename,
 		       m.audio_data, m.audio_mime, m.audio_duration,
 		       m.video_data, m.video_mime, m.video_duration, m.video_is_circle,
-		       m.call_type, m.forwarded_from
+		       m.file_data, m.file_name, m.file_mime, m.file_size,
+		       m.call_type, m.forwarded_from, m.forwarded_from_id
 		FROM messenger.messages m
 		JOIN messenger.users u ON u.id = m.sender_id
 		WHERE m.id = $1
 	`, sourceMsgID).Scan(&senderLogin, &content, &imageData, &imageMime, &imageFilename,
 		&audioData, &audioMime, &audioDuration,
 		&videoData, &videoMime, &videoDuration, &videoIsCircle,
-		&callType, &existingForwardedFrom)
+		&fileData, &fileName, &fileMime, &fileSize,
+		&callType, &existingForwardedFrom, &existingForwardedFromID)
 	if err != nil {
 		return msg, err
 	}
@@ -1347,9 +1416,19 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 		return msg, fmt.Errorf("звонки нельзя пересылать")
 	}
 
+	// Цепочка пересылок всегда указывает на первоисточник, а не на предыдущее
+	// звено: и логин автора, и id самого сообщения переносятся как есть.
 	originLogin := senderLogin
+	originMsgID := sourceMsgID
 	if existingForwardedFrom.Valid && existingForwardedFrom.String != "" {
 		originLogin = existingForwardedFrom.String
+		// id может отсутствовать у сообщений, пересланных до появления
+		// колонки forwarded_from_id — тогда плашка просто откроет чат.
+		if existingForwardedFromID.Valid && existingForwardedFromID.Int64 > 0 {
+			originMsgID = int(existingForwardedFromID.Int64)
+		} else {
+			originMsgID = 0
+		}
 	}
 
 	convID, err := a.getOrCreateConversation(forwarder, toLogin)
@@ -1362,30 +1441,45 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 		return msg, err
 	}
 
+	var originMsgIDArg *int
+	if originMsgID > 0 {
+		originMsgIDArg = &originMsgID
+	}
+
 	var msgID int
 	var createdAt time.Time
 	err = a.db.QueryRow(`
 		INSERT INTO messenger.messages
 			(conversation_id, sender_id, content, image_data, image_mime, image_filename,
 			 audio_data, audio_mime, audio_duration,
-			 video_data, video_mime, video_duration, video_is_circle, forwarded_from)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			 video_data, video_mime, video_duration, video_is_circle,
+			 file_data, file_name, file_mime, file_size,
+			 forwarded_from, forwarded_from_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
 	`, convID, forwarderID, content, imageData, imageMime, imageFilename,
 		audioData, audioMime, audioDuration,
 		videoData, videoMime, videoDuration, videoIsCircle,
-		originLogin).Scan(&msgID, &createdAt)
+		fileData, fileName, fileMime, fileSize,
+		originLogin, originMsgIDArg).Scan(&msgID, &createdAt)
 	if err != nil {
 		return msg, err
 	}
 
 	msg = Message{
-		From:          forwarder,
-		To:            toLogin,
-		Text:          content,
-		CreatedAt:     createdAt.UTC().Format(time.RFC3339),
-		MsgID:         msgID,
-		ForwardedFrom: originLogin,
+		From:            forwarder,
+		To:              toLogin,
+		Text:            content,
+		CreatedAt:       createdAt.UTC().Format(time.RFC3339),
+		MsgID:           msgID,
+		ForwardedFrom:   originLogin,
+		ForwardedFromID: originMsgID,
+	}
+	if fileData != nil {
+		msg.FileID = msgID
+		msg.FileName = fileName.String
+		msg.FileMime = fileMime.String
+		msg.FileSize = fileSize.Int64
 	}
 	if imageData != nil {
 		msg.ImageID = msgID
@@ -1899,6 +1993,299 @@ func (a *App) handleGetVideo(w http.ResponseWriter, r *http.Request) {
 	// Видео браузеры почти всегда тянут через Range-запросы (перемотка, iOS
 	// вообще не начинает воспроизведение без 206) — ServeContent это умеет.
 	http.ServeContent(w, r, "video", time.Now(), bytes.NewReader(videoData))
+}
+
+// saveFileMessage сохраняет произвольное вложение как сообщение.
+func (a *App) saveFileMessage(from, to string, data []byte, filename, mime string, size int64, replyToID int) (int, string, error) {
+	convID, err := a.getOrCreateConversation(from, to)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var senderID int
+	if err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1)", from).Scan(&senderID); err != nil {
+		return 0, "", err
+	}
+
+	var replyTo *int
+	if replyToID > 0 {
+		replyTo = &replyToID
+	}
+
+	var msgID int
+	var createdAt time.Time
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.messages
+			(conversation_id, sender_id, content, file_data, file_name, file_mime, file_size, reply_to_id)
+		VALUES ($1, $2, '', $3, $4, $5, $6, $7)
+		RETURNING id, created_at AT TIME ZONE 'UTC'
+	`, convID, senderID, data, filename, mime, size, replyTo).Scan(&msgID, &createdAt)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return msgID, createdAt.UTC().Format(time.RFC3339), nil
+}
+
+// sanitizeFilename приводит присланное клиентом имя к безопасному виду.
+// Имя уходит обратно в заголовок Content-Disposition, поэтому из него надо
+// убрать всё, чем можно этот заголовок сломать или подделать (перевод строки,
+// кавычки), и путь — чтобы «файл» не назывался ../../etc/passwd. Само по себе
+// это не даёт записи на диск (файлы лежат в БД), но имя показывается человеку
+// и подставляется в диалог сохранения, так что мусора в нём быть не должно.
+func sanitizeFilename(name string) string {
+	name = strings.ReplaceAll(name, "\\", "/")
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 || r == '"' {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		name = "file"
+	}
+	// Слишком длинное имя не влезет в колонку varchar(255); режем по рунам,
+	// чтобы не разрубить многобайтовый символ пополам.
+	if runes := []rune(name); len(runes) > 120 {
+		name = string(runes[:120])
+	}
+	return name
+}
+
+// handleUploadFile — POST /upload-file (multipart: file, to, reply_to).
+// В отличие от картинок и видео тип файла не проверяется и не приводится: это
+// именно «любой файл», ограничение только по размеру (maxFileSize).
+func (a *App) handleUploadFile(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxFileSize+(1<<20))
+	if err := r.ParseMultipartForm(maxFileSize + (1 << 20)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой или форма повреждена"})
+		return
+	}
+
+	to := r.FormValue("to")
+	if to == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не указан получатель"})
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл не найден"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxFileSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 100 МБ)"})
+		return
+	}
+
+	fileData, err := io.ReadAll(io.LimitReader(file, maxFileSize+1))
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	if len(fileData) > maxFileSize {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой (максимум 100 МБ)"})
+		return
+	}
+	if len(fileData) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Пустой файл"})
+		return
+	}
+
+	filename := sanitizeFilename(header.Filename)
+
+	// MIME определяем по содержимому, а не по заголовку от клиента: он нужен
+	// только для того, чтобы браузер понял, что показывать в предпросмотре,
+	// и на приём файла никак не влияет. Неопознанное — octet-stream.
+	sniffLen := 512
+	if len(fileData) < sniffLen {
+		sniffLen = len(fileData)
+	}
+	mime := http.DetectContentType(fileData[:sniffLen])
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+
+	replyToID, _ := strconv.Atoi(r.FormValue("reply_to"))
+
+	size := int64(len(fileData))
+	msgID, createdAt, err := a.saveFileMessage(login, to, fileData, filename, mime, size, replyToID)
+	if err != nil {
+		log.Println("Ошибка сохранения файла:", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	msg := Message{
+		From:      login,
+		To:        to,
+		CreatedAt: createdAt,
+		MsgID:     msgID,
+		FileID:    msgID,
+		FileName:  filename,
+		FileMime:  mime,
+		FileSize:  size,
+		ReplyToID: replyToID,
+	}
+	if replyToID > 0 {
+		if preview, err := a.getMessagePreview(replyToID); err == nil {
+			msg.ReplyPreview = preview
+		}
+	}
+
+	a.routeMessage(msg)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"file_id":    msgID,
+		"file_name":  filename,
+		"file_mime":  mime,
+		"file_size":  size,
+		"created_at": createdAt,
+	})
+}
+
+// handleGetFile — GET /file/<id>. Всегда отдаёт как вложение (attachment):
+// открывать произвольный присланный файл прямо во вкладке не нужно, а для
+// html/svg это ещё и означало бы исполнение чужого кода на своём домене.
+func (a *App) handleGetFile(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/file/")
+	msgID, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	if err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&myID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	var fileData []byte
+	var name, mime sql.NullString
+	err = a.db.QueryRow(`
+		SELECT m.file_data, m.file_name, m.file_mime
+		FROM messenger.messages m
+		JOIN messenger.conversations c ON c.id = m.conversation_id
+		WHERE m.id = $1
+		  AND m.file_data IS NOT NULL
+		  AND (c.user1_id = $2 OR c.user2_id = $2)
+	`, msgID, myID).Scan(&fileData, &name, &mime)
+	if err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	filename := sanitizeFilename(name.String)
+	contentType := mime.String
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// filename= для старых клиентов, filename*= (RFC 5987) — для кириллицы и
+	// любых других не-ASCII имён, которые в обычный filename= не помещаются.
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`,
+			filename, url.PathEscape(filename)))
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	// ServeContent — ради Range-запросов: докачка большого файла после обрыва.
+	http.ServeContent(w, r, filename, time.Now(), bytes.NewReader(fileData))
+}
+
+// handleMessageLocation — GET /message-location?id=<msgID>.
+// Отвечает на вопрос «могу ли я открыть это сообщение и в каком чате».
+// Нужен плашке «Переслано от…»: она ведёт к первоисточнику, но первоисточник
+// вполне может лежать в чужой переписке (А написал Б, Б переслал В — у В
+// оригинала нет и быть не должно) либо быть удалён. Поэтому доступ проверяется
+// здесь, а клиент по ответу решает — прыгать к сообщению или просто открыть
+// чат с автором.
+func (a *App) handleMessageLocation(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	msgID, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil || msgID <= 0 {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	if err = a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&myID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// peer — собеседник в том диалоге, где лежит сообщение. Для «Заметок»
+	// (диалог с самим собой) обе стороны это я, и peer = мой же логин.
+	var peer string
+	err = a.db.QueryRow(`
+		SELECT CASE WHEN c.user1_id = $2 THEN u2.login ELSE u1.login END
+		FROM messenger.messages m
+		JOIN messenger.conversations c ON c.id = m.conversation_id
+		JOIN messenger.users u1 ON u1.id = c.user1_id
+		JOIN messenger.users u2 ON u2.id = c.user2_id
+		WHERE m.id = $1
+		  AND (c.user1_id = $2 OR c.user2_id = $2)
+		  AND NOT EXISTS (
+		      SELECT 1 FROM messenger.message_deletions d
+		      WHERE d.message_id = m.id AND d.user_id = $2
+		  )
+	`, msgID, myID).Scan(&peer)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		// Сообщения нет, оно удалено или лежит в чужом диалоге — это штатный
+		// ответ, а не ошибка: клиент просто откроет чат без перехода.
+		json.NewEncoder(w).Encode(map[string]interface{}{"found": false})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"found":      true,
+		"peer":       peer,
+		"message_id": msgID,
+	})
 }
 
 // handleGetAudio — GET /audio/<id>
@@ -2608,6 +2995,30 @@ func (a *App) deliverRealtime(msg Message) (needPush bool) {
 	return len(recipients) == 0 || !anyFocused
 }
 
+// isDialogMuted — замьютил ли ownerLogin диалог с peerLogin. Настройка
+// персональная: молчит только у того, кто её включил.
+//
+// При любой ошибке (нет строки в dialog_states, проблема с БД) возвращается
+// false: не доставить уведомление хуже, чем доставить лишнее.
+func (a *App) isDialogMuted(ownerLogin, peerLogin string) bool {
+	var muted bool
+	err := a.db.QueryRow(`
+		SELECT COALESCE(ds.muted, false)
+		FROM messenger.conversations c
+		JOIN messenger.users me   ON LOWER(me.login)   = LOWER($1)
+		JOIN messenger.users peer ON LOWER(peer.login) = LOWER($2)
+		LEFT JOIN messenger.dialog_states ds
+		       ON ds.conversation_id = c.id AND ds.user_id = me.id
+		WHERE (c.user1_id = me.id AND c.user2_id = peer.id)
+		   OR (c.user1_id = peer.id AND c.user2_id = me.id)
+		LIMIT 1
+	`, ownerLogin, peerLogin).Scan(&muted)
+	if err != nil {
+		return false
+	}
+	return muted
+}
+
 // routeMessage рассылает обычное сообщение (текст/картинка/голосовое) и, если
 // получатель полностью оффлайн, отправляет push вместо realtime-доставки.
 func (a *App) routeMessage(msg Message) {
@@ -2622,8 +3033,16 @@ func (a *App) routeMessage(msg Message) {
 			body = "📹 Видеосообщение"
 		case msg.VideoID != 0:
 			body = "🎬 Видео"
+		case msg.FileID != 0:
+			body = "📎 Файл"
 		case body == "":
 			body = "Новое сообщение"
+		}
+		// Беззвучный чат глушится именно здесь, а не на клиенте: иначе mute не
+		// работал бы там, где он нужнее всего — при закрытом приложении.
+		// Непрочитанные при этом продолжают считаться, глушится только сигнал.
+		if a.isDialogMuted(msg.To, msg.From) {
+			return
 		}
 		go a.sendPushToLogin(msg.To, pushNotificationPayload{
 			Type:  "message",
