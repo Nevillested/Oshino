@@ -172,6 +172,14 @@ func (a *App) handleDialogDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
+	// «Заметки» (чат с самим собой) удалить нельзя — он всегда есть у каждого.
+	// Клиент и так не показывает пункт «удалить», но запрос может прийти и
+	// напрямую, поэтому проверяем на сервере.
+	if strings.EqualFold(d.myLogin, d.otherLogin) {
+		http.Error(w, "Этот чат нельзя удалить", http.StatusForbidden)
+		return
+	}
+
 	forAll := r.FormValue("for_all") == "1"
 
 	if forAll {

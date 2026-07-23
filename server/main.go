@@ -39,7 +39,9 @@ type App struct {
 	mu      sync.Mutex
 	clients map[string]map[*Client]bool // login -> множество активных соединений (мультидевайс)
 
-	// defaultContact — логин пользователя с id=1, добавляется всем как контакт по умолчанию.
+	// defaultContact — логин пользователя с id=1. Раньше подставлялся всем как
+	// контакт по умолчанию; сейчас список диалогов у нового пользователя пуст
+	// (кроме «Заметок»), поле оставлено только для служебных нужд.
 	// Читается один раз при старте, чтобы не дёргать БД на каждую отправку списка диалогов.
 	defaultContact string
 
@@ -2514,16 +2516,18 @@ func (a *App) sendDialogsTo(c *Client) {
 		log.Println("Ошибка загрузки диалогов:", err)
 	}
 
-	// Дедупликация через map, defaultContact добавляем без last_msg если его ещё нет
+	// Дедупликация через map. Контакт по умолчанию больше не навязывается: у
+	// нового пользователя список пуст. Единственный чат, который есть у всех и
+	// всегда — «Заметки»: разговор с самим собой (user1_id = user2_id). Он
+	// добавляется здесь, даже если в нём ещё нет ни одного сообщения, поэтому
+	// заводить его при регистрации не требуется.
 	set := make(map[string]DialogEntry, len(dialogs)+1)
 	for _, d := range dialogs {
 		set[strings.ToLower(d.Login)] = d
 	}
-	if a.defaultContact != "" && !strings.EqualFold(a.defaultContact, c.login) {
-		key := strings.ToLower(a.defaultContact)
-		if _, exists := set[key]; !exists {
-			set[key] = DialogEntry{Login: a.defaultContact, LastMsg: ""}
-		}
+	selfKey := strings.ToLower(c.login)
+	if _, exists := set[selfKey]; !exists {
+		set[selfKey] = DialogEntry{Login: c.login, LastMsg: ""}
 	}
 
 	list := make([]DialogEntry, 0, len(set))
@@ -2551,6 +2555,24 @@ func (a *App) deliverRealtime(msg Message) (needPush bool) {
 	data, _ := json.Marshal(msg)
 	payload := append([]byte("msg:"), data...)
 	ackPayload := append([]byte("msgack:"), data...)
+
+	// «Заметки» — чат с самим собой: отправитель и получатель совпадают, поэтому
+	// адресат и автор это один и тот же набор устройств. Шлём только msgack,
+	// иначе то же сообщение придёт вторым экземпляром как входящее.
+	if toLogin == fromLogin {
+		a.mu.Lock()
+		own := make([]*Client, 0, len(a.clients[toLogin]))
+		for c := range a.clients[toLogin] {
+			own = append(own, c)
+		}
+		a.mu.Unlock()
+
+		for _, c := range own {
+			c.trySend(ackPayload)
+			a.sendDialogsTo(c)
+		}
+		return false // себе push не нужен
+	}
 
 	a.mu.Lock()
 	recipients := make([]*Client, 0, len(a.clients[toLogin]))

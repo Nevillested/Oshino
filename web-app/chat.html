@@ -1575,8 +1575,35 @@
             height: 100%;
             object-fit: cover;
             display: block;
-            transform: scaleX(-1);   /* фронтальная камера — зеркалим */
         }
+
+        /* Зеркалим только фронтальную камеру — так привычнее. У тыловой
+           зеркалить нечего, иначе текст в кадре окажется наоборот. */
+        #circle-video.mirrored { transform: scaleX(-1); }
+
+        /* Переключение камеры доступно только при заблокированной записи:
+           пока пользователь держит палец на кнопке микрофона, нажать сюда он
+           всё равно не может. Оверлей сквозной для нажатий (pointer-events:
+           none), поэтому кнопке возвращаем их явно. */
+        #circle-flip {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 22px;
+            background: rgba(0, 0, 0, 0.55);
+            color: #fff;
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            pointer-events: auto;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #circle-overlay.locked #circle-flip { display: flex; }
+        #circle-flip:active { background: rgba(0, 0, 0, 0.75); }
+        #circle-flip:disabled { opacity: 0.5; }
 
         #circle-timer {
             display: flex;
@@ -1617,6 +1644,15 @@
             height: min(88vw, 420px);
         }
 
+        /* На большом экране раскрывать кружок во всю ширину незачем — увеличиваем
+           ровно в 1.65 раза от спокойного размера (150px → 248px). */
+        @media (min-width: 768px) {
+            .video-circle.playing {
+                width: 248px;
+                height: 248px;
+            }
+        }
+
         .video-circle video {
             width: 100%;
             height: 100%;
@@ -1650,6 +1686,15 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* Сообщение, которое ещё не ушло на сервер: вместо галочки — часы.
+           Появляется при обрыве связи, снимается автоматически после отправки. */
+        .msg-clock {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 4px;
+            opacity: 0.75;
+        }
+
         /* Обычное видео из галереи */
         .message-video {
             max-width: min(280px, 70vw);
@@ -1657,6 +1702,25 @@
             display: block;
             background: #000;
         }
+
+        /* Подсказка о том, как отправить сообщение и перенести строку.
+           Абсолютная позиция — чтобы появление и скрытие не двигало вёрстку. */
+        #composer-hint {
+            position: absolute;
+            left: 14px;
+            right: 14px;
+            bottom: calc(100% - 2px);
+            font-size: 11px;
+            line-height: 1.4;
+            color: var(--color-composer-icon);
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+        }
+
+        #input-area.hint-on #composer-hint { opacity: 0.85; }
+        #input-area.recording #composer-hint { opacity: 0; }
 
         /* ── Оверлей записи поверх строки ввода ──────────────────────────── */
         #rec-overlay {
@@ -2408,8 +2472,38 @@
                 display: flex;
                 flex-direction: row;
                 width: 100%;
-                height: 100%;
+                /* --kb — высота экранной клавиатуры (считается в JS по
+                   visualViewport). На настоящем десктопе она всегда 0, поэтому
+                   правило там ничего не меняет. На планшете, где раскладка
+                   десктопная, а Safari не сжимает layout viewport, это не даёт
+                   клавиатуре наползти на интерфейс: приложение становится ниже,
+                   и строка ввода остаётся видимой над клавиатурой. */
+                height: calc(100% - var(--kb, 0px));
                 overflow: hidden;
+                transition: height 0.2s;
+            }
+
+            /* (2) Кнопки панели не должны упираться в правый нижний угол окна:
+               там же находится уголок изменения размера окна браузера, и
+               планшет перехватывает удержание на кнопке микрофона как
+               перетаскивание угла, вместо начала записи. Отодвигаем панель от
+               края; вместе с ней сдвигаются оверлей записи и плашка замка,
+               иначе они разъедутся с кнопками. */
+            #input-area {
+                padding: 8px 24px 22px 16px;
+            }
+
+            #rec-overlay {
+                left: 16px;
+                right: 24px;
+                top: 8px;
+                bottom: 22px;
+            }
+
+            /* Плашка замка центрируется над кнопкой микрофона:
+               отступ панели справа + внутренний отступ «пилюли». */
+            #lock-chip {
+                right: 29px;
             }
 
             /* ── Левая панель ── */
@@ -3664,7 +3758,7 @@
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 0;">
                 <span style="font-size: 15px; color: var(--color-sidebar-text);">Включить наркоманию на фоне</span>
                 <label class="bg-anim-toggle-wrap">
-                    <input type="checkbox" id="bg-anim-toggle" checked>
+                    <input type="checkbox" id="bg-anim-toggle">
                     <span class="bg-anim-slider"></span>
                 </label>
             </div>
@@ -3778,6 +3872,15 @@
                 <video id="circle-video" autoplay playsinline muted></video>
             </div>
             <div id="circle-timer">0:00</div>
+            <button id="circle-flip" type="button">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <path d="M9.5 13.5a2.6 2.6 0 0 1 4.4-1.9M14.5 13.5a2.6 2.6 0 0 1-4.4 1.9"></path>
+                    <polyline points="14 10.4 14 12.2 12.2 12.2"></polyline>
+                    <polyline points="10 16.6 10 14.8 11.8 14.8"></polyline>
+                </svg>
+                Сменить камеру
+            </button>
         </div>
         <div id="input-area" style="display: none;">
             <div id="form-area" style="display: none;">
@@ -3795,6 +3898,7 @@
                     <button id="mic-btn" class="composer-btn" type="button" title="Голосовое сообщение"></button>
                 </div>
             </div>
+            <div id="composer-hint"></div>
             <!-- Оверлей записи: таймер, подсказка отмены, кнопка «Отмена» при блокировке -->
             <div id="rec-overlay">
                 <span id="rec-dot"></span>
@@ -4080,6 +4184,7 @@
         const circleOverlay = document.getElementById('circle-overlay');
         const circleVideo = document.getElementById('circle-video');
         const circleTimerEl = document.getElementById('circle-timer');
+        const circleFlipBtn = document.getElementById('circle-flip');
         const searchInput = document.getElementById('search-input');
         const searchResults = document.getElementById('search-results');
         const offlineNotice = document.getElementById('offline-notice');
@@ -4201,6 +4306,7 @@
             ws.onopen = () => {
                 wsReady = true;
                 reconnecting = false;
+                flushOutbox();   // всё, что копилось без связи, уходит первым
                 ws.send('getdialogs');
                 loadUnreadCounts();
                 // Сообщаем серверу начальное состояние видимости вкладки
@@ -4292,6 +4398,51 @@
                 }
             };
         }
+
+        // ── Очередь неотправленных сообщений ─────────────────────────────
+        // Живёт только в памяти вкладки: этого достаточно, потому что цель —
+        // пережить обрыв связи, а не перезагрузку страницы.
+        const outbox = [];
+
+        // Пытается отправить сразу. Если связи нет — ставит в очередь и
+        // возвращает false, чтобы вызывающий код поднял соединение.
+        function queueOrSend(msg) {
+            if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
+                try {
+                    ws.send('msg:' + JSON.stringify(msg));
+                    return true;
+                } catch (e) {
+                    // Соединение оборвалось между проверкой и отправкой
+                }
+            }
+            outbox.push(msg);
+            return false;
+        }
+
+        // Вызывается после того, как соединение поднялось.
+        function flushOutbox() {
+            if (!outbox.length) return;
+            const pendingMsgs = outbox.splice(0, outbox.length);
+            for (const msg of pendingMsgs) {
+                try {
+                    ws.send('msg:' + JSON.stringify(msg));
+                } catch (e) {
+                    outbox.push(msg);   // не ушло — вернём в очередь
+                }
+            }
+        }
+
+        // Немедленная попытка подключиться, без ожидания таймера реконнекта.
+        function ensureConnection() {
+            clearTimeout(reconnectTimer);
+            reconnecting = true;
+            connectWS();
+        }
+
+        // Браузер сообщил, что сеть вернулась — не ждём таймер.
+        window.addEventListener('online', () => {
+            if (!wsReady && !document.hidden) ensureConnection();
+        });
 
         function scheduleReconnect() {
             clearTimeout(reconnectTimer);
@@ -4771,7 +4922,15 @@
         }
 
         // Возвращает отображаемое имя пользователя: display_name если есть, иначе login
+        // Чат с самим собой — это «Заметки»: он есть у каждого, его нельзя
+        // удалить, и подписывается он всегда так, а не собственным логином.
+        function isNotesChat(login) {
+            return !!login && !!currentLogin &&
+                   login.toLowerCase() === currentLogin.toLowerCase();
+        }
+
         function getDisplayName(login) {
+            if (isNotesChat(login)) return 'Заметки';
             return displayNames[login.toLowerCase()] || login.toLowerCase();
         }
 
@@ -5268,6 +5427,17 @@
                         ed.textContent = ' изменено';
                         timeDiv.appendChild(ed);
                     }
+                    // Своё сообщение, которое ещё не подтверждено сервером,
+                    // помечаем часами — видно, что оно ждёт отправки.
+                    if (msg.own && !msg.call_type && msg.pending) {
+                        const clock = document.createElement('span');
+                        clock.className = 'msg-clock';
+                        clock.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="9"></circle>
+                            <polyline points="12 7 12 12 15.5 14"></polyline>
+                        </svg>`;
+                        timeDiv.appendChild(clock);
+                    }
                     // Галочки только для своих сообщений
                     if (msg.own && !msg.call_type && !msg.pending) {
                         const ticks = document.createElement('span');
@@ -5394,12 +5564,33 @@
 
         // ── Отправка / получение ─────────────────────────────────────────────────
 
+        // Сенсорная раскладка (телефон, планшет) определяется по отсутствию
+        // настоящей мыши. Там Enter на экранной клавиатуре — это перенос строки,
+        // а отправка только кнопкой: иначе невозможно написать многострочное
+        // сообщение. На десктопе привычнее наоборот.
+        const isTouchLayout = () =>
+            window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
         inputField.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.ctrlKey) {
-                e.preventDefault();
-                sendMessage();
-            }
+            if (e.key !== 'Enter') return;
+            if (isTouchLayout()) return;                 // перенос строки по умолчанию
+            if (e.ctrlKey || e.metaKey || e.shiftKey) return;  // перенос строки
+            e.preventDefault();
+            sendMessage();
         });
+
+        // Подсказка появляется, пока поле ввода активно, и не двигает вёрстку.
+        function updateComposerHint() {
+            const hint = document.getElementById('composer-hint');
+            if (!hint) return;
+            hint.textContent = isTouchLayout()
+                ? 'Enter — новая строка, отправка кнопкой'
+                : 'Enter — отправить, Ctrl+Enter — новая строка';
+        }
+        updateComposerHint();
+        window.addEventListener('resize', updateComposerHint);
+        inputField.addEventListener('focus', () => inputArea.classList.add('hint-on'));
+        inputField.addEventListener('blur',  () => inputArea.classList.remove('hint-on'));
 
         inputField.addEventListener('input', () => {
             handleInputTyping();
@@ -5442,15 +5633,17 @@
                 }
                 return;
             }
-            if (!wsReady) {
-                alert('Нет соединения, попробуйте ещё раз');
-                return;
-            }
-
             const replyToID = replyingTo ? replyingTo.id : 0;
             const msg = { from: currentLogin, to: currentUser, text };
             if (replyToID) msg.reply_to_id = replyToID;
-            ws.send('msg:' + JSON.stringify(msg));
+
+            // Связи может не быть — например, браузер был свёрнут и соединение
+            // успело закрыться. Ругаться окном и терять текст незачем: кладём
+            // сообщение в очередь, показываем часы вместо галочки и поднимаем
+            // соединение. Как только оно встанет, очередь уйдёт сама.
+            if (!queueOrSend(msg)) {
+                ensureConnection();
+            }
 
             const state = historyState[currentUser];
             if (state) {
@@ -6531,11 +6724,58 @@
             return '';
         }
 
-        function stopRecStream() {
-            if (recStream) {
-                recStream.getTracks().forEach(t => t.stop());
-                recStream = null;
+        /* Видеокружок пишется не напрямую с камеры, а через канвас: камера
+           рисуется в канвас, а MediaRecorder пишет поток канваса. Смысл в том,
+           что MediaRecorder не умеет менять источник на ходу — если оборвать
+           камеру, запись оборвётся вместе с ней. При съёмке через канвас смена
+           камеры это просто смена того, что рисуется, и запись не прерывается.
+           Звук берётся отдельным потоком и при переключении камеры не трогается. */
+        let camFacing = 'user';
+        let camVideoStream = null;
+        let camAudioStream = null;
+        let circleCanvas = null;
+        let circleDrawRAF = null;
+
+        function openCameraStream(facing) {
+            return navigator.mediaDevices.getUserMedia({
+                video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 640 } }
+            });
+        }
+
+        function startCircleDrawLoop() {
+            if (!circleCanvas) {
+                circleCanvas = document.createElement('canvas');
+                circleCanvas.width = 400;
+                circleCanvas.height = 400;
             }
+            const ctx = circleCanvas.getContext('2d');
+            const draw = () => {
+                circleDrawRAF = requestAnimationFrame(draw);
+                const v = circleVideo;
+                if (!v.videoWidth || !v.videoHeight) return;
+                // Берём центральный квадрат кадра — кружок круглый, углы всё
+                // равно не видны, а лишние поля только утяжеляют файл.
+                const side = Math.min(v.videoWidth, v.videoHeight);
+                const sx = (v.videoWidth - side) / 2;
+                const sy = (v.videoHeight - side) / 2;
+                ctx.drawImage(v, sx, sy, side, side, 0, 0, circleCanvas.width, circleCanvas.height);
+            };
+            draw();
+        }
+
+        function stopCircleDrawLoop() {
+            if (circleDrawRAF) cancelAnimationFrame(circleDrawRAF);
+            circleDrawRAF = null;
+        }
+
+        function stopRecStream() {
+            stopCircleDrawLoop();
+            [recStream, camVideoStream, camAudioStream].forEach(st => {
+                if (st) st.getTracks().forEach(t => t.stop());
+            });
+            recStream = null;
+            camVideoStream = null;
+            camAudioStream = null;
             circleVideo.srcObject = null;
         }
 
@@ -6544,7 +6784,7 @@
             lockChip.classList.remove('near');
             recHint.style.transform = '';
             recHint.style.opacity = '';
-            circleOverlay.classList.remove('open');
+            circleOverlay.classList.remove('open', 'locked');
             recLocked = false;
             setMicIcon();
         }
@@ -6568,12 +6808,24 @@
             abortOnReady = false;
 
             try {
-                recStream = await navigator.mediaDevices.getUserMedia(
-                    kind === 'video'
-                        ? { audio: true, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } } }
-                        : { audio: true }
-                );
+                if (kind === 'video') {
+                    camFacing = 'user';   // каждая запись начинается с фронтальной
+                    camAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    camVideoStream = await openCameraStream(camFacing);
+
+                    circleVideo.srcObject = camVideoStream;
+                    circleVideo.classList.add('mirrored');
+                    await circleVideo.play().catch(() => {});
+                    startCircleDrawLoop();
+
+                    // Поток для записи: картинка из канваса + звук с микрофона
+                    recStream = circleCanvas.captureStream(30);
+                    camAudioStream.getAudioTracks().forEach(t => recStream.addTrack(t));
+                } else {
+                    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                }
             } catch (e) {
+                stopRecStream();
                 recState = 'idle';
                 alert(kind === 'video' ? 'Нет доступа к камере или микрофону' : 'Нет доступа к микрофону');
                 return;
@@ -6610,9 +6862,7 @@
             inputArea.classList.add('recording');
 
             if (kind === 'video') {
-                circleVideo.srcObject = recStream;
                 circleOverlay.classList.add('open');
-                circleVideo.play().catch(() => {});
             }
 
             updateRecTimer();
@@ -6624,6 +6874,8 @@
             if (recState !== 'recording' || recLocked) return;
             recLocked = true;
             inputArea.classList.add('locked');
+            // Палец больше не держит кнопку — можно дотянуться до смены камеры
+            if (recKind === 'video') circleOverlay.classList.add('locked');
             lockChip.classList.remove('near');
             recHint.style.transform = '';
             recHint.style.opacity = '';
@@ -6736,6 +6988,28 @@
         micBtn.addEventListener('contextmenu', e => e.preventDefault());
 
         recCancelBtn.addEventListener('click', () => finishRecording(true));
+
+        // Смена камеры прямо во время записи. Меняем только видеопоток: звук
+        // идёт отдельной дорожкой, а запись — с канваса, поэтому не прерывается.
+        if (circleFlipBtn) {
+            circleFlipBtn.addEventListener('click', async () => {
+                if (recState !== 'recording' || recKind !== 'video') return;
+                circleFlipBtn.disabled = true;
+                const next = (camFacing === 'user') ? 'environment' : 'user';
+                try {
+                    const nextStream = await openCameraStream(next);
+                    if (camVideoStream) camVideoStream.getTracks().forEach(t => t.stop());
+                    camVideoStream = nextStream;
+                    camFacing = next;
+                    circleVideo.srcObject = nextStream;
+                    circleVideo.classList.toggle('mirrored', next === 'user');
+                    await circleVideo.play().catch(() => {});
+                } catch (e) {
+                    // Второй камеры нет или доступ не дали — остаёмся на текущей
+                }
+                circleFlipBtn.disabled = false;
+            });
+        }
 
         /* ── Отправка видео (кружок и обычное из галереи) ────────────────── */
 
@@ -6944,9 +7218,11 @@
             welcomeScreen.style.display = 'none';
             messagesDiv.style.display = 'flex';
             offlineNotice.style.display = 'none';
-            const isOnline = onlineUsers.includes(currentUser);
-            const isTyping = typingUsers.has(currentUser);
-            const statusStr = isOnline ? 'в сети' : formatLastSeen(currentUser);
+            const notes = isNotesChat(currentUser);
+            const isOnline = !notes && onlineUsers.includes(currentUser);
+            const isTyping = !notes && typingUsers.has(currentUser);
+            const statusStr = notes ? 'Сохранённые сообщения'
+                            : isOnline ? 'в сети' : formatLastSeen(currentUser);
 
             // На мобайле: title = имя, subtitle = статус (две строки в топбаре стр.3)
             topbarTitle.textContent = getDisplayName(currentUser);
@@ -6959,8 +7235,9 @@
                     topbarSub.textContent = statusStr;
                 }
             }
-            callBtn.style.display = 'flex';
-            videoCallBtn.style.display = 'flex';
+            // Звонить самому себе нельзя — в «Заметках» кнопки звонка скрыты
+            callBtn.style.display = notes ? 'none' : 'flex';
+            videoCallBtn.style.display = notes ? 'none' : 'flex';
 
             // Desktop шапка
             if (desktopHeader) {
@@ -8034,6 +8311,8 @@
         function openDlgMenu(user, x, y) {
             dlgTarget = user;
             dlgPinLabel.textContent = pinnedDialogs.has(user) ? 'Открепить чат' : 'Закрепить чат';
+            // «Заметки» удалить нельзя — прячем пункт целиком
+            if (dlgDelBtn) dlgDelBtn.style.display = isNotesChat(user) ? 'none' : '';
             dlgMenu.classList.add('open');
             ctxBackdrop.classList.add('open');
 
@@ -9729,19 +10008,20 @@
         function applyBgAnim(on) {
             if (on) {
                 document.body.classList.remove('bg-anim-off');
-                if (typeof p5inst !== 'undefined' && p5inst) p5inst.loop();
+                if (window.p5inst) window.p5inst.loop();
             } else {
                 document.body.classList.add('bg-anim-off');
-                if (typeof p5inst !== 'undefined' && p5inst) p5inst.noLoop();
+                if (window.p5inst) window.p5inst.noLoop();
             }
         }
 
-        // Восстановить из localStorage
+        // Анимация выключена по умолчанию для всех: включается только явным
+        // действием в настройках. Выбор хранится в localStorage, поэтому
+        // переживает выход и повторный вход на этом же устройстве.
         const savedBgAnim = localStorage.getItem('oshino-bg-anim');
-        if (savedBgAnim === 'off') {
-            if (bgAnimToggle) bgAnimToggle.checked = false;
-            applyBgAnim(false);
-        }
+        const bgAnimOn = (savedBgAnim === 'on');
+        if (bgAnimToggle) bgAnimToggle.checked = bgAnimOn;
+        applyBgAnim(bgAnimOn);
 
         if (bgAnimToggle) {
             bgAnimToggle.addEventListener('change', () => {
@@ -9928,6 +10208,7 @@
         });
 
         window.p5inst = p5inst;
+        if (document.body.classList.contains('bg-anim-off')) p5inst.noLoop();
     })();
     </script>
 </body>
