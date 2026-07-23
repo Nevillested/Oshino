@@ -1686,6 +1686,87 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* ── Окно «Переслать в...» ───────────────────────────────────────
+           Цвета берутся из переменных темы, поэтому окно одинаково корректно
+           выглядит и в светлой, и в тёмной теме на всех размерах экрана. */
+        #forward-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        #forward-modal-overlay.open { display: flex; }
+
+        #forward-modal-box {
+            background: var(--color-sheet-bg);
+            color: var(--color-input-text);
+            border: 1px solid var(--color-input-bar-sep);
+            border-radius: 14px;
+            width: 320px;
+            max-width: 90vw;
+            max-height: 70vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+        }
+
+        #forward-modal-head {
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid var(--color-input-bar-sep);
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #forward-modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            color: var(--color-composer-icon);
+            padding: 0 2px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #forward-dialog-list {
+            list-style: none;
+            overflow-y: auto;
+            flex: 1;
+            padding: 6px 0;
+            margin: 0;
+        }
+
+        .forward-item {
+            padding: 13px 16px;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--color-input-text);
+            border-bottom: 1px solid var(--color-input-bar-sep);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .forward-item:last-child { border-bottom: none; }
+        .forward-item:active { background: var(--color-composer-btn-hover); }
+
+        @media (hover: hover) and (pointer: fine) {
+            .forward-item:hover { background: var(--color-composer-btn-hover); }
+        }
+
+        .forward-item-note {
+            padding: 16px;
+            font-size: 14px;
+            text-align: center;
+            color: var(--color-composer-icon);
+        }
+
         /* Сообщение, которое ещё не ушло на сервер: вместо галочки — часы.
            Появляется при обрыве связи, снимается автоматически после отправки. */
         .msg-clock {
@@ -4036,13 +4117,13 @@
     </div>
 
     <!-- Модалка выбора диалога для forward -->
-    <div id="forward-modal-overlay" style="display:none; position:fixed; inset:0; z-index:300; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
-        <div style="background:white; border-radius:14px; width:300px; max-width:90vw; max-height:70vh; overflow:hidden; display:flex; flex-direction:column;">
-            <div style="padding:16px 16px 12px; border-bottom:1px solid #eee; font-weight:600; font-size:16px; display:flex; justify-content:space-between; align-items:center;">
+    <div id="forward-modal-overlay">
+        <div id="forward-modal-box">
+            <div id="forward-modal-head">
                 Переслать в...
-                <button id="forward-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;">✕</button>
+                <button id="forward-modal-close" type="button">✕</button>
             </div>
-            <ul id="forward-dialog-list" style="list-style:none;overflow-y:auto;flex:1;padding:8px 0;margin:0;"></ul>
+            <ul id="forward-dialog-list"></ul>
         </div>
     </div>
 
@@ -4487,7 +4568,10 @@
             if (li) {
                 const statusSpan = li.querySelector('.dialog-status');
                 if (statusSpan) {
-                    if (isTyping) {
+                    if (isNotesChat(login)) {
+                        statusSpan.className = 'dialog-status';
+                        statusSpan.textContent = '';
+                    } else if (isTyping) {
                         statusSpan.className = 'dialog-status typing';
                         statusSpan.innerHTML = 'Печатает<span class="typing-dots"></span>';
                     } else {
@@ -4502,7 +4586,10 @@
             if (welcomeLi) {
                 const statusSpan = welcomeLi.querySelector('.dialog-status');
                 if (statusSpan) {
-                    if (isTyping) {
+                    if (isNotesChat(login)) {
+                        statusSpan.className = 'dialog-status';
+                        statusSpan.textContent = '';
+                    } else if (isTyping) {
                         statusSpan.className = 'dialog-status typing';
                         statusSpan.innerHTML = 'Печатает<span class="typing-dots"></span>';
                     } else {
@@ -4958,9 +5045,12 @@
 
             logins.forEach(user => {
                 const count = unreadCount[user] || 0;
-                const isOnline = onlineUsers.includes(user);
-                const isTyping = typingUsers.has(user);
-                const statusText = isTyping ? null : (isOnline ? 'в сети' : formatLastSeen(user));
+                // «Заметки» — это вы сами: ни «в сети», ни «был(а)» тут не имеют
+                // смысла, поэтому строка статуса остаётся пустой.
+                const notes = isNotesChat(user);
+                const isOnline = !notes && onlineUsers.includes(user);
+                const isTyping = !notes && typingUsers.has(user);
+                const statusText = (isTyping || notes) ? '' : (isOnline ? 'в сети' : formatLastSeen(user));
 
                 // Пункт в боковом меню
                 const li = document.createElement('li');
@@ -5370,7 +5460,14 @@
                 if (msg.forwarded_from) {
                     const fwd = document.createElement('div');
                     fwd.className = 'msg-forward-label';
-                    fwd.textContent = '↗ Переслано от ' + msg.forwarded_from;
+                    // Если автор оригинала — вы сами (например, переслали свою
+                    // же реплику в «Заметки»), подписывать её «Заметки» нельзя:
+                    // это имя чата, а не человека.
+                    fwd.textContent = '↗ Переслано от ' + (
+                        isNotesChat(msg.forwarded_from)
+                            ? 'вас'
+                            : getDisplayName(msg.forwarded_from)
+                    );
                     wrap.appendChild(fwd);
                 }
 
@@ -7221,7 +7318,7 @@
             const notes = isNotesChat(currentUser);
             const isOnline = !notes && onlineUsers.includes(currentUser);
             const isTyping = !notes && typingUsers.has(currentUser);
-            const statusStr = notes ? 'Сохранённые сообщения'
+            const statusStr = notes ? ''
                             : isOnline ? 'в сети' : formatLastSeen(currentUser);
 
             // На мобайле: title = имя, subtitle = статус (две строки в топбаре стр.3)
@@ -8556,19 +8653,26 @@
 
         function openForwardModal(msgId) {
             forwardDialogList.innerHTML = '';
-            const logins = Object.keys(historyState).filter(u => u !== currentUser);
+            // Список намеренно полный: и «Заметки», и текущий чат. Переслать
+            // сообщение самому себе или обратно в тот же диалог — обычный
+            // сценарий, отфильтровывать их незачем. «Заметки» ставим первыми.
+            const logins = Object.keys(historyState).sort((a, b) => {
+                const na = isNotesChat(a), nb = isNotesChat(b);
+                if (na !== nb) return na ? -1 : 1;
+                return getDisplayName(a).localeCompare(getDisplayName(b));
+            });
             if (logins.length === 0) {
                 const li = document.createElement('li');
-                li.style.cssText = 'padding:16px;color:#999;font-size:14px;text-align:center;';
-                li.textContent = 'Нет других диалогов';
+                li.className = 'forward-item-note';
+                li.textContent = 'Нет доступных диалогов';
                 forwardDialogList.appendChild(li);
             } else {
                 logins.forEach(u => {
                     const li = document.createElement('li');
-                    li.style.cssText = 'padding:14px 16px;cursor:pointer;font-size:16px;border-bottom:1px solid #f0f0f0;';
-                    li.textContent = u;
+                    li.className = 'forward-item';
+                    li.textContent = getDisplayName(u);
                     li.addEventListener('click', async () => {
-                        forwardModalOverlay.style.display = 'none';
+                        forwardModalOverlay.classList.remove('open');
                         const ids = (pendingForwardIds && pendingForwardIds.length)
                                     ? pendingForwardIds : [msgId];
                         for (const id of ids) {
@@ -8583,15 +8687,18 @@
                     forwardDialogList.appendChild(li);
                 });
             }
-            forwardModalOverlay.style.display = 'flex';
+            forwardModalOverlay.classList.add('open');
         }
 
         forwardModalClose.addEventListener('click', () => {
-            forwardModalOverlay.style.display = 'none';
+            forwardModalOverlay.classList.remove('open');
             pendingForwardIds = null;
         });
         forwardModalOverlay.addEventListener('click', (e) => {
-            if (e.target === forwardModalOverlay) forwardModalOverlay.style.display = 'none';
+            if (e.target === forwardModalOverlay) {
+                forwardModalOverlay.classList.remove('open');
+                pendingForwardIds = null;
+            }
         });
 
         // ── Reactions ────────────────────────────────────────────────────────────
