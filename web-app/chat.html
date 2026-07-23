@@ -86,6 +86,9 @@
             --color-composer-btn-hover: rgba(130, 140, 175, 0.16);
             --color-lock-chip-bg:       #1a1d24;
             --color-sheet-bg:           #15171d;
+            --color-fwd-bg:             rgba(255, 255, 255, 0.10);
+            --color-fwd-text:           #cfd6e6;
+            --color-fwd-link:           #8ab8f0;
 
             /* Call overlay */
             --color-call-bg:      rgba(10,10,15,0.97);
@@ -168,6 +171,9 @@
             --color-composer-btn-hover: rgba(74, 144, 226, 0.12);
             --color-lock-chip-bg:       #ffffff;
             --color-sheet-bg:           #f4f9ff;
+            --color-fwd-bg:             rgba(0, 0, 0, 0.06);
+            --color-fwd-text:           #4a5a6a;
+            --color-fwd-link:           #1f6fbf;
 
             /* Call overlay */
             --color-call-bg:      rgba(20,50,80,0.97);
@@ -991,12 +997,38 @@
         }
 
         /* Подпись "Переслано от X" */
+        /* Метка «Переслано от…». Раньше цвет наследовался от пузыря и в тёмной
+           теме сливался с фоном — теперь он берётся из переменных темы, а сама
+           подпись лежит на нейтральной подложке, одинаково читаемой на своих и
+           чужих сообщениях. */
         .msg-forward-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
             font-size: 12px;
             font-style: italic;
-            opacity: 0.75;
-            margin-bottom: 4px;
+            margin-bottom: 5px;
+            padding: 3px 9px;
+            border-radius: 10px;
+            background: var(--color-fwd-bg);
+            color: var(--color-fwd-text);
+            max-width: 100%;
         }
+
+        .msg-forward-from {
+            font-style: normal;
+            font-weight: 600;
+            color: var(--color-fwd-link);
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .msg-forward-from:active { opacity: 0.7; }
 
         /* ── Закреплённое сообщение (pin-панель под топбаром) ───────────────── */
 
@@ -4215,6 +4247,9 @@
         let displayNames = {}; // login -> display_name
         let unreadCount = {};
         let ws = null;
+        // Снимок словаря отображаемых имён — чтобы перерисовывать сообщения
+        // только когда имена реально поменялись.
+        let lastDisplayNames = '';
         let wsReady = false;
         let reconnectTimer = null;
         let reconnecting = false;
@@ -4417,6 +4452,16 @@
                     }
                     updateFormState();
                     renderDialogList();
+                    // Имена в подписях «Переслано от…» берутся из этого же
+                    // словаря. Перерисовываем открытый чат, только если словарь
+                    // действительно изменился: presence приходит часто, а
+                    // перерисовка сбрасывает позицию прокрутки.
+                    const namesSnapshot = JSON.stringify(displayNames);
+                    if (namesSnapshot !== lastDisplayNames) {
+                        lastDisplayNames = namesSnapshot;
+                        const openState = currentUser && historyState[currentUser];
+                        if (openState) renderMessages(openState.messages);
+                    }
                 } else if (message.startsWith('msgack:')) {
                     const msg = JSON.parse(message.substring(7));
                     applyMessageAck(msg);
@@ -4921,6 +4966,22 @@
             overlay.classList.remove('open');
             openDialog(currentUser);
         });
+
+        // Открыть чат с указанным логином программно (клик по «Переслано от…»).
+        // Если диалога ещё нет в списке — заводим его, иначе открывать нечего.
+        // Дальше кликаем по пункту списка, а не зовём openDialog напрямую: на
+        // этом клике висит и подсветка активного пункта, и мобильный переход на
+        // страницу чата, и закрытие боковой панели.
+        function openChatWith(login) {
+            if (!login) return;
+            if (!historyState[login]) {
+                historyState[login] = { oldestId: 0, allLoaded: false, messages: [] };
+                renderDialogList();
+            }
+            const li = usersList.querySelector(`[data-user="${login}"]`);
+            if (li) li.click();
+            else openDialog(login);
+        }
 
         welcomeDialogsList.addEventListener('click', (e) => {
             const li = e.target.closest('li');
@@ -5460,14 +5521,25 @@
                 if (msg.forwarded_from) {
                     const fwd = document.createElement('div');
                     fwd.className = 'msg-forward-label';
+                    fwd.appendChild(document.createTextNode('↗ Переслано от '));
+
+                    const fwdFrom = document.createElement('span');
+                    fwdFrom.className = 'msg-forward-from';
                     // Если автор оригинала — вы сами (например, переслали свою
                     // же реплику в «Заметки»), подписывать её «Заметки» нельзя:
-                    // это имя чата, а не человека.
-                    fwd.textContent = '↗ Переслано от ' + (
-                        isNotesChat(msg.forwarded_from)
-                            ? 'вас'
-                            : getDisplayName(msg.forwarded_from)
-                    );
+                    // это имя чата, а не человека. В остальных случаях берём
+                    // отображаемое имя, а при его отсутствии — логин (этим
+                    // занимается getDisplayName).
+                    fwdFrom.textContent = isNotesChat(msg.forwarded_from)
+                        ? 'вас'
+                        : getDisplayName(msg.forwarded_from);
+                    fwdFrom.dataset.login = msg.forwarded_from;
+                    fwdFrom.title = 'Открыть чат';
+                    fwdFrom.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openChatWith(msg.forwarded_from);
+                    });
+                    fwd.appendChild(fwdFrom);
                     wrap.appendChild(fwd);
                 }
 
