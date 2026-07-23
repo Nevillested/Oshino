@@ -735,15 +735,55 @@
             max-width: 80%;
         }
 
-        .message-wrap.highlighted {
-            border-radius: 8px;
-            animation: msg-highlight-fade 3s ease forwards;
+        /* Подсветка найденного сообщения.
+           Красится не пузырь, а вся горизонтальная полоса на его уровне —
+           поэтому цвет живёт в псевдоэлементе, растянутом далеко влево и
+           вправо за пределы .message-wrap (у неё max-width: 80% и прижата к
+           своему краю). Вылезти это не даёт: у #messages стоит
+           overflow-x: hidden. */
+        .message-wrap.highlighted::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            bottom: -5px;
+            left: -1500px;
+            right: -1500px;
+            z-index: 0;
+            pointer-events: none;
+            background: var(--color-msg-highlight);
+            animation: msg-highlight-wave 2.6s ease-in-out forwards;
+        }
+
+        /* Псевдоэлемент позиционирован, поэтому по правилам отрисовки он лёг бы
+           поверх содержимого пузыря. Поднимаем содержимое над ним — только у
+           подсвеченной строки, чтобы не плодить лишние контексты наложения. */
+        .message-wrap.highlighted > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Волна: несколько затухающих накатов вместо одного ровного пятна —
+           так взгляд цепляется за нужную строку даже в плотной ленте. */
+        @keyframes msg-highlight-wave {
+            0%   { opacity: 0;    }
+            10%  { opacity: 1;    }
+            28%  { opacity: 0.30; }
+            46%  { opacity: 0.95; }
+            64%  { opacity: 0.30; }
+            82%  { opacity: 0.75; }
+            100% { opacity: 0;    }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .message-wrap.highlighted::before {
+                animation: msg-highlight-fade 2.2s ease forwards;
+            }
         }
 
         @keyframes msg-highlight-fade {
-            0%   { background: var(--color-msg-highlight); }
-            60%  { background: var(--color-msg-highlight); }
-            100% { background: transparent; }
+            0%   { opacity: 1; }
+            60%  { opacity: 1; }
+            100% { opacity: 0; }
         }
 
         .message-wrap.own {
@@ -1896,6 +1936,58 @@
 
         /* Подсказка о том, как отправить сообщение и перенести строку.
            Абсолютная позиция — чтобы появление и скрытие не двигало вёрстку. */
+        #blocked-bar {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            padding: 12px 14px;
+            font-size: 14px;
+            color: var(--color-fwd-text);
+        }
+
+        #blocked-bar.show { display: flex; }
+
+        /* Композер и подсказка при блокировке не прячутся через inline-style —
+           только классом, иначе потом не вернуть их обратно (специфичность). */
+        #input-area.blocked #composer,
+        #input-area.blocked #composer-hint { display: none; }
+
+        #blocked-unblock-btn {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #4a90e2;
+            color: #fff;
+        }
+
+        #blocked-unblock-btn:active { opacity: 0.8; }
+
+        #app-toast {
+            position: fixed;
+            left: 50%;
+            bottom: 90px;
+            transform: translate(-50%, 12px);
+            z-index: 400;
+            max-width: 80vw;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.82);
+            color: #fff;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        #app-toast.show {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
         #composer-hint {
             position: absolute;
             left: 14px;
@@ -4245,6 +4337,11 @@
                 </div>
             </div>
             <div id="composer-hint"></div>
+            <!-- Показывается вместо композера, когда собеседник заблокирован -->
+            <div id="blocked-bar">
+                <span>Пользователь заблокирован</span>
+                <button id="blocked-unblock-btn" type="button">Разблокировать</button>
+            </div>
             <!-- Оверлей записи: таймер, подсказка отмены, кнопка «Отмена» при блокировке -->
             <div id="rec-overlay">
                 <span id="rec-dot"></span>
@@ -4356,6 +4453,13 @@
                 <line id="dlg-mute-slash" x1="3" y1="3" x2="21" y2="21"></line>
             </svg>
             <span id="dlg-mute-label">Отключить звук</span>
+        </button>
+        <button class="ctx-item ctx-danger" id="dlg-block">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <line x1="5.6" y1="5.6" x2="18.4" y2="18.4"></line>
+            </svg>
+            <span id="dlg-block-label">Заблокировать</span>
         </button>
         <button class="ctx-item" id="dlg-clear">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -5258,7 +5362,12 @@
         // всё равно попадает туда, куда собирался.
         async function openForwardSource(login, srcMsgId) {
             if (!login) return;
-            if (!srcMsgId) { openChatWith(resolveDialogKey(login)); return; }
+
+            // Без id первоисточника идти некуда. Раньше в этом случае
+            // открывался чат с автором подписи — и для своей же пересылки это
+            // означало «открыть Заметки», то есть ровно то место, откуда и
+            // нажали. Теперь честно говорим, что перехода нет.
+            if (!srcMsgId) { showToast('Исходное сообщение недоступно'); return; }
 
             let loc = null;
             try {
@@ -5267,13 +5376,16 @@
             } catch (e) {}
 
             if (!loc || !loc.found || !loc.peer) {
-                openChatWith(resolveDialogKey(login));
+                showToast('Исходное сообщение недоступно');
                 return;
             }
 
+            // Сервер отдаёт собеседника из ТОГО диалога, где лежит оригинал, —
+            // это может быть кто угодно, в том числе не автор подписи. Именно
+            // туда и идём, а не в чат с тем, чьё имя написано на плашке.
             const peer = resolveDialogKey(loc.peer);
-            if (currentUser && currentUser.toLowerCase() === peer.toLowerCase()) {
-                // Уже в нужном чате — прыгаем без перезагрузки диалога.
+            const same = currentUser && currentUser.toLowerCase() === peer.toLowerCase();
+            if (same) {
                 scrollToMessage(srcMsgId);
                 return;
             }
@@ -5315,6 +5427,8 @@
                 else pinnedDialogs.delete(login);
                 if (typeof e === 'object' && e.muted) mutedDialogs.add(login);
                 else mutedDialogs.delete(login);
+                if (typeof e === 'object' && e.blocked) blockedDialogs.add(login);
+                else blockedDialogs.delete(login);
 
                 if (!historyState[login]) {
                     historyState[login] = { oldestId: 0, allLoaded: false, messages: [], lastMsg };
@@ -5335,6 +5449,7 @@
                     delete unreadCount[login];
                     pinnedDialogs.delete(login);
                     mutedDialogs.delete(login);
+                    blockedDialogs.delete(login);
                 }
             });
 
@@ -5477,6 +5592,13 @@
                     li.appendChild(badge);
                 }
 
+                if (blockedDialogs.has(user)) {
+                    const bMark = document.createElement('span');
+                    bMark.className = 'dialog-pin-mark';
+                    bMark.textContent = '🚫';
+                    bMark.title = 'Заблокирован';
+                    li.appendChild(bMark);
+                }
                 if (mutedDialogs.has(user)) {
                     const muteMark = document.createElement('span');
                     muteMark.className = 'dialog-pin-mark';
@@ -5544,6 +5666,37 @@
             document.title = totalUnread > 0 ? 'Oshino — новое сообщение' : 'Oshino';
         }
 
+        // ── Черновики ────────────────────────────────────────────────────────
+        // Хранятся только в памяти вкладки: переживать перезагрузку страницы
+        // недописанному сообщению не обязательно, а вот теряться при переходе
+        // в соседний чат и всплывать там — точно не должно.
+        const drafts = {};
+
+        function saveDraftFor(user) {
+            if (!user) return;
+            const text = inputField.value;
+            // Во время правки уже отправленного сообщения в поле лежит не
+            // черновик, а его текст — сохранять такое нельзя.
+            if (editingMsg) return;
+            if (text && text.trim()) drafts[user] = text;
+            else delete drafts[user];
+        }
+
+        // Пока чат заблокирован, поле ввода прячется: писать туда нельзя, пока
+        // блокировка не снята. Кнопка снятия — прямо на месте композера, чтобы
+        // не гонять человека в контекстное меню.
+        function applyBlockUI(user) {
+            const bar = document.getElementById('blocked-bar');
+            const blocked = isDialogBlocked(user) && !isNotesChat(user);
+            inputArea.classList.toggle('blocked', blocked);
+            if (bar) bar.classList.toggle('show', blocked);
+        }
+
+        function restoreDraftFor(user) {
+            inputField.value = (user && drafts[user]) ? drafts[user] : '';
+            autoResizeTextarea();
+        }
+
         // ── История сообщений ────────────────────────────────────────────────────
 
         async function openDialog(user) {
@@ -5554,6 +5707,11 @@
             }
             clearTimeout(myTypingTimer);
             myTypingSent = false;
+
+            // Недописанное сообщение принадлежит тому чату, где его набирали.
+            // Сохраняем его ДО смены currentUser, иначе черновик уедет в
+            // новый чат вместе с полем ввода.
+            saveDraftFor(currentUser);
 
             currentUser = user;
             closeComposerExtras();
@@ -5567,6 +5725,11 @@
             }
             unreadCount[user] = 0;
             renderDialogList();
+            // Черновик восстанавливаем до updateFormState: та смотрит на
+            // содержимое поля, чтобы решить, показывать кнопку отправки или
+            // микрофон.
+            restoreDraftFor(user);
+            applyBlockUI(user);
             updateFormState();
             cancelReply();
             loadPinned(user);
@@ -5935,15 +6098,19 @@
                     // нас нет (А написал Б, Б переслал нам), или быть удалён —
                     // это выясняет сервер уже по клику. Поэтому подпись у
                     // подсказки нейтральная.
+                    // Ссылкой плашка становится только если известен id
+                    // первоисточника. У сообщений, пересланных до появления
+                    // этой колонки, идти некуда — оставляем простой подписью,
+                    // чтобы клик не обманывал ожидания.
                     const srcId = msg.forwarded_from_id || 0;
-                    fwd.classList.add('linked');
-                    fwd.title = srcId
-                        ? 'Перейти к исходному сообщению'
-                        : 'Открыть чат';
-                    fwd.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        openForwardSource(msg.forwarded_from, srcId);
-                    });
+                    if (srcId) {
+                        fwd.classList.add('linked');
+                        fwd.title = 'Перейти к исходному сообщению';
+                        fwd.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openForwardSource(msg.forwarded_from, srcId);
+                        });
+                    }
                     wrap.appendChild(fwd);
                 }
 
@@ -6219,18 +6386,39 @@
         inputField.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter') return;
             if (isTouchLayout()) return;                 // перенос строки по умолчанию
-            if (e.ctrlKey || e.metaKey || e.shiftKey) return;  // перенос строки
+
+            // Ctrl+Enter (и Cmd+Enter на маке) — перенос строки. Просто пропустить
+            // событие нельзя: в textarea браузер по Ctrl+Enter НЕ вставляет перевод
+            // строки сам, в отличие от Shift+Enter. Поэтому вставляем вручную,
+            // сохраняя позицию курсора и работу «отменить» там, где она доступна.
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                insertNewlineAtCursor();
+                return;
+            }
+            if (e.shiftKey) return;                      // перенос строки штатно
             e.preventDefault();
             sendMessage();
         });
+
+        function insertNewlineAtCursor() {
+            const start = inputField.selectionStart;
+            const end   = inputField.selectionEnd;
+            const v     = inputField.value;
+            inputField.value = v.slice(0, start) + '\n' + v.slice(end);
+            inputField.selectionStart = inputField.selectionEnd = start + 1;
+            // input не всплывает от программной правки value — зовём сами,
+            // иначе поле не перерастянется и не обновится состояние кнопок.
+            inputField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
 
         // Подсказка появляется, пока поле ввода активно, и не двигает вёрстку.
         function updateComposerHint() {
             const hint = document.getElementById('composer-hint');
             if (!hint) return;
-            hint.textContent = isTouchLayout()
-                ? 'Enter — новая строка, отправка кнопкой'
-                : 'Enter — отправить, Ctrl+Enter — новая строка';
+            // На сенсорных раскладках подсказки нет вовсе: там Enter и так даёт
+            // перенос строки, а отправка — очевидная кнопка рядом.
+            hint.textContent = isTouchLayout() ? '' : 'Ctrl + Enter — новая строка';
         }
         updateComposerHint();
         window.addEventListener('resize', updateComposerHint);
@@ -6256,8 +6444,11 @@
 
         function sendMessage() {
             if (!currentUser) return;
+            if (isDialogBlocked(currentUser)) { showToast('Пользователь заблокирован'); return; }
             const text = inputField.value.trim();
             if (!text) return;
+            // Отправленное перестаёт быть черновиком этого чата.
+            delete drafts[currentUser];
 
             // Было ли поле в фокусе до отправки — чтобы вернуть его в конце,
             // если какой-то движок всё же успел фокус увести.
@@ -9144,6 +9335,8 @@
         const dlgDelBtn   = document.getElementById('dlg-delete');
         const dlgMuteBtn   = document.getElementById('dlg-mute');
         const dlgMuteLabel = document.getElementById('dlg-mute-label');
+        const dlgBlockBtn   = document.getElementById('dlg-block');
+        const dlgBlockLabel = document.getElementById('dlg-block-label');
         const dlgMuteSlash = document.getElementById('dlg-mute-slash');
         let dlgTarget = null;          // логин собеседника
         const pinnedDialogs = new Set();
@@ -9151,6 +9344,12 @@
         // (dialog_states.muted), сюда приходит вместе со списком диалогов —
         // поэтому мьют, поставленный на телефоне, виден и на ПК.
         const mutedDialogs = new Set();
+        // Заблокированные — тоже персонально и тоже приезжает со списком диалогов.
+        const blockedDialogs = new Set();
+
+        function isDialogBlocked(user) {
+            return !!user && blockedDialogs.has(user);
+        }
 
         function isDialogMuted(user) {
             return !!user && mutedDialogs.has(user);
@@ -9175,6 +9374,11 @@
             }
             // «Заметки» удалить нельзя — прячем пункт целиком
             if (dlgDelBtn) dlgDelBtn.style.display = isNotesChat(user) ? 'none' : '';
+            // Себя заблокировать нельзя — в «Заметках» пункта нет вовсе.
+            if (dlgBlockBtn) {
+                dlgBlockBtn.style.display = isNotesChat(user) ? 'none' : '';
+                dlgBlockLabel.textContent = isDialogBlocked(user) ? 'Разблокировать' : 'Заблокировать';
+            }
             dlgMenu.classList.add('open');
             ctxBackdrop.classList.add('open');
 
@@ -9246,6 +9450,58 @@
                     renderDialogList();
                 } else {
                     alert('Не удалось изменить настройку звука');
+                }
+            } catch (e) { alert('Нет соединения'); }
+        });
+
+        ctxItem(dlgBlockBtn, () => {
+            const user = dlgTarget;
+            if (!user || isNotesChat(user)) return;
+            const willBlock = !isDialogBlocked(user);
+            closeDlgMenu();
+
+            const apply = async () => {
+                const fd = new FormData();
+                fd.append('with', user);
+                fd.append('blocked', willBlock ? '1' : '0');
+                try {
+                    const res = await fetch('/dialog/block', { method: 'POST', body: fd });
+                    if (res.ok) {
+                        if (willBlock) blockedDialogs.add(user); else blockedDialogs.delete(user);
+                        renderDialogList();
+                        if (currentUser === user) applyBlockUI(user);
+                        showToast(willBlock ? 'Пользователь заблокирован' : 'Блокировка снята');
+                    } else {
+                        alert('Не удалось изменить блокировку');
+                    }
+                } catch (e) { alert('Нет соединения'); }
+            };
+
+            // Снятие блокировки подтверждать незачем, а вот установку — стоит.
+            if (!willBlock) { apply(); return; }
+            askConfirm({
+                title: 'Заблокировать ' + getDisplayName(user) + '?',
+                text: 'Его сообщения перестанут доходить до вас, и вы не сможете ему писать. Он об этом не узнает.',
+                okText: 'Заблокировать'
+            }, apply);
+        });
+
+        document.getElementById('blocked-unblock-btn').addEventListener('click', async () => {
+            const user = currentUser;
+            if (!user) return;
+            const fd = new FormData();
+            fd.append('with', user);
+            fd.append('blocked', '0');
+            try {
+                const res = await fetch('/dialog/block', { method: 'POST', body: fd });
+                if (res.ok) {
+                    blockedDialogs.delete(user);
+                    renderDialogList();
+                    applyBlockUI(user);
+                    updateFormState();
+                    showToast('Блокировка снята');
+                } else {
+                    alert('Не удалось снять блокировку');
                 }
             } catch (e) { alert('Нет соединения'); }
         });
@@ -9773,6 +10029,21 @@
             el.classList.add('highlighted');
             el.addEventListener('animationend',
                 () => el.classList.remove('highlighted'), { once: true });
+        }
+
+        // Короткое ненавязчивое уведомление внизу ленты. Заводится лениво:
+        // в большинстве сессий не понадобится ни разу.
+        let toastEl = null, toastTimer = null;
+        function showToast(text) {
+            if (!toastEl) {
+                toastEl = document.createElement('div');
+                toastEl.id = 'app-toast';
+                document.body.appendChild(toastEl);
+            }
+            toastEl.textContent = text;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
         }
 
         function getMsgPreviewText(msg) {

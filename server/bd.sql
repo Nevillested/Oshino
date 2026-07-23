@@ -375,3 +375,14 @@ ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS file_size bigint;
 -- Замьюченный чат по-прежнему считает непрочитанные и показывает бейдж —
 -- глушится только звук в открытой вкладке и push на устройства.
 ALTER TABLE messenger.dialog_states ADD COLUMN IF NOT EXISTS muted boolean NOT NULL DEFAULT false;
+
+-- ── Блокировка пользователя ─────────────────────────────────────────────────
+-- Как mute и закрепление — настройка персональная и живёт в dialog_states:
+-- заблокировал собеседника я, у него самого ничего не меняется и никакого
+-- уведомления он не получает.
+--
+-- Что делает блокировка: сообщения от заблокированного перестают доходить до
+-- меня (они сохраняются в переписке у него, но у меня скрываются через
+-- message_deletions — тем же механизмом, что и «удалить только у себя»), и
+-- я не могу писать ему, пока не сниму блокировку.
+ALTER TABLE messenger.dialog_states ADD COLUMN IF NOT EXISTS blocked boolean NOT NULL DEFAULT false;

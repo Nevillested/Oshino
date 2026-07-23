@@ -150,6 +150,41 @@ func (a *App) handleDialogMute(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "muted": muted})
 }
 
+// handleDialogBlock — POST /dialog/block (form: with, blocked=0|1).
+// Персональная настройка, как mute: собеседник о блокировке не узнаёт и
+// никакого уведомления не получает. «Заметки» (чат с самим собой) заблокировать
+// нельзя — клиент прячет пункт, но запрос может прийти и напрямую.
+func (a *App) handleDialogBlock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+	d, ok := a.resolveDialog(r)
+	if !ok {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	if strings.EqualFold(d.myLogin, d.otherLogin) {
+		http.Error(w, "Себя заблокировать нельзя", http.StatusForbidden)
+		return
+	}
+
+	blocked := r.FormValue("blocked") == "1"
+	if _, err := a.db.Exec(`
+		INSERT INTO messenger.dialog_states (user_id, conversation_id, blocked)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, conversation_id) DO UPDATE SET blocked = EXCLUDED.blocked
+	`, d.myID, d.convID, blocked); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.refreshDialogsFor(d.myLogin)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "blocked": blocked})
+}
+
 // handleDialogClear — POST /dialog/clear (form: with, for_all=0|1).
 // Сообщения удаляются, сам диалог остаётся в списке (пустым).
 func (a *App) handleDialogClear(w http.ResponseWriter, r *http.Request) {

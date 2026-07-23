@@ -183,6 +183,7 @@ type DialogEntry struct {
 	LastMsg string `json:"last_msg"` // RFC3339 UTC или "" если сообщений нет
 	Pinned  bool   `json:"pinned"`   // закреплён вверху списка (у этого пользователя)
 	Muted   bool   `json:"muted"`    // беззвучный: без звука в браузере и без push
+	Blocked bool   `json:"blocked"`  // заблокирован мной: его сообщения ко мне не доходят
 }
 
 // CallSignal — конверт сигналинга звонков (offer/answer/ice/end/reject).
@@ -397,6 +398,7 @@ func main() {
 	http.HandleFunc("/delete-messages", app.handleDeleteMessages)
 	http.HandleFunc("/dialog/pin", app.handleDialogPin)
 	http.HandleFunc("/dialog/mute", app.handleDialogMute)
+	http.HandleFunc("/dialog/block", app.handleDialogBlock)
 	http.HandleFunc("/dialog/clear", app.handleDialogClear)
 	http.HandleFunc("/dialog/delete", app.handleDialogDelete)
 	http.HandleFunc("/settings", app.handleSettings)
@@ -603,7 +605,8 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 			-- не пересчитываем, а только приводим к тому же виду посекундно.
 			COALESCE(to_char(MAX(m.created_at), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_msg,
 			COALESCE(BOOL_OR(ds.pinned), false) AS pinned,
-			COALESCE(BOOL_OR(ds.muted),  false) AS muted
+			COALESCE(BOOL_OR(ds.muted),   false) AS muted,
+			COALESCE(BOOL_OR(ds.blocked), false) AS blocked
 		FROM messenger.conversations c
 		JOIN messenger.users u1 ON u1.id = c.user1_id
 		JOIN messenger.users u2 ON u2.id = c.user2_id
@@ -624,7 +627,7 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 	var dialogs []DialogEntry
 	for rows.Next() {
 		var e DialogEntry
-		rows.Scan(&e.Login, &e.LastMsg, &e.Pinned, &e.Muted)
+		rows.Scan(&e.Login, &e.LastMsg, &e.Pinned, &e.Muted, &e.Blocked)
 		dialogs = append(dialogs, e)
 	}
 	return dialogs, nil
@@ -3019,9 +3022,75 @@ func (a *App) isDialogMuted(ownerLogin, peerLogin string) bool {
 	return muted
 }
 
+// isDialogBlocked — заблокировал ли ownerLogin собеседника peerLogin.
+// При любой ошибке возвращается false: не доставить сообщение хуже, чем
+// доставить лишнее.
+func (a *App) isDialogBlocked(ownerLogin, peerLogin string) bool {
+	var blocked bool
+	err := a.db.QueryRow(`
+		SELECT COALESCE(ds.blocked, false)
+		FROM messenger.conversations c
+		JOIN messenger.users me   ON LOWER(me.login)   = LOWER($1)
+		JOIN messenger.users peer ON LOWER(peer.login) = LOWER($2)
+		LEFT JOIN messenger.dialog_states ds
+		       ON ds.conversation_id = c.id AND ds.user_id = me.id
+		WHERE (c.user1_id = me.id AND c.user2_id = peer.id)
+		   OR (c.user1_id = peer.id AND c.user2_id = me.id)
+		LIMIT 1
+	`, ownerLogin, peerLogin).Scan(&blocked)
+	if err != nil {
+		return false
+	}
+	return blocked
+}
+
+// hideMessageFor прячет сообщение у одного участника тем же механизмом, что и
+// «удалить только у себя»: строка в переписке остаётся, но в историю этого
+// пользователя не попадает.
+func (a *App) hideMessageFor(login string, msgID int) {
+	if msgID <= 0 {
+		return
+	}
+	if _, err := a.db.Exec(`
+		INSERT INTO messenger.message_deletions (message_id, user_id)
+		SELECT $1, u.id FROM messenger.users u WHERE LOWER(u.login) = LOWER($2)
+		ON CONFLICT DO NOTHING
+	`, msgID, login); err != nil {
+		log.Println("Ошибка скрытия сообщения от заблокированного:", err)
+	}
+}
+
+// deliverToSenderOnly — доставка эха только на устройства автора. Нужна, когда
+// получатель заблокировал отправителя: у отправителя сообщение выглядит
+// обычным отправленным (как в Telegram), получатель его не видит вовсе.
+func (a *App) deliverToSenderOnly(msg Message) {
+	data, _ := json.Marshal(msg)
+	ackPayload := append([]byte("msgack:"), data...)
+
+	a.mu.Lock()
+	senders := make([]*Client, 0, len(a.clients[strings.ToLower(msg.From)]))
+	for c := range a.clients[strings.ToLower(msg.From)] {
+		senders = append(senders, c)
+	}
+	a.mu.Unlock()
+
+	for _, c := range senders {
+		c.trySend(ackPayload)
+		a.sendDialogsTo(c)
+	}
+}
+
 // routeMessage рассылает обычное сообщение (текст/картинка/голосовое) и, если
 // получатель полностью оффлайн, отправляет push вместо realtime-доставки.
 func (a *App) routeMessage(msg Message) {
+	// Получатель заблокировал отправителя — сообщение до него не доходит ни
+	// в реальном времени, ни push'ем, и не появится в его истории. Отправитель
+	// при этом ничего не замечает: блокировка не должна быть заметна снаружи.
+	if a.isDialogBlocked(msg.To, msg.From) {
+		a.hideMessageFor(msg.To, msg.MsgID)
+		a.deliverToSenderOnly(msg)
+		return
+	}
 	if a.deliverRealtime(msg) {
 		body := msg.Text
 		switch {
