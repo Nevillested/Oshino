@@ -612,11 +612,75 @@
             flex: 1;
             padding: 16px;
             overflow-y: auto;
+            overflow-x: hidden;
             display: flex;
             flex-direction: column;
             background: var(--color-messages-bg);
             transition: background 0.3s;
             gap: 10px;
+        }
+
+        /* ── Анимации появления и удаления сообщений (animate.style) ──────
+           Взяты только два нужных эффекта, а не библиотека целиком: ради
+           fadeInDown и hinge тянуть весь animate.css смысла нет. Имена классов
+           оставлены оригинальные, чтобы при желании можно было подключить
+           библиотеку и удалить этот блок без правок в разметке. */
+        .animate__animated {
+            animation-duration: var(--animate-duration, 0.6s);
+            animation-fill-mode: both;
+        }
+
+        /* Появление нового сообщения */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translate3d(0, -28px, 0);
+            }
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        .animate__fadeInDown { animation-name: fadeInDown; }
+
+        /* Удаление: сообщение срывается с петель и падает вниз */
+        @keyframes hinge {
+            0% {
+                transform-origin: top left;
+                animation-timing-function: ease-in-out;
+            }
+            20%, 60% {
+                transform: rotate3d(0, 0, 1, 80deg);
+                transform-origin: top left;
+                animation-timing-function: ease-in-out;
+            }
+            40%, 80% {
+                transform: rotate3d(0, 0, 1, 60deg);
+                transform-origin: top left;
+                animation-timing-function: ease-in-out;
+                opacity: 1;
+            }
+            to {
+                transform: translate3d(0, 700px, 0);
+                opacity: 0;
+            }
+        }
+
+        .animate__hinge {
+            animation-name: hinge;
+            /* В оригинале hinge вдвое длиннее обычной анимации */
+            animation-duration: calc(var(--animate-duration, 0.6s) * 2);
+            pointer-events: none;
+        }
+
+        /* Пользователям, попросившим систему уменьшить движение, анимации не
+           показываем — таковы рекомендации по доступности, да и укачивать
+           интерфейсом никого не нужно. */
+        @media (prefers-reduced-motion: reduce) {
+            .animate__animated {
+                animation: none !important;
+            }
         }
 
         #load-more-indicator {
@@ -4249,6 +4313,14 @@
         let ws = null;
         // Снимок словаря отображаемых имён — чтобы перерисовывать сообщения
         // только когда имена реально поменялись.
+        // Чаты, которые уже хотя бы раз отрисованы. Нужно, чтобы при первом
+        // открытии диалога вся история не влетала анимацией разом — она
+        // положена только сообщениям, появившимся при нас.
+        const renderedChats = new Set();
+        // Был ли текущий чат отрисован ДО этого прохода. Считывается один раз
+        // в начале renderMessages: внутри цикла сам факт отрисовки уже
+        // зафиксирован, и проверять множество напрямую было бы поздно.
+        let chatWasRendered = false;
         let lastDisplayNames = '';
         let wsReady = false;
         let reconnectTimer = null;
@@ -5474,6 +5546,18 @@
             return out;
         }
 
+        // Анимируем появление только по-настоящему новых сообщений. Проверка
+        // по времени отсекает подгрузку истории вверх: те сообщения тоже
+        // рисуются впервые, но прилетать сверху им незачем.
+        function isFreshMessage(msg) {
+            if (msg._rendered) return false;
+            if (!chatWasRendered) return false;                  // первое открытие чата
+            if (msg.pending) return true;                        // своё, ещё не подтверждённое
+            if (!msg.created_at) return true;
+            const age = Date.now() - new Date(msg.created_at).getTime();
+            return age >= 0 && age < 60000;
+        }
+
         function renderMessages(msgs) {
             // Схлопываем возможные дубли вложений перед отрисовкой
             if (Array.isArray(msgs)) {
@@ -5487,6 +5571,11 @@
             // Сохраняем позицию скролла для подгрузки вверх
             const prevScrollHeight = messagesDiv.scrollHeight;
             const prevScrollTop = messagesDiv.scrollTop;
+
+            // Запоминаем до отрисовки: внутри цикла флаг уже должен быть
+            // выставлен для всех сообщений, кроме самого первого прохода.
+            chatWasRendered = renderedChats.has(currentUser);
+            if (currentUser) renderedChats.add(currentUser);
 
             messagesDiv.innerHTML = '';
             messagesDiv.appendChild(loadMoreIndicator);
@@ -5514,6 +5603,19 @@
 
                 const wrap = document.createElement('div');
                 wrap.className = 'message-wrap ' + (msg.own ? 'own' : 'other');
+
+                if (msg._deleting) {
+                    // Сообщение уже улетает: если чат успел перерисоваться,
+                    // анимацию нужно навесить заново, иначе оно моргнёт и
+                    // пропадёт без эффекта.
+                    wrap.classList.add('animate__animated', 'animate__hinge');
+                } else if (isFreshMessage(msg)) {
+                    wrap.classList.add('animate__animated', 'animate__fadeInDown');
+                }
+                // Отметка живёт на самом объекте сообщения, а не на id: id у
+                // отправленного сообщения меняется с временного на серверный,
+                // и по нему анимация проигралась бы второй раз.
+                msg._rendered = true;
                 // data-msg-id нужен контекстному меню чтобы идентифицировать сообщение
                 if (msg.id > 0) wrap.dataset.msgId = msg.id;
 
@@ -8628,20 +8730,48 @@
             renderDialogList();
         }
 
+        // Длительность hinge — вдвое больше базовой, см. CSS. Значение здесь и
+        // в стилях должно совпадать, иначе сообщение либо исчезнет раньше конца
+        // анимации, либо повиснет пустым местом после неё.
+        const HINGE_MS = 1200;
+
         function onMessageDeleted(data) {
             if (!data || !data.message_id) return;
             const found = findMessageEverywhere(data.message_id);
             if (!found) return;
-            found.state.messages.splice(found.idx, 1);
-            // Если удалённое сообщение было закреплено — убираем плашку
+
+            // Сопутствующие вещи снимаем сразу, не дожидаясь анимации: держать
+            // закреплённой или цитировать сообщение, которое уже удалено, нельзя.
             if (pinnedByUser[found.peer] && pinnedByUser[found.peer].message_id === data.message_id) {
                 pinnedByUser[found.peer] = null;
                 if (currentUser === found.peer) renderPinBar();
             }
-            // Если мы отвечали на него — снимаем цитату
             if (replyingTo && replyingTo.id === data.message_id) cancelReply();
             if (editingMsg && editingMsg.id === data.message_id) cancelEditing();
-            if (currentUser === found.peer) renderMessages(found.state.messages);
+
+            const removeNow = () => {
+                // Позицию ищем заново: за время анимации список мог измениться.
+                const still = findMessageEverywhere(data.message_id);
+                if (still) still.state.messages.splice(still.idx, 1);
+                if (currentUser === found.peer) renderMessages(found.state.messages);
+                renderDialogList();
+            };
+
+            const el = (currentUser === found.peer)
+                ? messagesDiv.querySelector(`[data-msg-id="${data.message_id}"]`)
+                : null;
+
+            if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                removeNow();
+                return;
+            }
+
+            // Флаг на самом сообщении: если чат перерисуется в середине
+            // анимации, она навесится заново (см. renderMessages).
+            const msgObj = found.state.messages[found.idx];
+            if (msgObj) msgObj._deleting = true;
+            el.classList.add('animate__animated', 'animate__hinge');
+            setTimeout(removeNow, HINGE_MS);
             renderDialogList();
         }
 
