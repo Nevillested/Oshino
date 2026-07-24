@@ -768,28 +768,13 @@
             }
         }
 
-        .dust-layer {
+        /* Пыль рисуется на одном холсте, а не отдельными узлами: чтобы
+           сообщение рассыпалось попиксельно, частиц нужны десятки тысяч, и
+           столько DOM-элементов браузер не потянет. */
+        .dust-canvas {
             position: fixed;
             pointer-events: none;
             z-index: 250;
-            overflow: visible;
-        }
-
-        .dust {
-            position: absolute;
-            border-radius: 50%;
-            opacity: 0;
-            /* Подсказка компоновщику: частиц много, и без этого браузер
-               перерисовывал бы слой на каждом кадре. */
-            will-change: transform, opacity;
-            animation-name: dust-fly;
-            animation-timing-function: ease-out;
-            animation-fill-mode: forwards;
-        }
-
-        @keyframes dust-fly {
-            0%   { opacity: 0.9; transform: translate(0, 0) scale(1); }
-            100% { opacity: 0;   transform: translate(var(--dx), var(--dy)) scale(0.2); }
         }
 
         /* ── Ссылки в сообщениях ─────────────────────────────────────────── */
@@ -4872,7 +4857,7 @@
     <div id="link-overlay">
         <div id="link-box">
             <button id="link-close" type="button" title="Закрыть">&times;</button>
-            <div id="link-title">Вы уверены, что хотите перейти на сайт?</div>
+            <div id="link-title">Вы уверены, что хотите перейти на сайт</div>
             <a id="link-url" target="_blank" rel="noopener noreferrer"></a>
         </div>
     </div>
@@ -10401,56 +10386,127 @@
         const DISSOLVE_MS = 900;   // «съедание» пузыря маской
         const COLLAPSE_MS = 280;   // схлопывание освободившегося места
 
-        // Пыль. Частицы живут в своём слое поверх страницы, а не внутри
-        // сообщения: ему в это время режут видимость маской, и всё вложенное
-        // резалось бы вместе с ним.
+        // Пыль. Один холст поверх страницы: каждая частица — один пиксель,
+        // и их десятки тысяч. Отдельными DOM-узлами такая плотность
+        // недостижима — браузер ложится уже на паре тысяч.
+        function parseRGB(str) {
+            const m = /(\d+)\D+(\d+)\D+(\d+)/.exec(str || '');
+            return m ? [+m[1], +m[2], +m[3]] : null;
+        }
+
         function spawnDustParticles(el, durationMs) {
             const r = el.getBoundingClientRect();
             if (r.width < 4 || r.height < 4) return;
 
-            const layer = document.createElement('div');
-            layer.className = 'dust-layer';
-            layer.style.left   = r.left + 'px';
-            layer.style.top    = r.top + 'px';
-            layer.style.width  = r.width + 'px';
-            layer.style.height = r.height + 'px';
+            // Запас вокруг сообщения: частицы уносит вверх и вправо, без него
+            // их срезало бы краем холста.
+            const PAD_L = 24, PAD_R = 110, PAD_T = 120, PAD_B = 24;
+            const W = Math.ceil(r.width  + PAD_L + PAD_R);
+            const H = Math.ceil(r.height + PAD_T + PAD_B);
+            if (W * H > 4e6) return;   // не рисуем гигантских холстов
 
-            // Цвет берём с самого пузыря, чтобы пыль совпадала с тем, что
-            // рассыпается: свои сообщения синие, чужие серые.
+            const canvas = document.createElement('canvas');
+            canvas.className = 'dust-canvas';
+            canvas.width = W;
+            canvas.height = H;
+            canvas.style.left   = (r.left - PAD_L) + 'px';
+            canvas.style.top    = (r.top  - PAD_T) + 'px';
+            canvas.style.width  = W + 'px';
+            canvas.style.height = H + 'px';
+            document.body.appendChild(canvas);
+
+            const ctx  = canvas.getContext('2d');
+            const img  = ctx.createImageData(W, H);
+            const data = img.data;
+
             const bubble = el.querySelector('.message, .file-card, .audio-player') || el;
-            let color = getComputedStyle(bubble).backgroundColor;
-            if (!color || color === 'rgba(0, 0, 0, 0)') color = '#8ab4f8';
+            const bg = parseRGB(getComputedStyle(bubble).backgroundColor) || [138, 180, 248];
 
-            // Плотность по площади, но с потолком: на длинном сообщении иначе
-            // родились бы тысячи узлов и кадр бы просел. Потолок разный:
-            // на телефоне тот же объём анимации обходится заметно дороже.
-            const cap = isTouchLayout() ? 520 : 900;
-            const count = Math.min(cap, Math.round(r.width * r.height / 55));
-            for (let i = 0; i < count; i++) {
-                const px = Math.random(), py = Math.random();
-                // Мельче, чем раньше: частиц теперь много, и крупные точки
-                // сливались бы в сплошное пятно вместо пыли.
-                const size = 0.8 + Math.random() * 2;
-                const p = document.createElement('i');
-                p.className = 'dust';
-                p.style.left = (px * r.width) + 'px';
-                p.style.top  = (py * r.height) + 'px';
-                p.style.width  = size + 'px';
-                p.style.height = size + 'px';
-                p.style.background = color;
+            // Где именно лежат строки текста. Берём не пиксели, а прямоугольники
+            // строк через Range: рисунок пузыря так не растеризуешь, зато
+            // частицы в границах текста получают его цвет, и в облаке видно
+            // структуру сообщения.
+            const zones = [];
+            el.querySelectorAll('.msg-text, .msg-forward-label, .msg-reply-quote, .msg-time')
+              .forEach(node => {
+                const col = parseRGB(getComputedStyle(node).color) || [255, 255, 255];
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                const rects = range.getClientRects();
+                for (let k = 0; k < rects.length; k++) {
+                    const rc = rects[k];
+                    if (rc.width < 1 || rc.height < 1) continue;
+                    zones.push([rc.left - r.left, rc.top - r.top, rc.width, rc.height, col]);
+                }
+              });
+
+            // Примерно одна частица на два пикселя площади. Потолок разный:
+            // на телефоне тот же объём расчёта обходится дороже.
+            const cap = isTouchLayout() ? 24000 : 60000;
+            const n = Math.min(cap, Math.round(r.width * r.height / 2));
+            if (n < 1) { canvas.remove(); return; }
+
+            // Типизированные массивы вместо объектов: на десятках тысяч частиц
+            // разница по памяти и сборке мусора решающая.
+            const ax = new Float32Array(n), ay = new Float32Array(n);
+            const vx = new Float32Array(n), vy = new Float32Array(n);
+            const ad = new Float32Array(n), al = new Float32Array(n);
+            const cr = new Uint8Array(n),  cg = new Uint8Array(n), cb = new Uint8Array(n);
+
+            for (let i = 0; i < n; i++) {
+                const fx = Math.random(), fy = Math.random();
+                const x = fx * r.width, y = fy * r.height;
+                ax[i] = x + PAD_L;
+                ay[i] = y + PAD_T;
+                vx[i] = 6 + Math.random() * 74;
+                vy[i] = -12 - Math.random() * 100;
                 // Задержка по горизонтали — пыль поднимается вслед за фронтом
-                // стирания, а не вся разом.
-                p.style.animationDelay = Math.round(px * durationMs * 0.72) + 'ms';
-                p.style.animationDuration = Math.round(460 + Math.random() * 520) + 'ms';
-                // Разлёт шире прежнего — при высокой плотности узкий веер
-                // выглядит как одно смещающееся пятно.
-                p.style.setProperty('--dx', Math.round(6 + Math.random() * 62) + 'px');
-                p.style.setProperty('--dy', Math.round(-14 - Math.random() * 76) + 'px');
-                layer.appendChild(p);
+                // стирания маски, а не вся разом.
+                ad[i] = fx * durationMs * 0.78;
+                al[i] = 420 + Math.random() * 560;
+
+                let col = bg, jitter = true;
+                for (let z = 0; z < zones.length; z++) {
+                    const t = zones[z];
+                    if (x >= t[0] && x <= t[0] + t[2] && y >= t[1] && y <= t[1] + t[3]) {
+                        if (Math.random() < 0.55) { col = t[4]; jitter = false; }
+                        break;
+                    }
+                }
+                const j = jitter ? (Math.random() * 26 - 13) : 0;
+                cr[i] = Math.max(0, Math.min(255, col[0] + j));
+                cg[i] = Math.max(0, Math.min(255, col[1] + j));
+                cb[i] = Math.max(0, Math.min(255, col[2] + j));
             }
 
-            document.body.appendChild(layer);
-            setTimeout(() => layer.remove(), durationMs + 1400);
+            const t0 = performance.now();
+            const total = durationMs + 1100;
+
+            function frame(now) {
+                const t = now - t0;
+                data.fill(0);
+                for (let i = 0; i < n; i++) {
+                    const lt = t - ad[i];
+                    // Ещё не тронулась: на её месте пока настоящий пузырь,
+                    // который в этот момент стирает маска.
+                    if (lt < 0) continue;
+                    const pr = lt / al[i];
+                    if (pr >= 1) continue;
+                    const e = pr * (2 - pr);            // замедление к концу
+                    const x = (ax[i] + vx[i] * e) | 0;
+                    const y = (ay[i] + vy[i] * e) | 0;
+                    if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                    const o = (y * W + x) << 2;
+                    data[o]     = cr[i];
+                    data[o + 1] = cg[i];
+                    data[o + 2] = cb[i];
+                    data[o + 3] = (1 - pr) * 255;
+                }
+                ctx.putImageData(img, 0, 0);
+                if (t < total) requestAnimationFrame(frame);
+                else canvas.remove();
+            }
+            requestAnimationFrame(frame);
         }
 
         // Плавное схлопывание освободившегося места.
