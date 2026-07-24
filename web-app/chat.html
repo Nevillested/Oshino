@@ -742,6 +742,36 @@
             white-space: pre-wrap;
         }
 
+        /* Выделение текста мышью включаем только там, где есть настоящий
+           курсор. На сенсорных устройствах запрет остаётся: там выделение
+           перехватывает long-press, а он открывает контекстное меню. */
+        @media (hover: hover) and (pointer: fine) {
+            .msg-text {
+                -webkit-user-select: text;
+                user-select: text;
+                cursor: text;
+            }
+        }
+
+        /* Меню для выделенного текста — та же коробка, что и обычное
+           контекстное меню сообщения. */
+        #sel-menu {
+            display: none;
+            position: fixed;
+            z-index: 320;
+            min-width: 210px;
+            background: var(--color-ctx-bg, #1b1e26);
+            border-radius: 12px;
+            padding: 6px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+        }
+        #sel-menu.open { display: block; }
+
+        /* Цитата в панели над вводом — курсивом, как выделенный фрагмент */
+        #reply-bar.quote #reply-preview-text {
+            font-style: italic;
+        }
+
         .message {
             padding: 10px 14px;
             border-radius: 10px;
@@ -4500,6 +4530,25 @@
 
     <!-- Backdrop + контекстное меню сообщения (long-press / right-click) -->
     <div id="ctx-backdrop"></div>
+    <!-- Меню для выделенного фрагмента текста. Появляется вместо обычного
+         контекстного меню, когда ПКМ приходится на само выделение. -->
+    <div id="sel-menu">
+        <button class="ctx-item" id="sel-copy">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Копировать выделенный текст</span>
+        </button>
+        <button class="ctx-item" id="sel-quote">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 17 4 12 9 7"></polyline>
+                <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+            </svg>
+            <span>Цитировать выделенный текст</span>
+        </button>
+    </div>
+
     <div id="ctx-menu">
         <div id="ctx-reactions"></div>
         <button class="ctx-item" id="ctx-reply">
@@ -6648,7 +6697,12 @@
             }
             const replyToID = replyingTo ? replyingTo.id : 0;
             const msg = { from: currentLogin, to: currentUser, text };
-            if (replyToID) msg.reply_to_id = replyToID;
+            if (replyToID) {
+                msg.reply_to_id = replyToID;
+                // Цитата едет отдельным полем: сервер подменит ею текст превью,
+                // а сам ответ останется обычным ответом.
+                if (replyingTo.quote && replyingTo.text) msg.quote_text = replyingTo.text;
+            }
 
             // Связи может не быть — например, браузер был свёрнут и соединение
             // успело закрыться. Ругаться окном и терять текст незачем: кладём
@@ -9329,6 +9383,8 @@
             let suppressClick = false; // гасим click, который идёт после протяжки
 
             let startX = 0, startY = 0;
+            let textStart = null;      // .msg-text, внутри которого начали тянуть
+            let startWrap = null;      // сообщение, с которого началась протяжка
 
             // Снимок геометрии строк на время протяжки: перестраиваем его
             // только при прокрутке ленты, иначе getBoundingClientRect на каждое
@@ -9365,6 +9421,11 @@
                 rowsCache = null;        // геометрия могла измениться
                 startX = e.clientX;
                 startY = e.clientY;
+                // Откуда начали тянуть: текстовый блок (если попали в текст) и
+                // сообщение целиком. Нужно на mouseup, чтобы отличить «выделял
+                // текст» от «вышел за его пределы».
+                textStart = (e.target && e.target.closest) ? e.target.closest('.msg-text') : null;
+                startWrap = msgWrapAtPoint(e.clientX, e.clientY, rows());
                 pushId(msgIdAt(e.clientX, e.clientY));
             });
 
@@ -9405,12 +9466,38 @@
             });
 
             document.addEventListener('mouseup', () => {
-                dragging = false;
-                armed    = false;
-                dragIds  = [];
+                const wasArmed  = armed;
+                const fromText  = textStart;
+                const fromWrap  = startWrap;
+                dragging  = false;
+                armed     = false;
+                dragIds   = [];
+                textStart = null;
+                startWrap = null;
                 // click приходит сразу после mouseup, а таймер — уже после него,
                 // так что флаг успевает сработать ровно один раз.
                 if (suppressClick) setTimeout(() => { suppressClick = false; }, 0);
+
+                // Протяжка через несколько сообщений уже обработана выше — там
+                // включается режим выбора. Остаётся случай одного сообщения:
+                // начали тянуть по тексту, но вышли за пределы текстового
+                // блока. Это уже не работа с текстом — выделяем сообщение
+                // целиком, как при обычном выборе.
+                if (!wasArmed || selectionMode) return;
+                if (!fromText || !fromWrap || !fromWrap.__msg || fromWrap.__msg.id <= 0) return;
+
+                // setTimeout: на момент mouseup браузер ещё не всегда успел
+                // обновить объект выделения.
+                setTimeout(() => {
+                    const info = selectionInfo();
+                    // Выделение осталось внутри своего же текста — не трогаем.
+                    if (info && !info.crossed && info.el === fromText) return;
+                    const sel = window.getSelection();
+                    if (sel && sel.removeAllRanges) sel.removeAllRanges();
+                    enterSelection(null);
+                    selectedIds.add(fromWrap.__msg.id);
+                    updateSelectionUI();
+                }, 0);
             });
 
             // Иначе click по последнему сообщению протяжки тут же снимал с
@@ -9826,10 +9913,13 @@
         }
 
         function setReplyingTo(msg) {
-            // msg = {id, from, text} — текст превью (готовый, как в цитате)
+            // msg = {id, from, text} — текст превью (готовый, как в цитате).
+            // msg.quote — цитата фрагмента: отличается только оформлением
+            // панели, отправляется и рисуется тем же путём, что и ответ.
             replyingTo = msg;
-            replyPreviewFrom.textContent = msg.from;
-            replyPreviewText.textContent = msg.text;
+            replyBar.classList.toggle('quote', !!msg.quote);
+            replyPreviewFrom.textContent = msg.quote ? 'Цитата' : msg.from;
+            replyPreviewText.textContent = msg.quote ? ('«' + msg.text + '»') : msg.text;
             replyBar.classList.add('show');
             inputField.focus();
         }
@@ -9837,6 +9927,7 @@
         function cancelReply() {
             replyingTo = null;
             replyBar.classList.remove('show');
+            replyBar.classList.remove('quote');
         }
 
         replyCancelBtn.addEventListener('click', () => {
@@ -10155,9 +10246,88 @@
         // preventDefault гасил синтетический click, поэтому меню диалога не
         // закрывалось вообще. Теперь одна функция закрывает оба меню, и она же
         // вызывается при навигации между страницами и по Escape.
+        // ── Выделение текста внутри сообщения ────────────────────────────
+        // Разбор текущего выделения. Возвращает null, если выделять нечего,
+        // {crossed:true}, если выделение вышло за пределы одного текстового
+        // блока, и полные данные, если оно целиком внутри него.
+        function selectionInfo() {
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+            const text = sel.toString();
+            if (!text.trim()) return null;
+
+            const holder = (node) => {
+                if (!node) return null;
+                const el = node.nodeType === 1 ? node : node.parentElement;
+                return el ? el.closest('.msg-text') : null;
+            };
+            const a = holder(sel.anchorNode);
+            const f = holder(sel.focusNode);
+
+            // Разные блоки или вовсе не текст сообщения — выделение «вышло за
+            // границы области текста».
+            if (!a || a !== f) return { crossed: true };
+
+            return { crossed: false, el: a, wrap: a.closest('.message-wrap'), text };
+        }
+
+        function clearTextSelection() {
+            const sel = window.getSelection();
+            if (sel) sel.removeAllRanges();
+        }
+
+        const selMenu   = document.getElementById('sel-menu');
+        let selMenuData = null;
+
+        function openSelMenu(info, x, y) {
+            selMenuData = {
+                text: info.text,
+                msg: info.wrap ? info.wrap.__msg : null
+            };
+            selMenu.classList.add('open');
+            ctxBackdrop.classList.add('open');
+
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const rect = selMenu.getBoundingClientRect();
+            const mw = rect.width || 230, mh = rect.height || 110;
+            selMenu.style.left = Math.max(8, Math.min(x, vw - mw - 8)) + 'px';
+            selMenu.style.top  = Math.max(8, Math.min(y, vh - mh - 8)) + 'px';
+        }
+
+        function closeSelMenu() {
+            selMenu.classList.remove('open');
+            ctxBackdrop.classList.remove('open');
+            selMenuData = null;
+        }
+
+        ctxItem(document.getElementById('sel-copy'), () => {
+            const data = selMenuData;
+            closeSelMenu();
+            if (!data) return;
+            navigator.clipboard.writeText(data.text).catch(() => {});
+            // Выделение снимаем: задача выполнена, подсветка больше не нужна.
+            clearTextSelection();
+        });
+
+        ctxItem(document.getElementById('sel-quote'), () => {
+            const data = selMenuData;
+            closeSelMenu();
+            if (!data || !data.msg) return;
+            clearTextSelection();
+            // Цитата — это обычный ответ с подменённым текстом превью,
+            // поэтому переиспользуем ту же панель и тот же путь отправки.
+            setReplyingTo({
+                id: data.msg.id,
+                from: data.msg.from,
+                text: data.text,
+                quote: true
+            });
+        });
+
         function closeAllCtxMenus() {
             closeCtxMenu();
             closeDlgMenu();
+            closeSelMenu();
         }
 
         ctxBackdrop.addEventListener('click', (e) => { e.preventDefault(); closeAllCtxMenus(); });
@@ -10396,6 +10566,16 @@
 
             // Right-click на десктопе
             messagesDiv.addEventListener('contextmenu', (e) => {
+                // ПКМ по выделенному фрагменту — меню для текста. Обычное меню
+                // сообщения остаётся на всех остальных случаях.
+                const info = selectionInfo();
+                if (info && !info.crossed && info.el.contains(e.target)) {
+                    e.preventDefault();
+                    closeAllCtxMenus();
+                    openSelMenu(info, e.clientX, e.clientY);
+                    return;
+                }
+
                 const wrap = msgWrapAtPoint(e.clientX, e.clientY);
                 if (!wrap) return;
                 e.preventDefault();

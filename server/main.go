@@ -138,6 +138,10 @@ type Message struct {
 	// дожидаясь перезагрузки страницы.
 	MsgID         int           `json:"msg_id,omitempty"`
 	ReplyToID     int           `json:"reply_to_id,omitempty"`
+	// QuoteText — выделенный получателем кусок исходного сообщения. Если задан,
+	// подменяет собой текст превью ответа; в остальном цитата ничем от ответа
+	// не отличается — ни хранением, ни отрисовкой.
+	QuoteText string `json:"quote_text,omitempty"`
 	ReplyPreview  *ReplyPreview `json:"reply_preview,omitempty"`
 	ForwardedFrom string        `json:"forwarded_from,omitempty"`
 	// ForwardedFromID — id ИСХОДНОГО сообщения (первоисточника цепочки).
@@ -719,6 +723,19 @@ func buildPreviewText(content string, hasImage, hasAudio, hasVideo, videoIsCircl
 // getMessagePreview возвращает краткое представление сообщения по id — кто
 // автор и готовый текст превью. Используется для reply (на что отвечают) и
 // pin (что закреплено).
+// maxQuoteLen — потолок на длину цитаты. Превью всё равно однострочное, а
+// длинный хвост только раздувает и базу, и каждое сообщение по WebSocket.
+const maxQuoteLen = 400
+
+func trimQuote(s string) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) > maxQuoteLen {
+		return strings.TrimSpace(string(r[:maxQuoteLen])) + "…"
+	}
+	return s
+}
+
 func (a *App) getMessagePreview(msgID int) (*ReplyPreview, error) {
 	var senderLogin, content string
 	var hasImage, hasAudio, hasVideo, hasFile bool
@@ -739,7 +756,7 @@ func (a *App) getMessagePreview(msgID int) (*ReplyPreview, error) {
 
 // saveMessage сохраняет текстовое сообщение и возвращает его id и время
 // отправки. replyToID — id сообщения, на которое отвечают, 0 если это не reply.
-func (a *App) saveMessage(from, to, text string, replyToID int) (int, string, error) {
+func (a *App) saveMessage(from, to, text string, replyToID int, quoteText string) (int, string, error) {
 	convID, err := a.getOrCreateConversation(from, to)
 	if err != nil {
 		return 0, "", err
@@ -756,13 +773,19 @@ func (a *App) saveMessage(from, to, text string, replyToID int) (int, string, er
 		replyTo = &replyToID
 	}
 
+	// Цитата без ответа не имеет смысла: показывать её не на чем.
+	var quote *string
+	if replyTo != nil && quoteText != "" {
+		quote = &quoteText
+	}
+
 	var msgID int
 	var createdAt time.Time
 	err = a.db.QueryRow(`
-		INSERT INTO messenger.messages (conversation_id, sender_id, content, reply_to_id)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, reply_to_id, quote_text)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
-	`, convID, senderID, text, replyTo).Scan(&msgID, &createdAt)
+	`, convID, senderID, text, replyTo, quote).Scan(&msgID, &createdAt)
 	if err != nil {
 		return 0, "", err
 	}
@@ -852,7 +875,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       m.has_video, m.video_duration, m.video_is_circle,
 			       m.call_type, m.call_status, m.call_duration,
 			       m.has_file, m.file_name, m.file_mime, m.file_size,
-			       m.reply_to_id, ru.login, rm.content,
+			       m.reply_to_id, m.quote_text, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
 			       (rm.video_data IS NOT NULL), rm.video_is_circle,
 			       (rm.file_data IS NOT NULL), rm.call_type,
@@ -886,7 +909,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       m.has_video, m.video_duration, m.video_is_circle,
 			       m.call_type, m.call_status, m.call_duration,
 			       m.has_file, m.file_name, m.file_mime, m.file_size,
-			       m.reply_to_id, ru.login, rm.content,
+			       m.reply_to_id, m.quote_text, ru.login, rm.content,
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
 			       (rm.video_data IS NOT NULL), rm.video_is_circle,
 			       (rm.file_data IS NOT NULL), rm.call_type,
@@ -967,6 +990,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var fileName, fileMime sql.NullString
 		var fileSize sql.NullInt64
 		var replyToID sql.NullInt64
+		var quoteText sql.NullString
 		var replyFrom, replyContent sql.NullString
 		var replyHasImage, replyHasAudio, replyHasVideo, replyVideoIsCircle, replyHasFile sql.NullBool
 		var replyCallType sql.NullString
@@ -979,7 +1003,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			&hasVideo, &videoDuration, &videoIsCircle,
 			&callType, &callStatus, &callDuration,
 			&hasFile, &fileName, &fileMime, &fileSize,
-			&replyToID, &replyFrom, &replyContent,
+			&replyToID, &quoteText, &replyFrom, &replyContent,
 			&replyHasImage, &replyHasAudio,
 			&replyHasVideo, &replyVideoIsCircle, &replyHasFile, &replyCallType,
 			&forwardedFrom, &forwardedFromID, &m.IsRead, &editedAt); err != nil {
@@ -1025,10 +1049,18 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			// ON DELETE SET NULL обнулит reply_to_id, так что сюда такая
 			// ситуация попасть не должна, но на всякий случай проверяем.
 			if replyFrom.Valid {
+				previewText := buildPreviewText(replyContent.String, replyHasImage.Bool, replyHasAudio.Bool,
+					replyHasVideo.Bool, replyVideoIsCircle.Bool, replyHasFile.Bool, replyCallType)
+				// Цитата: показываем сохранённый кусок, а не начало оригинала.
+				// Берём именно сохранённый текст, а не вырезаем его заново из
+				// исходного сообщения: оригинал могли отредактировать, а цитата
+				// должна остаться такой, какой её отправили.
+				if quoteText.Valid && quoteText.String != "" {
+					previewText = quoteText.String
+				}
 				m.ReplyPreview = &ReplyPreview{
 					From: replyFrom.String,
-					Text: buildPreviewText(replyContent.String, replyHasImage.Bool, replyHasAudio.Bool,
-						replyHasVideo.Bool, replyVideoIsCircle.Bool, replyHasFile.Bool, replyCallType),
+					Text: previewText,
 				}
 			}
 		}
@@ -2822,7 +2854,11 @@ func (c *Client) readPump(a *App) {
 			var msg Message
 			json.Unmarshal([]byte(msgStr[4:]), &msg)
 			// Сохраняем в БД и получаем точное время отправки и id сообщения
-			msgID, createdAt, err := a.saveMessage(msg.From, msg.To, msg.Text, msg.ReplyToID)
+			// Цитату подрезаем здесь, а не доверяем клиенту: в превью она всё
+			// равно показывается одной строкой, а гнать в БД мегабайт
+			// выделенного текста незачем.
+			msg.QuoteText = trimQuote(msg.QuoteText)
+			msgID, createdAt, err := a.saveMessage(msg.From, msg.To, msg.Text, msg.ReplyToID, msg.QuoteText)
 			if err != nil {
 				log.Println("Ошибка сохранения сообщения:", err)
 			}
@@ -2832,6 +2868,12 @@ func (c *Client) readPump(a *App) {
 			// в реальном времени, не дожидаясь следующей загрузки истории.
 			if msg.ReplyToID > 0 {
 				if preview, err := a.getMessagePreview(msg.ReplyToID); err == nil {
+					// Цитата — тот же ответ, только в превью показывается
+					// выделенный кусок, а не начало всего сообщения. Автор
+					// при этом остаётся автором оригинала.
+					if msg.QuoteText != "" {
+						preview.Text = msg.QuoteText
+					}
 					msg.ReplyPreview = preview
 				}
 			}
