@@ -1110,13 +1110,14 @@
         .edited-mark { opacity: 0.65; font-style: italic; margin-right: 4px; }
 
         /* Строка эмодзи-реакций вверху меню.
-           width: 0 + min-width: 100% — чтобы реакции НЕ участвовали в расчёте
-           собственной ширины меню. Иначе меню растягивалось на всю строку
-           эмодзи; теперь ширину задаёт самый длинный пункт («Переслать» и
-           компания), а реакции переносятся внутри неё. */
+           Приём с width: 0 + min-width: 100% убран. Он не давал реакциям
+           участвовать в расчёте ширины меню — и правый столбец сетки просто
+           срезался, когда пунктов не хватало, чтобы раздвинуть меню.
+           Теперь обёртка учитывается как обычно, но растянуть меню ей уже
+           нечем: сетка из пяти узких колонок занимает 148px, а меню и так не
+           уже 180px. Ширину по-прежнему диктуют пункты, зато при любой правке
+           размеров ячеек меню расширится, а не обрежет содержимое. */
         #ctx-reactions-wrap {
-            width: 0;
-            min-width: 100%;
             box-sizing: border-box;
             padding: 10px 10px 8px;
             border-bottom: 1px solid var(--color-ctx-sep);
@@ -1129,11 +1130,11 @@
            не нужно. */
         #ctx-reactions {
             display: grid;
-            grid-template-columns: repeat(5, 32px);
+            grid-template-columns: repeat(5, 28px);
             justify-content: start;
-            gap: 3px;
+            gap: 2px;
             /* Свёрнуто — ровно одна строка. */
-            max-height: 32px;
+            max-height: 28px;
             overflow: hidden;
             transition: max-height 0.25s ease;
         }
@@ -1144,8 +1145,8 @@
 
         #ctx-reactions-more {
             display: none;
-            width: 32px;
-            height: 32px;
+            width: 28px;
+            height: 28px;
             padding: 0;
             border: none;
             border-radius: 8px;
@@ -1162,11 +1163,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
+            width: 28px;
+            height: 28px;
             background: none;
             border: none;
-            font-size: 21px;
+            font-size: 20px;
             cursor: pointer;
             padding: 0;
             border-radius: 8px;
