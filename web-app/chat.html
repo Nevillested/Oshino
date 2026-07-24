@@ -759,15 +759,15 @@
 
         /* Слово как единица выбора. Пробелы между словами остаются обычными
            текстовыми узлами, поэтому переносы строк и pre-wrap не страдают. */
-        .wtok { border-radius: 3px; }
+        .wtok, .wgap { border-radius: 0; }
 
         /* Тёплый цвет, а не синий: свой пузырь сам синий (#4a90e2), и синяя
            подсветка на нём была неотличима от фона. Тёмный текст поверх —
            чтобы читалось и в тёмной теме, и в светлой. */
-        .wtok.wsel {
+        .wtok.wsel, .wgap.wsel {
             background: #ffd166;
-            color: #1a1a1a;
         }
+        .wtok.wsel { color: #1a1a1a; }
 
         /* Свои ползунки. Ставятся по углам фрагмента: начальный — к левому
            верхнему, конечный — к правому нижнему, как принято на iOS. */
@@ -5475,7 +5475,10 @@
                 // Поверх показан просмотр картинки, или идёт запись голосового —
                 // свайп в этих состояниях ничего не должен делать.
                 return imageModalOverlay.classList.contains('open')
-                    || inputArea.classList.contains('recording');
+                    || inputArea.classList.contains('recording')
+                    // Идёт выбор фрагмента: палец ходит по тексту, и движение
+                    // слева направо — это протяжка ползунка, а не жест «назад».
+                    || !!fragEl;
             }
 
             document.addEventListener('touchstart', (e) => {
@@ -9482,21 +9485,28 @@
 
         function tokenizeFragment(el, text) {
             el.innerHTML = '';
+            // В span'ы заворачиваются и слова, и промежутки между ними.
+            // Промежутки нужны, чтобы подсветка шла сплошной полосой, а не
+            // рвалась на пробелах. Целиться ими нельзя — это делают только
+            // слова (.wtok), пробелы помечены отдельным классом.
+            const add = (cls, from, to) => {
+                if (to <= from) return;
+                const sp = document.createElement('span');
+                sp.className = cls;
+                sp.dataset.s = from;
+                sp.dataset.e = to;
+                sp.textContent = text.slice(from, to);
+                el.appendChild(sp);
+            };
+
             const re = /\S+/g;
             let last = 0, m;
             while ((m = re.exec(text)) !== null) {
-                if (m.index > last) {
-                    el.appendChild(document.createTextNode(text.slice(last, m.index)));
-                }
-                const sp = document.createElement('span');
-                sp.className = 'wtok';
-                sp.dataset.s = m.index;
-                sp.dataset.e = m.index + m[0].length;
-                sp.textContent = m[0];
-                el.appendChild(sp);
+                add('wgap', last, m.index);
+                add('wtok', m.index, m.index + m[0].length);
                 last = m.index + m[0].length;
             }
-            if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+            add('wgap', last, text.length);
         }
 
         function exitFragmentMode() {
@@ -9527,9 +9537,8 @@
             const r = fragRange();
             if (!fragEl || !r) return;
             const from = +r[0].dataset.s, to = +r[1].dataset.e;
-            fragEl.querySelectorAll('.wtok').forEach(t => {
-                const s0 = +t.dataset.s;
-                t.classList.toggle('wsel', s0 >= from && +t.dataset.e <= to);
+            fragEl.querySelectorAll('.wtok, .wgap').forEach(t => {
+                t.classList.toggle('wsel', +t.dataset.s >= from && +t.dataset.e <= to);
             });
             positionHandles();
         }
@@ -10571,7 +10580,12 @@
                 msg: info.wrap ? info.wrap.__msg : null
             };
             selMenu.classList.add('open');
-            ctxBackdrop.classList.add('open');
+            // Подложку показываем только на десктопе. На сенсорных она
+            // накрывала весь экран и съедала первое касание ползунка: чтобы
+            // сдвинуть выделение, приходилось сперва тапнуть «в пустоту».
+            // Меню и так закрывается при начале протяжки и при выходе из
+            // режима, так что ловить клик мимо него незачем.
+            if (!pinAboveInput) ctxBackdrop.classList.add('open');
 
             const vw = window.innerWidth, vh = window.innerHeight;
             const rect = selMenu.getBoundingClientRect();
@@ -11956,7 +11970,11 @@
                 tsX = t.clientX; tsY = t.clientY;
                 // Во время записи жест «влево» — это отмена голосового/видеосообщения,
                 // а не переключение страницы: навигацию на это время глушим.
-                tracking = (tsX >= 30) && !inputArea.classList.contains('recording');
+                tracking = (tsX >= 30)
+                    && !inputArea.classList.contains('recording')
+                    // См. выше: во время выбора фрагмента горизонтальные
+                    // движения принадлежат ползункам, а не навигации.
+                    && !fragEl;
                 dir = null;
             }, { passive: true });
 
