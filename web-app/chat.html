@@ -5535,19 +5535,19 @@
             openDialog(user);
         });
 
+        // Выбор пользователя в поиске. Открываем чат всегда, а не только когда
+        // ни один чат ещё не открыт: прежнее условие `if (!currentUser)` давало
+        // странное поведение — из пустого экрана поиск работал, а из открытой
+        // переписки клик по результату молча ничего не делал (заметнее всего на
+        // собственном логине, откуда ждёшь перехода в «Заметки»).
+        //
+        // Дальше всё умеет openChatWith: он и заведёт диалог, если его ещё нет
+        // в списке, и подсветит строку, и откроет переписку.
         function addDialog(user) {
-            if (!historyState[user]) {
-                historyState[user] = { oldestId: 0, allLoaded: false, messages: [] };
-            }
-            renderDialogList();
-            // Если ещё не выбран — открываем
-            if (!currentUser) {
-                currentUser = user;
-                document.querySelectorAll('#users li').forEach(el => el.classList.remove('active'));
-                const li = usersList.querySelector(`[data-user="${user}"]`);
-                if (li) li.classList.add('active');
-                openDialog(user);
-            }
+            // Поиск возвращает логин в своём регистре, а historyState — обычный
+            // объект, где «Ivan» и «ivan» — разные ключи. Без приведения к уже
+            // существующему ключу открылся бы пустой диалог-двойник.
+            openChatWith(resolveDialogKey(user));
         }
 
         function mergeDialogs(entries) {
