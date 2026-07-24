@@ -1936,35 +1936,65 @@
 
         /* Подсказка о том, как отправить сообщение и перенести строку.
            Абсолютная позиция — чтобы появление и скрытие не двигало вёрстку. */
-        #blocked-bar {
+        #forward-bar {
             display: none;
             align-items: center;
-            justify-content: center;
-            gap: 14px;
-            flex-wrap: wrap;
-            padding: 12px 14px;
+            gap: 8px;
+            padding: 8px 14px;
+            font-size: 13px;
+            color: var(--color-fwd-text);
+            background: var(--color-fwd-bg);
+            border-radius: 10px;
+            margin: 0 8px 6px;
+        }
+
+        #forward-bar.show { display: flex; }
+
+        #forward-bar #forward-bar-text {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #forward-bar-cancel {
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            padding: 0 4px;
+            color: inherit;
+            opacity: 0.7;
+        }
+
+        #forward-bar-cancel:active { opacity: 1; }
+
+        /* При отложенной пересылке отправлять есть что и с пустым полем */
+        #input-area.forwarding #mic-btn { display: none; }
+        #input-area.forwarding #send-btn { display: flex; }
+
+        /* Заблокированный чат не показывает ни композер, ни панель пересылки */
+        #input-area.blocked #forward-bar { display: none; }
+
+        #blocked-bar {
+            display: none;
+            padding: 14px 18px;
             font-size: 14px;
+            line-height: 1.4;
+            /* Текст центрируется по всей ширине чата, а не по остатку строки */
+            width: 100%;
+            text-align: center;
             color: var(--color-fwd-text);
         }
 
-        #blocked-bar.show { display: flex; }
+        #blocked-bar.show { display: block; }
 
         /* Композер и подсказка при блокировке не прячутся через inline-style —
            только классом, иначе потом не вернуть их обратно (специфичность). */
         #input-area.blocked #composer,
         #input-area.blocked #composer-hint { display: none; }
-
-        #blocked-unblock-btn {
-            border: none;
-            border-radius: 8px;
-            padding: 8px 16px;
-            font-size: 14px;
-            cursor: pointer;
-            background: #4a90e2;
-            color: #fff;
-        }
-
-        #blocked-unblock-btn:active { opacity: 0.8; }
 
         #app-toast {
             position: fixed;
@@ -4337,11 +4367,20 @@
                 </div>
             </div>
             <div id="composer-hint"></div>
-            <!-- Показывается вместо композера, когда собеседник заблокирован -->
-            <div id="blocked-bar">
-                <span>Пользователь заблокирован</span>
-                <button id="blocked-unblock-btn" type="button">Разблокировать</button>
+            <!-- Панель отложенной пересылки: висит над композером до отправки -->
+            <div id="forward-bar">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 17 20 12 15 7"></polyline>
+                    <path d="M4 18v-2a4 4 0 0 1 4-4h12"></path>
+                </svg>
+                <span id="forward-bar-text"></span>
+                <button id="forward-bar-cancel" type="button" title="Отменить пересылку">&times;</button>
             </div>
+            <!-- Показывается вместо композера, когда собеседник заблокирован -->
+            <!-- Текст подставляется из applyBlockUI: формулировка зависит от
+                 того, кто кого заблокировал. Кнопки снятия здесь намеренно нет —
+                 разблокировка живёт в контекстном меню чата. -->
+            <div id="blocked-bar"></div>
             <!-- Оверлей записи: таймер, подсказка отмены, кнопка «Отмена» при блокировке -->
             <div id="rec-overlay">
                 <span id="rec-dot"></span>
@@ -5367,7 +5406,10 @@
             // открывался чат с автором подписи — и для своей же пересылки это
             // означало «открыть Заметки», то есть ровно то место, откуда и
             // нажали. Теперь честно говорим, что перехода нет.
-            if (!srcMsgId) { showToast('Исходное сообщение недоступно'); return; }
+            if (!srcMsgId) {
+                showToast('Это сообщение переслано до обновления — перехода нет');
+                return;
+            }
 
             let loc = null;
             try {
@@ -5429,6 +5471,8 @@
                 else mutedDialogs.delete(login);
                 if (typeof e === 'object' && e.blocked) blockedDialogs.add(login);
                 else blockedDialogs.delete(login);
+                if (typeof e === 'object' && e.blocked_by) blockedByDialogs.add(login);
+                else blockedByDialogs.delete(login);
 
                 if (!historyState[login]) {
                     historyState[login] = { oldestId: 0, allLoaded: false, messages: [], lastMsg };
@@ -5450,6 +5494,7 @@
                     pinnedDialogs.delete(login);
                     mutedDialogs.delete(login);
                     blockedDialogs.delete(login);
+                    blockedByDialogs.delete(login);
                 }
             });
 
@@ -5672,6 +5717,12 @@
         // в соседний чат и всплывать там — точно не должно.
         const drafts = {};
 
+        // Чей черновик сейчас в поле ввода. Отдельная переменная, а не
+        // currentUser: обработчик списка диалогов присваивает currentUser ДО
+        // вызова openDialog, поэтому на момент сохранения там уже новый логин —
+        // и черновик уезжал в тот чат, куда переходили.
+        let draftOwner = null;
+
         function saveDraftFor(user) {
             if (!user) return;
             const text = inputField.value;
@@ -5687,9 +5738,12 @@
         // не гонять человека в контекстное меню.
         function applyBlockUI(user) {
             const bar = document.getElementById('blocked-bar');
-            const blocked = isDialogBlocked(user) && !isNotesChat(user);
+            const blocked = sendingForbidden(user);
             inputArea.classList.toggle('blocked', blocked);
-            if (bar) bar.classList.toggle('show', blocked);
+            if (bar) {
+                bar.classList.toggle('show', blocked);
+                if (blocked) bar.textContent = blockReasonText(user);
+            }
         }
 
         function restoreDraftFor(user) {
@@ -5711,7 +5765,8 @@
             // Недописанное сообщение принадлежит тому чату, где его набирали.
             // Сохраняем его ДО смены currentUser, иначе черновик уедет в
             // новый чат вместе с полем ввода.
-            saveDraftFor(currentUser);
+            saveDraftFor(draftOwner);
+            draftOwner = user;
 
             currentUser = user;
             closeComposerExtras();
@@ -5729,6 +5784,7 @@
             // содержимое поля, чтобы решить, показывать кнопку отправки или
             // микрофон.
             restoreDraftFor(user);
+            applyForwardBar(user);
             applyBlockUI(user);
             updateFormState();
             cancelReply();
@@ -6102,15 +6158,16 @@
                     // первоисточника. У сообщений, пересланных до появления
                     // этой колонки, идти некуда — оставляем простой подписью,
                     // чтобы клик не обманывал ожидания.
+                    // Кликабельна всегда: если идти некуда, об этом честно
+                    // сообщит сам обработчик. Молчаливо мёртвая плашка
+                    // неотличима от поломки.
                     const srcId = msg.forwarded_from_id || 0;
-                    if (srcId) {
-                        fwd.classList.add('linked');
-                        fwd.title = 'Перейти к исходному сообщению';
-                        fwd.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            openForwardSource(msg.forwarded_from, srcId);
-                        });
-                    }
+                    fwd.classList.add('linked');
+                    fwd.title = 'Перейти к исходному сообщению';
+                    fwd.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openForwardSource(msg.forwarded_from, srcId);
+                    });
                     wrap.appendChild(fwd);
                 }
 
@@ -6444,11 +6501,30 @@
 
         function sendMessage() {
             if (!currentUser) return;
-            if (isDialogBlocked(currentUser)) { showToast('Пользователь заблокирован'); return; }
+            if (sendingForbidden(currentUser)) { showToast(blockReasonText(currentUser)); return; }
             const text = inputField.value.trim();
+
+            // Отложенная пересылка. Если поле пустое — уходят только пересылки;
+            // если что-то написано, сначала уйдёт наше сообщение, а следом
+            // пересылаемые. Правка чужого сообщения сюда не попадает: в этом
+            // режиме панели пересылки нет.
+            const hasForward = !editingMsg && pendingForwards[currentUser] &&
+                               pendingForwards[currentUser].ids.length > 0;
+            if (hasForward && !text) {
+                const target = currentUser;
+                flushPendingForward(target);
+                return;
+            }
+
             if (!text) return;
             // Отправленное перестаёт быть черновиком этого чата.
             delete drafts[currentUser];
+            if (hasForward) {
+                // Порядок гарантируется тем, что пересылки уходят после того,
+                // как наше сообщение уже отправлено ниже по этой функции.
+                const target = currentUser;
+                setTimeout(() => flushPendingForward(target), 0);
+            }
 
             // Было ли поле в фокусе до отправки — чтобы вернуть его в конце,
             // если какой-то движок всё же успел фокус увести.
@@ -9346,6 +9422,23 @@
         const mutedDialogs = new Set();
         // Заблокированные — тоже персонально и тоже приезжает со списком диалогов.
         const blockedDialogs = new Set();
+        // Кто заблокировал меня. Приходит с сервера отдельным флагом.
+        const blockedByDialogs = new Set();
+
+        function isBlockedByPeer(user) {
+            return !!user && blockedByDialogs.has(user);
+        }
+
+        // Отправка невозможна в обе стороны — и когда блокирую я, и когда меня.
+        function sendingForbidden(user) {
+            return !!user && !isNotesChat(user) && (isDialogBlocked(user) || isBlockedByPeer(user));
+        }
+
+        function blockReasonText(user) {
+            if (isDialogBlocked(user))  return 'Вы не можете отправлять сообщения пользователю, которого заблокировали';
+            if (isBlockedByPeer(user))  return 'Вы не можете отправлять сообщения пользователю, который вас заблокировал';
+            return '';
+        }
 
         function isDialogBlocked(user) {
             return !!user && blockedDialogs.has(user);
@@ -9484,26 +9577,6 @@
                 text: 'Его сообщения перестанут доходить до вас, и вы не сможете ему писать. Он об этом не узнает.',
                 okText: 'Заблокировать'
             }, apply);
-        });
-
-        document.getElementById('blocked-unblock-btn').addEventListener('click', async () => {
-            const user = currentUser;
-            if (!user) return;
-            const fd = new FormData();
-            fd.append('with', user);
-            fd.append('blocked', '0');
-            try {
-                const res = await fetch('/dialog/block', { method: 'POST', body: fd });
-                if (res.ok) {
-                    blockedDialogs.delete(user);
-                    renderDialogList();
-                    applyBlockUI(user);
-                    updateFormState();
-                    showToast('Блокировка снята');
-                } else {
-                    alert('Не удалось снять блокировку');
-                }
-            } catch (e) { alert('Нет соединения'); }
         });
 
         ctxItem(dlgClearBtn, () => {
@@ -9720,6 +9793,75 @@
         // по очереди (сервер принимает по одному), сохраняя исходный порядок.
         let pendingForwardIds = null;
 
+        // Отложенная пересылка: на каждый чат — своя «корзина» сообщений,
+        // ждущих отправки. Переключение между чатами её не теряет.
+        const pendingForwards = {};
+
+        // Подпись «от кого». Пересылать можно и свои, и чужие сообщения сразу,
+        // поэтому при нескольких авторах имя не называем.
+        function forwardAuthorLabel(ids) {
+            const state = historyState[currentUser];
+            if (!state) return '';
+            const authors = new Set();
+            ids.forEach(id => {
+                const m = state.messages.find(x => x.id === id);
+                if (m) authors.add(m.own ? currentLogin : (m.from || currentUser));
+            });
+            if (authors.size === 1) return getDisplayName([...authors][0]);
+            if (authors.size === 0) return '';
+            return 'нескольких пользователей';
+        }
+
+        function plural(n, one, few, many) {
+            const n10 = n % 10, n100 = n % 100;
+            if (n10 === 1 && n100 !== 11) return one;
+            if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) return few;
+            return many;
+        }
+
+        function applyForwardBar(user) {
+            const bar = document.getElementById('forward-bar');
+            if (!bar) return;
+            const pf = user ? pendingForwards[user] : null;
+            if (!pf || !pf.ids.length) {
+                bar.classList.remove('show');
+                inputArea.classList.remove('forwarding');
+                return;
+            }
+            const n = pf.ids.length;
+            const word = plural(n, 'пересылаемое сообщение', 'пересылаемых сообщения', 'пересылаемых сообщений');
+            document.getElementById('forward-bar-text').textContent =
+                n + ' ' + word + (pf.from ? ' от ' + pf.from : '');
+            bar.classList.add('show');
+            // Пока есть что переслать, вместо микрофона нужна кнопка отправки:
+            // отправлять есть что даже при пустом поле ввода.
+            inputArea.classList.add('forwarding');
+        }
+
+        function cancelForward(user) {
+            if (user) delete pendingForwards[user];
+            applyForwardBar(user);
+        }
+
+        // Отправка отложенных пересылок. Порядок важен: сначала уходит наше
+        // сопроводительное сообщение (если оно есть), потом сами пересылки —
+        // так они и лягут в ленте.
+        async function flushPendingForward(user) {
+            const pf = pendingForwards[user];
+            if (!pf || !pf.ids.length) return;
+            delete pendingForwards[user];
+            if (currentUser === user) applyForwardBar(user);
+            for (const id of pf.ids) {
+                const fd = new FormData();
+                fd.append('message_id', String(id));
+                fd.append('to', user);
+                try {
+                    const res = await fetch('/forward', { method: 'POST', body: fd });
+                    if (!res.ok) { showToast('Не удалось переслать сообщение'); break; }
+                } catch (e) { showToast('Нет соединения'); break; }
+            }
+        }
+
         function openForwardModal(msgId) {
             forwardDialogList.innerHTML = '';
             // Список намеренно полный: и «Заметки», и текущий чат. Переслать
@@ -9740,24 +9882,44 @@
                     const li = document.createElement('li');
                     li.className = 'forward-item';
                     li.textContent = getDisplayName(u);
-                    li.addEventListener('click', async () => {
+                    li.addEventListener('click', () => {
                         forwardModalOverlay.classList.remove('open');
+
+                        // В заблокированный чат пересылать нечего — говорим об
+                        // этом сразу, не открывая его.
+                        if (isDialogBlocked(u)) {
+                            pendingForwardIds = null;
+                            if (selectionMode) exitSelection();
+                            alert('Вы заблокировали пользователя, отправка сообщений невозможна');
+                            return;
+                        }
+                        if (isBlockedByPeer(u)) {
+                            pendingForwardIds = null;
+                            if (selectionMode) exitSelection();
+                            alert('Вы заблокированы пользователем, отправка сообщений невозможна');
+                            return;
+                        }
+
                         const ids = (pendingForwardIds && pendingForwardIds.length)
                                     ? pendingForwardIds : [msgId];
-                        for (const id of ids) {
-                            const fd = new FormData();
-                            fd.append('message_id', String(id));
-                            fd.append('to', u);
-                            await fetch('/forward', { method: 'POST', body: fd });
-                        }
+                        // Ничего не отправляем прямо сейчас: складываем в
+                        // «корзину» целевого чата и открываем его. Отправка —
+                        // по кнопке, вместе с сопроводительным сообщением, если
+                        // человек его напишет.
+                        pendingForwards[u] = { ids: ids.slice(), from: forwardAuthorLabel(ids) };
                         pendingForwardIds = null;
                         if (selectionMode) exitSelection();
+                        openChatWith(u);
                     });
                     forwardDialogList.appendChild(li);
                 });
             }
             forwardModalOverlay.classList.add('open');
         }
+
+        document.getElementById('forward-bar-cancel').addEventListener('click', () => {
+            cancelForward(currentUser);
+        });
 
         forwardModalClose.addEventListener('click', () => {
             forwardModalOverlay.classList.remove('open');

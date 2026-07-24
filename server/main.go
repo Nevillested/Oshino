@@ -184,6 +184,10 @@ type DialogEntry struct {
 	Pinned  bool   `json:"pinned"`   // закреплён вверху списка (у этого пользователя)
 	Muted   bool   `json:"muted"`    // беззвучный: без звука в браузере и без push
 	Blocked bool   `json:"blocked"`  // заблокирован мной: его сообщения ко мне не доходят
+	// BlockedBy — собеседник заблокировал МЕНЯ. Раньше это намеренно не
+	// раскрывалось, но интерфейс должен объяснять, почему поле ввода закрыто,
+	// иначе отправка молча проваливается и выглядит как поломка.
+	BlockedBy bool `json:"blocked_by"`
 }
 
 // CallSignal — конверт сигналинга звонков (offer/answer/ice/end/reject).
@@ -606,7 +610,10 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 			COALESCE(to_char(MAX(m.created_at), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_msg,
 			COALESCE(BOOL_OR(ds.pinned), false) AS pinned,
 			COALESCE(BOOL_OR(ds.muted),   false) AS muted,
-			COALESCE(BOOL_OR(ds.blocked), false) AS blocked
+			COALESCE(BOOL_OR(ds.blocked), false) AS blocked,
+			-- ds2 — состояние того же диалога глазами собеседника; нужно только
+			-- ради флага «он заблокировал меня».
+			COALESCE(BOOL_OR(ds2.blocked), false) AS blocked_by
 		FROM messenger.conversations c
 		JOIN messenger.users u1 ON u1.id = c.user1_id
 		JOIN messenger.users u2 ON u2.id = c.user2_id
@@ -614,6 +621,12 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 		LEFT JOIN messenger.dialog_states ds
 		       ON ds.conversation_id = c.id
 		      AND ds.user_id = (SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1))
+		-- Второй раз та же таблица, но глазами собеседника: оттуда берётся
+		-- только blocked_by. Через "не я", а не через ds.user_id: у ds может
+		-- вообще не быть строки, и сравнение с NULL обнулило бы соединение.
+		LEFT JOIN messenger.dialog_states ds2
+		       ON ds2.conversation_id = c.id
+		      AND ds2.user_id <> (SELECT id FROM messenger.users WHERE LOWER(login) = LOWER($1))
 		WHERE (LOWER(u1.login) = LOWER($1) OR LOWER(u2.login) = LOWER($1))
 		GROUP BY other_login, ds.hidden_at
 		HAVING MAX(ds.hidden_at) IS NULL
@@ -627,7 +640,7 @@ func (a *App) loadDialogsFromDB(login string) ([]DialogEntry, error) {
 	var dialogs []DialogEntry
 	for rows.Next() {
 		var e DialogEntry
-		rows.Scan(&e.Login, &e.LastMsg, &e.Pinned, &e.Muted, &e.Blocked)
+		rows.Scan(&e.Login, &e.LastMsg, &e.Pinned, &e.Muted, &e.Blocked, &e.BlockedBy)
 		dialogs = append(dialogs, e)
 	}
 	return dialogs, nil
