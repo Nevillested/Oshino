@@ -5927,6 +5927,11 @@
             saveDraftFor(draftOwner);
             draftOwner = user;
 
+            // Выбор сообщений принадлежит конкретному чату: уносить его в
+            // соседний нельзя — панель «Выбрано: N» продолжала висеть, а
+            // выбранные id указывали на сообщения уже другой переписки.
+            if (selectionMode) exitSelection();
+
             currentUser = user;
             closeComposerExtras();
             fetch(`/mark-read?with=${encodeURIComponent(user)}`);
@@ -6430,7 +6435,12 @@
                 const newScrollHeight = messagesDiv.scrollHeight;
                 messagesDiv.scrollTop = newScrollHeight - prevScrollHeight;
             }
-        }
+        
+            // Перерисовка создаёт элементы заново, поэтому классы выбора и
+            // разрешение на выделение текста надо навесить повторно — иначе
+            // после прихода нового сообщения выбор визуально пропадал.
+            if (selectionMode) updateSelectionUI();
+}
 
         // ── Вспомогательные функции для сообщений ────────────────────────────────
 
@@ -9345,6 +9355,9 @@
             selectionMode = false;
             selectedIds.clear();
             selectBar.classList.remove('show');
+            closeSelMenu();
+            clearTextSelection();
+            applyTextSelectable();
             document.querySelectorAll('.message-wrap.selected')
                     .forEach(el => el.classList.remove('selected'));
         }
@@ -9378,6 +9391,27 @@
                 const id = parseInt(el.dataset.msgId, 10);
                 el.classList.toggle('selected', selectedIds.has(id));
             });
+            applyTextSelectable();
+        }
+
+        // Текстовый блок, которому сейчас разрешено выделение (сенсорный ввод).
+        // Разрешение выдаётся только когда выбрано РОВНО одно сообщение: при
+        // нескольких выбранных непонятно, из какого именно тянуть текст.
+        let textSelectableEl = null;
+
+        function applyTextSelectable() {
+            const want = (selectionMode && selectedIds.size === 1)
+                ? (() => {
+                    const id = [...selectedIds][0];
+                    const wrap = messagesDiv.querySelector('.message-wrap[data-msg-id="' + id + '"]');
+                    return wrap ? wrap.querySelector('.msg-text') : null;
+                  })()
+                : null;
+
+            if (textSelectableEl === want) return;
+            if (textSelectableEl) textSelectableEl.classList.remove('selecting');
+            textSelectableEl = want;
+            if (textSelectableEl) textSelectableEl.classList.add('selecting');
         }
 
         document.getElementById('selbar-cancel').addEventListener('click', exitSelection);
@@ -10283,59 +10317,6 @@
         function clearTextSelection() {
             const sel = window.getSelection();
             if (sel) sel.removeAllRanges();
-            // Снимаем разовое разрешение на выделение, выданное под long-press.
-            if (touchSelectEl) {
-                touchSelectEl.classList.remove('selecting');
-                touchSelectEl = null;
-            }
-        }
-
-        // Блок, которому выдано разовое разрешение на выделение (сенсорный ввод).
-        let touchSelectEl = null;
-
-        // Выделяет слово под точкой (x, y) внутри container.
-        // Возвращает false, если под пальцем не текст — тогда вызывающий код
-        // открывает обычное меню сообщения.
-        function selectWordAtPoint(container, x, y) {
-            const sel = window.getSelection();
-            if (!sel || !container) return false;
-
-            // caretRangeFromPoint — WebKit/Blink, caretPositionFromPoint — Firefox.
-            let range = null;
-            if (document.caretRangeFromPoint) {
-                range = document.caretRangeFromPoint(x, y);
-            } else if (document.caretPositionFromPoint) {
-                const pos = document.caretPositionFromPoint(x, y);
-                if (pos) {
-                    range = document.createRange();
-                    range.setStart(pos.offsetNode, pos.offset);
-                    range.collapse(true);
-                }
-            }
-            if (!range) return false;
-
-            const node = range.startContainer;
-            // Только текстовый узел и только внутри своего же сообщения.
-            if (node.nodeType !== 3 || !container.contains(node)) return false;
-
-            const text = node.textContent || '';
-            let a = range.startOffset, b = range.startOffset;
-            const isWord = (ch) => !!ch && !/\s/.test(ch);
-            while (a > 0 && isWord(text[a - 1])) a--;
-            while (b < text.length && isWord(text[b])) b++;
-            if (a === b) return false;   // палец попал на пробел
-
-            // Разрешение выдаём перед самим выделением — см. .msg-text.selecting
-            clearTextSelection();
-            container.classList.add('selecting');
-            touchSelectEl = container;
-
-            const r = document.createRange();
-            r.setStart(node, a);
-            r.setEnd(node, b);
-            sel.removeAllRanges();
-            sel.addRange(r);
-            return true;
         }
 
         const selMenu   = document.getElementById('sel-menu');
@@ -10356,6 +10337,28 @@
             selMenu.style.top  = Math.max(8, Math.min(y, vh - mh - 8)) + 'px';
         }
 
+        // Показать меню фрагмента для текущего выделения. Используется на
+        // сенсорных: выделение там делает система, а момент «палец отпущен»
+        // ловим по touchend.
+        function showSelMenuForCurrentSelection() {
+            if (!textSelectableEl) return;
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || sel.rangeCount === 0) { closeSelMenu(); return; }
+            const text = sel.toString();
+            if (!text.trim()) { closeSelMenu(); return; }
+
+            const range = sel.getRangeAt(0);
+            // Выделение может уехать за пределы своего сообщения — тогда меню
+            // не наше дело.
+            if (!textSelectableEl.contains(range.commonAncestorContainer) &&
+                range.commonAncestorContainer !== textSelectableEl) { closeSelMenu(); return; }
+
+            const rect = range.getBoundingClientRect();
+            const wrap = textSelectableEl.closest('.message-wrap');
+            // Под выделением, чтобы не накрыть его собой и не мешать ручкам.
+            openSelMenu({ text, wrap }, rect.left, rect.bottom + 12);
+        }
+
         function closeSelMenu() {
             selMenu.classList.remove('open');
             ctxBackdrop.classList.remove('open');
@@ -10367,6 +10370,7 @@
             closeSelMenu();
             if (!data) return;
             navigator.clipboard.writeText(data.text).catch(() => {});
+            if (selectionMode) exitSelection();
             // Выделение снимаем: задача выполнена, подсветка больше не нужна.
             clearTextSelection();
         });
@@ -10378,6 +10382,7 @@
             clearTextSelection();
             // Цитата — это обычный ответ с подменённым текстом превью,
             // поэтому переиспользуем ту же панель и тот же путь отправки.
+            if (selectionMode) exitSelection();
             setReplyingTo({
                 id: data.msg.id,
                 from: data.msg.from,
@@ -10619,6 +10624,10 @@
             // В режиме выбора обычный клик/тап по строке переключает выделение
             messagesDiv.addEventListener('click', (e) => {
                 if (!selectionMode) return;
+                // Клик по тексту, с которым сейчас работают как с текстом,
+                // не должен снимать выбор сообщения.
+                if (textSelectableEl && e.target && e.target.closest &&
+                    e.target.closest('.msg-text') === textSelectableEl) return;
                 const wrap = msgWrapAtPoint(e.clientX, e.clientY);
                 if (!wrap) return;
                 e.preventDefault();
@@ -10645,54 +10654,96 @@
                 openCtxMenu(wrap.__msg, e.clientX, e.clientY);
             });
 
-            // Long-press на мобайле — та же длительность, что и ПКМ на ПК
-            let lpTimer = null;
-            let lpMoved = false;
+            // ── Сенсорный ввод ───────────────────────────────────────────
+            // Быстрый тап   → обычное меню сообщения
+            // Двойной тап   → реакция по умолчанию
+            // Долгий тап    → режим выбора, это сообщение выбрано
+            // Долгий тап по тексту, когда выбрано ровно оно одно → выделение
+            //                 отдаётся системе (с ручками), после чего
+            //                 появляется меню «копировать / цитировать»
+            //
+            // Почему выделение отдаётся системе, а не делается программно:
+            // прошлый вариант выделял слово под пальцем сам, и растянуть его
+            // было нечем — ручек не было, а на части устройств выделение
+            // вообще не запускалось.
+            let lpTimer  = null;
+            let tapTimer = null;
+            let lpMoved  = false;
+            let lpFired  = false;
+            let lastTouch = null;
 
             messagesDiv.addEventListener('touchstart', (e) => {
                 if (e.touches.length !== 1) return;
                 lpMoved = false;
+                lpFired = false;
                 const touch = e.touches[0];
                 const wrap = msgWrapAtPoint(touch.clientX, touch.clientY);
                 if (!wrap) return;
 
-                // В режиме выбора тап просто переключает выделение
-                if (selectionMode) return;
+                const textEl = (e.target && e.target.closest) ? e.target.closest('.msg-text') : null;
 
-                // Двойной тап — реакция по умолчанию
-                const now = Date.now();
-                if (lastTapTarget === wrap && now - lastTapTime < 300) {
-                    lastTapTarget = null;
-                    postReact(wrap.__msg.id, defaultReaction);
+                // Палец на тексте, которому разрешено выделение — не мешаем:
+                // дальше работает системное выделение с ручками.
+                if (textSelectableEl && textEl === textSelectableEl) {
+                    lastTouch = null;
                     return;
                 }
-                lastTapTarget = wrap;
-                lastTapTime = now;
 
-                const data = wrap.__msg;
-                // Куда именно пришёлся палец: в текст сообщения или рядом с ним.
-                // От этого зависит, какое меню откроется.
-                const textEl = (e.target && e.target.closest) ? e.target.closest('.msg-text') : null;
-                const px = touch.clientX, py = touch.clientY;
+                // В режиме выбора тап переключает выделение сообщения —
+                // этим занимается обработчик click.
+                if (selectionMode) { lastTouch = null; return; }
+
+                lastTouch = { data: wrap.__msg, wrap, px: touch.clientX, py: touch.clientY };
 
                 lpTimer = setTimeout(() => {
+                    lpFired = true;
                     if (lpMoved) return;
-                    // Нажали по тексту — выделяем слово под пальцем и открываем
-                    // меню для фрагмента. Если под пальцем не текст (пробел,
-                    // отступ пузыря), selectWordAtPoint вернёт false, и откроется
-                    // обычное меню сообщения.
-                    if (textEl && selectWordAtPoint(textEl, px, py)) {
-                        const sel = window.getSelection();
-                        openSelMenu({ text: sel ? sel.toString() : '', wrap }, px, py);
-                        return;
-                    }
-                    openCtxMenu(data, px, py);
+                    clearTimeout(tapTimer);
+                    // Долгий тап — вход в режим выбора этого сообщения.
+                    if (wrap.__msg.id > 0) enterSelection(wrap.__msg.id);
                 }, LONG_PRESS_MS);
             }, { passive: true });
 
-            messagesDiv.addEventListener('touchmove', () => { lpMoved = true; clearTimeout(lpTimer); }, { passive: true });
-            messagesDiv.addEventListener('touchend', () => clearTimeout(lpTimer), { passive: true });
-            messagesDiv.addEventListener('touchcancel', () => clearTimeout(lpTimer), { passive: true });
+            messagesDiv.addEventListener('touchmove', () => {
+                lpMoved = true;
+                clearTimeout(lpTimer);
+            }, { passive: true });
+
+            messagesDiv.addEventListener('touchend', () => {
+                clearTimeout(lpTimer);
+
+                // Палец отпущен после работы с системным выделением: показываем
+                // своё меню, если что-то действительно выделено. Срабатывает и
+                // после перетаскивания ручек — меню переедет к новому фрагменту.
+                if (textSelectableEl) {
+                    setTimeout(showSelMenuForCurrentSelection, 0);
+                    return;
+                }
+
+                if (lpMoved || lpFired || selectionMode) return;
+                const t = lastTouch;
+                lastTouch = null;
+                if (!t) return;
+
+                // Двойной тап — реакция. Поэтому меню по одиночному тапу
+                // открывается с задержкой: иначе первый тап успевал бы открыть
+                // меню и до второго дело не доходило.
+                const now = Date.now();
+                if (lastTapTarget === t.wrap && now - lastTapTime < 300) {
+                    lastTapTarget = null;
+                    clearTimeout(tapTimer);
+                    postReact(t.data.id, defaultReaction);
+                    return;
+                }
+                lastTapTarget = t.wrap;
+                lastTapTime = now;
+                tapTimer = setTimeout(() => openCtxMenu(t.data, t.px, t.py), 300);
+            }, { passive: true });
+
+            messagesDiv.addEventListener('touchcancel', () => {
+                clearTimeout(lpTimer);
+                lastTouch = null;
+            }, { passive: true });
         })();
 
         // ── Settings ─────────────────────────────────────────────────────────────
