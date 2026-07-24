@@ -1131,7 +1131,11 @@
         #ctx-reactions {
             display: grid;
             grid-template-columns: repeat(5, 28px);
-            justify-content: start;
+            /* Не start: ширину меню задают пункты, она больше сетки, и справа
+               оставался лишний воздух. space-between прижимает крайние ячейки
+               к обоим краям — отступы слева и справа получаются одинаковыми
+               при любой ширине меню, а разница уходит в зазоры между эмодзи. */
+            justify-content: space-between;
             gap: 2px;
             /* Свёрнуто — ровно одна строка. */
             max-height: 28px;
@@ -10319,6 +10323,23 @@
             renderDialogList();
         }
 
+        // Подсказка «Ctrl + Enter» позиционируется от #input-area, а панель
+        // ответа/цитаты лежит отдельным блоком выше него — поэтому текст
+        // ложился прямо на неё. Сдвигаем подсказку на высоту панели.
+        // Замер по разнице позиций, а не по offsetHeight: так учитываются и
+        // внешние отступы панели.
+        function updateComposerHintOffset() {
+            const hint = document.getElementById('composer-hint');
+            if (!hint) return;
+            let extra = 0;
+            if (replyBar.classList.contains('show')) {
+                const rb = replyBar.getBoundingClientRect();
+                const ia = inputArea.getBoundingClientRect();
+                extra = Math.max(0, Math.round(ia.top - rb.top));
+            }
+            hint.style.bottom = 'calc(100% - 2px + ' + extra + 'px)';
+        }
+
         function setReplyingTo(msg) {
             // msg = {id, from, text} — текст превью (готовый, как в цитате).
             // msg.quote — цитата фрагмента: отличается только оформлением
@@ -10328,6 +10349,7 @@
             replyPreviewFrom.textContent = msg.quote ? 'Цитата' : msg.from;
             replyPreviewText.textContent = msg.quote ? ('«' + msg.text + '»') : msg.text;
             replyBar.classList.add('show');
+            updateComposerHintOffset();
             inputField.focus();
         }
 
@@ -10335,6 +10357,7 @@
             replyingTo = null;
             replyBar.classList.remove('show');
             replyBar.classList.remove('quote');
+            updateComposerHintOffset();
         }
 
         replyCancelBtn.addEventListener('click', () => {
