@@ -779,6 +779,9 @@
             position: absolute;
             border-radius: 50%;
             opacity: 0;
+            /* Подсказка компоновщику: частиц много, и без этого браузер
+               перерисовывал бы слой на каждом кадре. */
+            will-change: transform, opacity;
             animation-name: dust-fly;
             animation-timing-function: ease-out;
             animation-fill-mode: forwards;
@@ -4869,7 +4872,7 @@
     <div id="link-overlay">
         <div id="link-box">
             <button id="link-close" type="button" title="Закрыть">&times;</button>
-            <div id="link-title">Вы уверены, что хотите перейти на сайт</div>
+            <div id="link-title">Вы уверены, что хотите перейти на сайт?</div>
             <a id="link-url" target="_blank" rel="noopener noreferrer"></a>
         </div>
     </div>
@@ -10419,11 +10422,15 @@
             if (!color || color === 'rgba(0, 0, 0, 0)') color = '#8ab4f8';
 
             // Плотность по площади, но с потолком: на длинном сообщении иначе
-            // родились бы тысячи узлов и кадр бы просел.
-            const count = Math.min(260, Math.round(r.width * r.height / 240));
+            // родились бы тысячи узлов и кадр бы просел. Потолок разный:
+            // на телефоне тот же объём анимации обходится заметно дороже.
+            const cap = isTouchLayout() ? 520 : 900;
+            const count = Math.min(cap, Math.round(r.width * r.height / 55));
             for (let i = 0; i < count; i++) {
                 const px = Math.random(), py = Math.random();
-                const size = 1 + Math.random() * 2.5;
+                // Мельче, чем раньше: частиц теперь много, и крупные точки
+                // сливались бы в сплошное пятно вместо пыли.
+                const size = 0.8 + Math.random() * 2;
                 const p = document.createElement('i');
                 p.className = 'dust';
                 p.style.left = (px * r.width) + 'px';
@@ -10434,9 +10441,11 @@
                 // Задержка по горизонтали — пыль поднимается вслед за фронтом
                 // стирания, а не вся разом.
                 p.style.animationDelay = Math.round(px * durationMs * 0.72) + 'ms';
-                p.style.animationDuration = Math.round(480 + Math.random() * 420) + 'ms';
-                p.style.setProperty('--dx', Math.round(8 + Math.random() * 44) + 'px');
-                p.style.setProperty('--dy', Math.round(-18 - Math.random() * 54) + 'px');
+                p.style.animationDuration = Math.round(460 + Math.random() * 520) + 'ms';
+                // Разлёт шире прежнего — при высокой плотности узкий веер
+                // выглядит как одно смещающееся пятно.
+                p.style.setProperty('--dx', Math.round(6 + Math.random() * 62) + 'px');
+                p.style.setProperty('--dy', Math.round(-14 - Math.random() * 76) + 'px');
                 layer.appendChild(p);
             }
 
