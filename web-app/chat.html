@@ -5112,7 +5112,18 @@
         // скрепка + микрофон) — так состояние панели всегда согласовано с полем.
         function autoResizeTextarea() {
             inputField.style.height = 'auto';
-            const newHeight = Math.min(inputField.scrollHeight, 82);
+            const sh = inputField.scrollHeight;
+            // Пока панель ввода скрыта (display: none), измерять нечего:
+            // scrollHeight равен нулю. Записать этот ноль нельзя — поле
+            // схлопнется до одних отступов, и placeholder уедет под нижнюю
+            // границу «пилюли». Снимаем inline-высоту и оставляем значение из
+            // CSS: оно как раз рассчитано на одну строку.
+            if (!sh) {
+                inputField.style.height = '';
+                updateComposerMode();
+                return;
+            }
+            const newHeight = Math.min(sh, 82);
             inputField.style.height = newHeight + 'px';
             updateComposerMode();
         }
@@ -5806,13 +5817,15 @@
             }
             unreadCount[user] = 0;
             renderDialogList();
-            // Черновик восстанавливаем до updateFormState: та смотрит на
-            // содержимое поля, чтобы решить, показывать кнопку отправки или
-            // микрофон.
-            restoreDraftFor(user);
             applyForwardBar(user);
             applyBlockUI(user);
             updateFormState();
+            // Строго после updateFormState: именно она показывает панель ввода,
+            // а восстановление черновика меряет высоту поля под его содержимое.
+            // На скрытом элементе такое измерение бессмысленно.
+            // За кнопку «отправить» против микрофона тут можно не волноваться:
+            // её переключает updateComposerMode внутри авторастяжения.
+            restoreDraftFor(user);
             cancelReply();
             loadPinned(user);
             scrollBottomBtn.classList.remove('visible');
