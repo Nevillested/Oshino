@@ -10526,7 +10526,7 @@
 
             // Плавная кривая вместо ease: у ease резкий старт, и схлопывание
             // читалось как рывок сразу после того, как осела пыль.
-            const EASE = 'cubic-bezier(0.45, 0, 0.55, 1)';
+            const EASE = 'cubic-bezier(0.99, 0, 0.01, 1)';
             el.style.transition = 'height ' + COLLAPSE_MS + 'ms ' + EASE + ', ' +
                                   'margin ' + COLLAPSE_MS + 'ms ' + EASE;
             el.style.height    = '0px';
