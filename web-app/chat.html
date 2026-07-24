@@ -1983,25 +1983,33 @@
             padding: 14px 18px;
             font-size: 14px;
             line-height: 1.4;
-            /* Текст центрируется по всей ширине чата, а не по остатку строки */
-            width: 100%;
-            text-align: center;
             color: var(--color-fwd-text);
         }
 
-        #blocked-bar.show { display: block; }
+        /* flex-basis 100% вместо width: как элемент flex-строки надпись иначе
+           сжимается по содержимому и центрируется не по чату, а по себе самой. */
+        #blocked-bar.show {
+            display: flex;
+            flex: 1 1 100%;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
 
-        /* Композер и подсказка при блокировке не прячутся через inline-style —
-           только классом, иначе потом не вернуть их обратно (специфичность). */
-        #input-area.blocked #composer,
-        #input-area.blocked #composer-hint { display: none; }
+        /* Прятать надо не #composer, а весь #form-area: #input-area —
+           flex-строка, и пустой form-area шириной 100% продолжал занимать всю
+           строку, выдавливая надпись о блокировке к правому краю.
+           !important обязателен: display у #form-area выставляет JS через
+           inline-style, а он сильнее обычного правила из таблицы. */
+        #input-area.blocked #form-area,
+        #input-area.blocked #composer-hint { display: none !important; }
 
         #app-toast {
             position: fixed;
             left: 50%;
             bottom: 90px;
             transform: translate(-50%, 12px);
-            z-index: 400;
+            z-index: 500;      /* выше модалки выбора чата (300) */
             max-width: 80vw;
             padding: 10px 16px;
             border-radius: 10px;
@@ -2010,7 +2018,7 @@
             color: #fff;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.18s ease, transform 0.18s ease;
+            transition: opacity 0.22s ease, transform 0.22s ease;
         }
 
         #app-toast.show {
@@ -9883,22 +9891,20 @@
                     li.className = 'forward-item';
                     li.textContent = getDisplayName(u);
                     li.addEventListener('click', () => {
-                        forwardModalOverlay.classList.remove('open');
-
-                        // В заблокированный чат пересылать нечего — говорим об
-                        // этом сразу, не открывая его.
+                        // Проверка ДО закрытия модалки: при отказе состояние
+                        // страницы не меняется вовсе — человек остаётся на
+                        // выборе получателя и может ткнуть в другой чат.
+                        // Поэтому же не alert(), который прервал бы работу.
                         if (isDialogBlocked(u)) {
-                            pendingForwardIds = null;
-                            if (selectionMode) exitSelection();
-                            alert('Вы заблокировали пользователя, отправка сообщений невозможна');
+                            showToast('Вы заблокировали пользователя, отправка сообщений невозможна');
                             return;
                         }
                         if (isBlockedByPeer(u)) {
-                            pendingForwardIds = null;
-                            if (selectionMode) exitSelection();
-                            alert('Вы заблокированы пользователем, отправка сообщений невозможна');
+                            showToast('Вы заблокированы пользователем, отправка сообщений невозможна');
                             return;
                         }
+
+                        forwardModalOverlay.classList.remove('open');
 
                         const ids = (pendingForwardIds && pendingForwardIds.length)
                                     ? pendingForwardIds : [msgId];
@@ -10196,7 +10202,7 @@
         // Короткое ненавязчивое уведомление внизу ленты. Заводится лениво:
         // в большинстве сессий не понадобится ни разу.
         let toastEl = null, toastTimer = null;
-        function showToast(text) {
+        function showToast(text, ms) {
             if (!toastEl) {
                 toastEl = document.createElement('div');
                 toastEl.id = 'app-toast';
@@ -10205,7 +10211,9 @@
             toastEl.textContent = text;
             toastEl.classList.add('show');
             clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+            // 3.2 с: длинную фразу успеваешь дочитать, но окно не висит столбом.
+            // Появление и затухание — по 0.22 с через CSS-переход.
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 3200);
         }
 
         function getMsgPreviewText(msg) {
