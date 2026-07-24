@@ -9454,42 +9454,43 @@
         // Пока идёт выбор, в историю кладётся фиктивная запись. Системный жест
         // или кнопка «назад» снимает её, мы ловим это в popstate и отменяем
         // выбор вместо выхода из приложения.
-        let backTrapArmed = false;
-        let backTrapSkip  = false;
+        // Записей ровно столько, сколько уровней открыто: одна на выбор
+        // сообщений, вторая на выделение текста. Обе кладутся заранее, при
+        // входе в соответствующий режим.
+        //
+        // Раньше вторая запись до-кладывалась прямо из обработчика popstate —
+        // и это не работало: pushState внутри popstate браузеры выполняют
+        // ненадёжно. Из-за этого после отмены выделения жестом ловушки на
+        // выборе сообщений не оставалось, и следующий «назад» выкидывал из
+        // приложения.
+        let backTrapDepth = 0;   // сколько наших записей сейчас в истории
+        let backTrapSkip  = 0;   // сколько ближайших popstate пропустить
 
-        function armBackTrap() {
-            if (backTrapArmed) return;
-            backTrapArmed = true;
-            history.pushState({ oshinoSel: 1 }, '');
+        function pushBackTrap() {
+            backTrapDepth++;
+            history.pushState({ oshinoTrap: backTrapDepth }, '');
         }
 
-        function disarmBackTrap() {
-            if (!backTrapArmed) return;
-            backTrapArmed = false;
-            // Снимаем свою запись только если она действительно наверху —
-            // иначе увели бы пользователя на страницу назад.
-            if (history.state && history.state.oshinoSel) {
-                backTrapSkip = true;
-                history.back();
-            }
+        // Снять свои записи программно (выход не жестом, а кнопкой). Один
+        // history.go на все сразу: несколько подряд браузеры выполняют
+        // асинхронно и вразнобой.
+        function popBackTrap(n) {
+            n = Math.min(n, backTrapDepth);
+            if (n <= 0) return;
+            backTrapDepth -= n;
+            backTrapSkip  += n;
+            history.go(-n);
         }
 
         window.addEventListener('popstate', () => {
-            // Запись сняли мы сами (кнопкой «Отмена» и т.п.) — реагировать не на что.
-            if (backTrapSkip) { backTrapSkip = false; return; }
+            // Запись сняли мы сами — реагировать не на что.
+            if (backTrapSkip > 0) { backTrapSkip--; return; }
+            if (backTrapDepth > 0) backTrapDepth--;
 
-            // Два уровня: сперва снимается выделение текста, и только следующим
-            // «назад» — выбор сообщений.
-            if (fragEl) {
-                exitFragmentMode();
-                backTrapArmed = false;
-                armBackTrap();      // ловушка снова на месте
-                return;
-            }
-            if (selectionMode) {
-                backTrapArmed = false;   // запись уже снята жестом
-                exitSelection();
-            }
+            // Два уровня: сперва снимается выделение текста, и только
+            // следующим «назад» — выбор сообщений.
+            if (fragEl)        { exitFragmentMode(true); return; }
+            if (selectionMode) { exitSelection(true); }
         });
 
         function enterSelection(firstId) {
@@ -9497,17 +9498,20 @@
             selectedIds.clear();
             if (firstId != null) selectedIds.add(firstId);
             selectBar.classList.add('show');
-            armBackTrap();
+            pushBackTrap();
             updateSelectionUI();
         }
 
-        function exitSelection() {
+        // fromBack = true означает, что запись из истории уже снял браузер.
+        function exitSelection(fromBack) {
+            const hadFrag = !!fragEl;
+            const wasMode = selectionMode;
             selectionMode = false;
             selectedIds.clear();
             selectBar.classList.remove('show');
-            exitFragmentMode();
+            exitFragmentMode(true);   // историю трогаем ниже, разом
             clearTextSelection();
-            disarmBackTrap();
+            if (fromBack !== true) popBackTrap((hadFrag ? 1 : 0) + (wasMode ? 1 : 0));
             applyTextSelectable();
             document.querySelectorAll('.message-wrap.selected')
                     .forEach(el => el.classList.remove('selected'));
@@ -9609,7 +9613,10 @@
             add('wgap', last, text.length);
         }
 
-        function exitFragmentMode() {
+        // keepHistory = true — запись либо уже снята браузером, либо её снимет
+        // вызывающий код одним разом вместе со своей.
+        function exitFragmentMode(keepHistory) {
+            const wasActive = !!fragEl;
             if (fragEl) {
                 // Возвращаем обычный текст — токены нужны только на время выбора.
                 fragEl.textContent = fragText;
@@ -9623,6 +9630,7 @@
             if (selHandleA.parentNode !== document.body) document.body.appendChild(selHandleA);
             if (selHandleB.parentNode !== document.body) document.body.appendChild(selHandleB);
             closeSelMenu();
+            if (wasActive && keepHistory !== true) popBackTrap(1);
         }
 
         // Порядок токенов задаётся смещением в тексте, а не порядком касаний:
@@ -9694,6 +9702,7 @@
             const tok = tokenAtPoint(x, y);
             if (!tok) { exitFragmentMode(); return false; }
             fragA = tok; fragB = tok;
+            pushBackTrap();
             paintFragment();
             showFragMenu();
             return true;
@@ -9765,7 +9774,9 @@
         // и слова оказываются на других местах — тут пересчёт обязателен.
         window.addEventListener('resize', () => { if (fragEl) positionHandles(); });
 
-        document.getElementById('selbar-cancel').addEventListener('click', exitSelection);
+        // Через стрелку, а не напрямую: иначе объект события прилетел бы в
+        // аргумент fromBack и запись из истории осталась бы висеть.
+        document.getElementById('selbar-cancel').addEventListener('click', () => exitSelection());
 
 
         // ── Выделение мышью (ПК): зажать ЛКМ и провести через 2+ сообщения ──
@@ -10770,8 +10781,7 @@
             closeSelMenu();
             if (!data) return;
             navigator.clipboard.writeText(data.text).catch(() => {});
-            exitFragmentMode();
-            if (selectionMode) exitSelection();
+            if (selectionMode) exitSelection(); else exitFragmentMode();
             // Выделение снимаем: задача выполнена, подсветка больше не нужна.
             clearTextSelection();
         });
@@ -10783,8 +10793,7 @@
             clearTextSelection();
             // Цитата — это обычный ответ с подменённым текстом превью,
             // поэтому переиспользуем ту же панель и тот же путь отправки.
-            exitFragmentMode();
-            if (selectionMode) exitSelection();
+            if (selectionMode) exitSelection(); else exitFragmentMode();
             setReplyingTo({
                 id: data.msg.id,
                 from: data.msg.from,
