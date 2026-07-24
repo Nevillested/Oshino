@@ -742,15 +742,24 @@
             white-space: pre-wrap;
         }
 
-        /* Выделение текста мышью включаем только там, где есть настоящий
-           курсор. На сенсорных устройствах запрет остаётся: там выделение
-           перехватывает long-press, а он открывает контекстное меню. */
+        /* Мышью текст выделяется свободно. */
         @media (hover: hover) and (pointer: fine) {
             .msg-text {
                 -webkit-user-select: text;
                 user-select: text;
                 cursor: text;
             }
+        }
+
+        /* На сенсорных по умолчанию остаётся запрет: иначе долгое нажатие
+           перехватила бы система и показала собственное меню выделения вместо
+           нашего. Разрешение выдаётся точечно — уже после того, как сработал
+           наш таймер, ровно тому блоку, в котором нажали. К этому моменту
+           системное выделение начаться не может, а наше, программное,
+           отрисуется как обычно. */
+        .msg-text.selecting {
+            -webkit-user-select: text;
+            user-select: text;
         }
 
         /* Меню для выделенного текста — та же коробка, что и обычное
@@ -10274,6 +10283,59 @@
         function clearTextSelection() {
             const sel = window.getSelection();
             if (sel) sel.removeAllRanges();
+            // Снимаем разовое разрешение на выделение, выданное под long-press.
+            if (touchSelectEl) {
+                touchSelectEl.classList.remove('selecting');
+                touchSelectEl = null;
+            }
+        }
+
+        // Блок, которому выдано разовое разрешение на выделение (сенсорный ввод).
+        let touchSelectEl = null;
+
+        // Выделяет слово под точкой (x, y) внутри container.
+        // Возвращает false, если под пальцем не текст — тогда вызывающий код
+        // открывает обычное меню сообщения.
+        function selectWordAtPoint(container, x, y) {
+            const sel = window.getSelection();
+            if (!sel || !container) return false;
+
+            // caretRangeFromPoint — WebKit/Blink, caretPositionFromPoint — Firefox.
+            let range = null;
+            if (document.caretRangeFromPoint) {
+                range = document.caretRangeFromPoint(x, y);
+            } else if (document.caretPositionFromPoint) {
+                const pos = document.caretPositionFromPoint(x, y);
+                if (pos) {
+                    range = document.createRange();
+                    range.setStart(pos.offsetNode, pos.offset);
+                    range.collapse(true);
+                }
+            }
+            if (!range) return false;
+
+            const node = range.startContainer;
+            // Только текстовый узел и только внутри своего же сообщения.
+            if (node.nodeType !== 3 || !container.contains(node)) return false;
+
+            const text = node.textContent || '';
+            let a = range.startOffset, b = range.startOffset;
+            const isWord = (ch) => !!ch && !/\s/.test(ch);
+            while (a > 0 && isWord(text[a - 1])) a--;
+            while (b < text.length && isWord(text[b])) b++;
+            if (a === b) return false;   // палец попал на пробел
+
+            // Разрешение выдаём перед самим выделением — см. .msg-text.selecting
+            clearTextSelection();
+            container.classList.add('selecting');
+            touchSelectEl = container;
+
+            const r = document.createRange();
+            r.setStart(node, a);
+            r.setEnd(node, b);
+            sel.removeAllRanges();
+            sel.addRange(r);
+            return true;
         }
 
         const selMenu   = document.getElementById('sel-menu');
@@ -10608,8 +10670,23 @@
                 lastTapTime = now;
 
                 const data = wrap.__msg;
+                // Куда именно пришёлся палец: в текст сообщения или рядом с ним.
+                // От этого зависит, какое меню откроется.
+                const textEl = (e.target && e.target.closest) ? e.target.closest('.msg-text') : null;
+                const px = touch.clientX, py = touch.clientY;
+
                 lpTimer = setTimeout(() => {
-                    if (!lpMoved) openCtxMenu(data, touch.clientX, touch.clientY);
+                    if (lpMoved) return;
+                    // Нажали по тексту — выделяем слово под пальцем и открываем
+                    // меню для фрагмента. Если под пальцем не текст (пробел,
+                    // отступ пузыря), selectWordAtPoint вернёт false, и откроется
+                    // обычное меню сообщения.
+                    if (textEl && selectWordAtPoint(textEl, px, py)) {
+                        const sel = window.getSelection();
+                        openSelMenu({ text: sel ? sel.toString() : '', wrap }, px, py);
+                        return;
+                    }
+                    openCtxMenu(data, px, py);
                 }, LONG_PRESS_MS);
             }, { passive: true });
 
