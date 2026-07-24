@@ -734,6 +734,14 @@
             background: var(--color-results-hover);
         }
 
+        /* Переносы строк и повторяющиеся пробелы внутри текста сохраняются.
+           Класс висит на самом тексте, а не на .message: внутри пузыря может
+           лежать ещё и цитата ответа, и ей режим pre-wrap ни к чему.
+           Пробелы по краям сюда не доходят — их срезает trim() при отправке. */
+        .msg-text {
+            white-space: pre-wrap;
+        }
+
         .message {
             padding: 10px 14px;
             border-radius: 10px;
@@ -6304,6 +6312,7 @@
                         bubble.appendChild(buildReplyQuote(msg.reply_preview, msg.own, msg.reply_to_id));
                     }
                     const textNode = document.createElement('span');
+                    textNode.className = 'msg-text';
                     textNode.textContent = msg.text;
                     bubble.appendChild(textNode);
                     wrap.appendChild(bubble);
