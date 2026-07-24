@@ -1115,7 +1115,6 @@
            эмодзи; теперь ширину задаёт самый длинный пункт («Переслать» и
            компания), а реакции переносятся внутри неё. */
         #ctx-reactions-wrap {
-            position: relative;
             width: 0;
             min-width: 100%;
             box-sizing: border-box;
@@ -1123,32 +1122,33 @@
             border-bottom: 1px solid var(--color-ctx-sep);
         }
 
+        /* Ровно пять ячеек в ряд. Колонки фиксированной ширины, а не 1fr:
+           растянутые по ширине меню, они разгоняли эмодзи по углам, и между
+           ними зияли дыры. Кнопка раскрытия — такая же ячейка сетки и стоит
+           пятой в первом ряду, поэтому абсолютное позиционирование ей больше
+           не нужно. */
         #ctx-reactions {
-            display: flex;
-            gap: 2px;
-            flex-wrap: wrap;
-            /* Свёрнуто — ровно одна строка. Место справа отведено под кнопку
-               раскрытия, чтобы она не налезала на последний эмодзи. */
+            display: grid;
+            grid-template-columns: repeat(5, 32px);
+            justify-content: start;
+            gap: 3px;
+            /* Свёрнуто — ровно одна строка. */
             max-height: 32px;
-            padding-right: 30px;
             overflow: hidden;
             transition: max-height 0.25s ease;
         }
 
         #ctx-reactions-wrap.expanded #ctx-reactions {
-            max-height: 240px;
+            max-height: 400px;
         }
 
         #ctx-reactions-more {
             display: none;
-            position: absolute;
-            top: 10px;
-            right: 8px;
-            width: 26px;
-            height: 26px;
+            width: 32px;
+            height: 32px;
             padding: 0;
             border: none;
-            border-radius: 50%;
+            border-radius: 8px;
             cursor: pointer;
             background: var(--color-ctx-hover);
             color: var(--color-ctx-text);
@@ -1159,11 +1159,16 @@
         #ctx-reactions-wrap.expanded #ctx-reactions-more { transform: rotate(180deg); }
 
         .ctx-reaction-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
             background: none;
             border: none;
-            font-size: 22px;
+            font-size: 21px;
             cursor: pointer;
-            padding: 4px;
+            padding: 0;
             border-radius: 8px;
             line-height: 1;
             transition: background 0.1s;
@@ -10560,9 +10565,14 @@
 
         // ── Контекстное меню ─────────────────────────────────────────────────────
 
+        // Первый ряд: 4 эмодзи + кнопка раскрытия пятой ячейкой. Дальше — по
+        // пять эмодзи в ряд, в последнем сколько осталось.
+        const FIRST_ROW_EMOJI = 4;
+
         function buildCtxReactionRow(msgId) {
             ctxReactions.innerHTML = '';
-            EMOJI_SET.forEach(emoji => {
+            EMOJI_SET.forEach((emoji, idx) => {
+                if (idx === FIRST_ROW_EMOJI) ctxReactions.appendChild(ctxReactionsMore);
                 const btn = document.createElement('button');
                 btn.className = 'ctx-reaction-btn';
                 btn.textContent = emoji;
@@ -10584,6 +10594,9 @@
                 btn.addEventListener('touchend', doReact, { passive: false });
                 ctxReactions.appendChild(btn);
             });
+            // Эмодзи всего четыре или меньше — раскрывать нечего, но кнопку
+            // всё равно надо вернуть в сетку, иначе она осталась бы снаружи.
+            if (EMOJI_SET.length <= FIRST_ROW_EMOJI) ctxReactions.appendChild(ctxReactionsMore);
         }
 
         const ctxReactionsWrap = document.getElementById('ctx-reactions-wrap');
@@ -10595,13 +10608,13 @@
             ctxReactionsWrap.classList.toggle('expanded');
         });
 
-        // Кнопка нужна только если реакции реально не поместились в одну строку.
-        // Проверять можно лишь после того, как меню показано: у скрытого
-        // элемента высоты нет.
+        // Кнопка нужна ровно тогда, когда эмодзи больше, чем влезает в первый
+        // ряд. Считаем по количеству, а не по измерению высоты: сетка
+        // фиксированная (5 колонок, пятая в первом ряду — сама кнопка), так
+        // что результат известен заранее и не зависит от момента замера.
         function updateReactionsMore() {
             ctxReactionsWrap.classList.remove('expanded');
-            const overflows = ctxReactions.scrollHeight > ctxReactions.clientHeight + 2;
-            ctxReactionsMore.classList.toggle('show', overflows);
+            ctxReactionsMore.classList.toggle('show', EMOJI_SET.length > FIRST_ROW_EMOJI);
         }
 
         function openCtxMenu(msg, x, y) {
