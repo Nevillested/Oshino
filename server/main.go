@@ -886,7 +886,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
 				       call_type, call_status, call_duration,
 				       (file_data IS NOT NULL) AS has_file, file_name, file_mime, file_size,
-				       reply_to_id, forwarded_from, forwarded_from_id, is_read, edited_at
+				       reply_to_id, quote_text, forwarded_from, forwarded_from_id, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				  AND NOT EXISTS (
@@ -920,7 +920,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
 				       call_type, call_status, call_duration,
 				       (file_data IS NOT NULL) AS has_file, file_name, file_mime, file_size,
-				       reply_to_id, forwarded_from, forwarded_from_id, is_read, edited_at
+				       reply_to_id, quote_text, forwarded_from, forwarded_from_id, is_read, edited_at
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				  AND NOT EXISTS (
