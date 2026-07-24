@@ -977,6 +977,10 @@
             max-height: calc(100vh - 16px);
             -webkit-overflow-scrolling: touch;
             min-width: 180px;
+            /* Ширину диктует самый длинный пункт меню. Реакции из расчёта
+               исключены — см. #ctx-reactions-wrap. */
+            width: max-content;
+            max-width: calc(100vw - 16px);
             display: none;
         }
 
@@ -1105,14 +1109,54 @@
         .ctx-item.ctx-danger { color: #e05555; }
         .edited-mark { opacity: 0.65; font-style: italic; margin-right: 4px; }
 
-        /* Строка эмодзи-реакций вверху меню */
+        /* Строка эмодзи-реакций вверху меню.
+           width: 0 + min-width: 100% — чтобы реакции НЕ участвовали в расчёте
+           собственной ширины меню. Иначе меню растягивалось на всю строку
+           эмодзи; теперь ширину задаёт самый длинный пункт («Переслать» и
+           компания), а реакции переносятся внутри неё. */
+        #ctx-reactions-wrap {
+            position: relative;
+            width: 0;
+            min-width: 100%;
+            box-sizing: border-box;
+            padding: 10px 10px 8px;
+            border-bottom: 1px solid var(--color-ctx-sep);
+        }
+
         #ctx-reactions {
             display: flex;
             gap: 2px;
-            padding: 10px 10px 8px;
-            border-bottom: 1px solid var(--color-ctx-sep);
             flex-wrap: wrap;
+            /* Свёрнуто — ровно одна строка. Место справа отведено под кнопку
+               раскрытия, чтобы она не налезала на последний эмодзи. */
+            max-height: 32px;
+            padding-right: 30px;
+            overflow: hidden;
+            transition: max-height 0.25s ease;
         }
+
+        #ctx-reactions-wrap.expanded #ctx-reactions {
+            max-height: 240px;
+        }
+
+        #ctx-reactions-more {
+            display: none;
+            position: absolute;
+            top: 10px;
+            right: 8px;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            background: var(--color-ctx-hover);
+            color: var(--color-ctx-text);
+            transition: transform 0.25s ease;
+        }
+
+        #ctx-reactions-more.show { display: flex; align-items: center; justify-content: center; }
+        #ctx-reactions-wrap.expanded #ctx-reactions-more { transform: rotate(180deg); }
 
         .ctx-reaction-btn {
             background: none;
@@ -4604,7 +4648,14 @@
     </div>
 
     <div id="ctx-menu">
-        <div id="ctx-reactions"></div>
+        <div id="ctx-reactions-wrap">
+            <div id="ctx-reactions"></div>
+            <button id="ctx-reactions-more" type="button" title="Ещё реакции">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </button>
+        </div>
         <button class="ctx-item" id="ctx-reply">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="9 17 4 12 9 7"></polyline>
@@ -9385,7 +9436,7 @@
         // Единая длительность долгого тапа для всего приложения: долгий тап на
         // телефоне = правый клик на ПК. Используется и для сообщений, и для
         // диалогов, чтобы поведение везде было одинаковым.
-        const LONG_PRESS_MS = 500;
+        const LONG_PRESS_MS = 350;
         const MAX_SELECTED  = 50;   // ограничитель пакета
 
         let selectionMode = false;
@@ -9394,11 +9445,54 @@
         const selectBar     = document.getElementById('select-bar');
         const selectCountEl = document.getElementById('select-count');
 
+        // ── Перехват системного «назад» ──────────────────────────────────
+        // Пока идёт выбор, в историю кладётся фиктивная запись. Системный жест
+        // или кнопка «назад» снимает её, мы ловим это в popstate и отменяем
+        // выбор вместо выхода из приложения.
+        let backTrapArmed = false;
+        let backTrapSkip  = false;
+
+        function armBackTrap() {
+            if (backTrapArmed) return;
+            backTrapArmed = true;
+            history.pushState({ oshinoSel: 1 }, '');
+        }
+
+        function disarmBackTrap() {
+            if (!backTrapArmed) return;
+            backTrapArmed = false;
+            // Снимаем свою запись только если она действительно наверху —
+            // иначе увели бы пользователя на страницу назад.
+            if (history.state && history.state.oshinoSel) {
+                backTrapSkip = true;
+                history.back();
+            }
+        }
+
+        window.addEventListener('popstate', () => {
+            // Запись сняли мы сами (кнопкой «Отмена» и т.п.) — реагировать не на что.
+            if (backTrapSkip) { backTrapSkip = false; return; }
+
+            // Два уровня: сперва снимается выделение текста, и только следующим
+            // «назад» — выбор сообщений.
+            if (fragEl) {
+                exitFragmentMode();
+                backTrapArmed = false;
+                armBackTrap();      // ловушка снова на месте
+                return;
+            }
+            if (selectionMode) {
+                backTrapArmed = false;   // запись уже снята жестом
+                exitSelection();
+            }
+        });
+
         function enterSelection(firstId) {
             selectionMode = true;
             selectedIds.clear();
             if (firstId != null) selectedIds.add(firstId);
             selectBar.classList.add('show');
+            armBackTrap();
             updateSelectionUI();
         }
 
@@ -9408,6 +9502,7 @@
             selectBar.classList.remove('show');
             exitFragmentMode();
             clearTextSelection();
+            disarmBackTrap();
             applyTextSelectable();
             document.querySelectorAll('.message-wrap.selected')
                     .forEach(el => el.classList.remove('selected'));
@@ -10491,6 +10586,24 @@
             });
         }
 
+        const ctxReactionsWrap = document.getElementById('ctx-reactions-wrap');
+        const ctxReactionsMore = document.getElementById('ctx-reactions-more');
+
+        ctxReactionsMore.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ctxReactionsWrap.classList.toggle('expanded');
+        });
+
+        // Кнопка нужна только если реакции реально не поместились в одну строку.
+        // Проверять можно лишь после того, как меню показано: у скрытого
+        // элемента высоты нет.
+        function updateReactionsMore() {
+            ctxReactionsWrap.classList.remove('expanded');
+            const overflows = ctxReactions.scrollHeight > ctxReactions.clientHeight + 2;
+            ctxReactionsMore.classList.toggle('show', overflows);
+        }
+
         function openCtxMenu(msg, x, y) {
             ctxTargetMsg = msg;
 
@@ -10513,6 +10626,9 @@
 
             ctxMenu.classList.add('open');
             ctxBackdrop.classList.add('open');
+            // Строго после показа: у скрытого меню высоты строк нет, и понять,
+            // поместились ли реакции, невозможно.
+            updateReactionsMore();
 
             // Позиционирование. Меряем реальные размеры уже открытого меню и
             // зажимаем их в границы экрана — иначе на невысоком окне ПК низ
