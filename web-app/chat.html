@@ -751,15 +751,38 @@
             }
         }
 
-        /* На сенсорных по умолчанию остаётся запрет: иначе долгое нажатие
-           перехватила бы система и показала собственное меню выделения вместо
-           нашего. Разрешение выдаётся точечно — уже после того, как сработал
-           наш таймер, ровно тому блоку, в котором нажали. К этому моменту
-           системное выделение начаться не может, а наше, программное,
-           отрисуется как обычно. */
-        .msg-text.selecting {
-            -webkit-user-select: text;
-            user-select: text;
+        /* На сенсорных выделение системе не отдаётся вовсе — запрет остаётся
+           всегда. Иначе вместе с системными ползунками приходит и системное
+           меню («Скопировать / Найти / Перевести», поиск слова), подавить
+           которое из веба нечем. Вместо этого работает свой разбор на слова,
+           см. .wtok ниже. */
+
+        /* Слово как единица выбора. Пробелы между словами остаются обычными
+           текстовыми узлами, поэтому переносы строк и pre-wrap не страдают. */
+        .wtok { border-radius: 3px; }
+        .wtok.wsel { background: rgba(74, 144, 226, 0.55); }
+
+        /* Свои ползунки. Ставятся по углам фрагмента: начальный — к левому
+           верхнему, конечный — к правому нижнему, как принято на iOS. */
+        .sel-handle {
+            display: none;
+            position: fixed;
+            width: 16px;
+            height: 16px;
+            margin: -8px 0 0 -8px;
+            border-radius: 50%;
+            background: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.85);
+            z-index: 330;
+            touch-action: none;
+        }
+        .sel-handle.show { display: block; }
+        /* Невидимый запас под палец: сам кружок маленький, попадать в него
+           пальцем иначе почти невозможно. */
+        .sel-handle::after {
+            content: '';
+            position: absolute;
+            inset: -14px;
         }
 
         /* Меню для выделенного текста — та же коробка, что и обычное
@@ -4541,6 +4564,9 @@
     <div id="ctx-backdrop"></div>
     <!-- Меню для выделенного фрагмента текста. Появляется вместо обычного
          контекстного меню, когда ПКМ приходится на само выделение. -->
+    <div class="sel-handle" id="sel-handle-a"></div>
+    <div class="sel-handle" id="sel-handle-b"></div>
+
     <div id="sel-menu">
         <button class="ctx-item" id="sel-copy">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -6436,9 +6462,12 @@
                 messagesDiv.scrollTop = newScrollHeight - prevScrollHeight;
             }
         
-            // Перерисовка создаёт элементы заново, поэтому классы выбора и
-            // разрешение на выделение текста надо навесить повторно — иначе
-            // после прихода нового сообщения выбор визуально пропадал.
+            // Перерисовка создаёт элементы заново: разбор на слова живёт в
+            // старом, уже выброшенном DOM, поэтому режим выбора фрагмента
+            // закрываем.
+            if (fragEl) exitFragmentMode();
+            // Классы выбора надо навесить повторно — иначе после прихода
+            // нового сообщения выбор визуально пропадал.
             if (selectionMode) updateSelectionUI();
 }
 
@@ -9355,7 +9384,7 @@
             selectionMode = false;
             selectedIds.clear();
             selectBar.classList.remove('show');
-            closeSelMenu();
+            exitFragmentMode();
             clearTextSelection();
             applyTextSelectable();
             document.querySelectorAll('.message-wrap.selected')
@@ -9409,12 +9438,191 @@
                 : null;
 
             if (textSelectableEl === want) return;
-            if (textSelectableEl) textSelectableEl.classList.remove('selecting');
+            // Смена «кандидата» рушит текущий разбор на слова.
+            exitFragmentMode();
             textSelectableEl = want;
-            if (textSelectableEl) textSelectableEl.classList.add('selecting');
         }
 
+        // ── Выбор фрагмента без участия системы ──────────────────────────
+        // Почему не системное выделение: вместе с ползунками оно приносит своё
+        // меню (iOS «Скопировать / Найти / Перевести», поиск слова на Android),
+        // а подавить его из веба нечем. Поэтому текст режется на слова, и
+        // фрагмент задаётся двумя своими ползунками.
+        //
+        // Единица выбора — слово: этого достаточно для цитаты, а попадать
+        // пальцем в отдельную букву всё равно невозможно.
+        const selHandleA = document.getElementById('sel-handle-a');
+        const selHandleB = document.getElementById('sel-handle-b');
+
+        let fragEl    = null;   // .msg-text, разобранный на слова
+        let fragText  = '';     // исходный текст сообщения целиком
+        let fragMsg   = null;   // само сообщение
+        let fragA     = null;   // начальный токен
+        let fragB     = null;   // конечный токен
+        let fragDrag  = null;   // 'a' | 'b' — какой ползунок тянут
+
+        function tokenizeFragment(el, text) {
+            el.innerHTML = '';
+            const re = /\S+/g;
+            let last = 0, m;
+            while ((m = re.exec(text)) !== null) {
+                if (m.index > last) {
+                    el.appendChild(document.createTextNode(text.slice(last, m.index)));
+                }
+                const sp = document.createElement('span');
+                sp.className = 'wtok';
+                sp.dataset.s = m.index;
+                sp.dataset.e = m.index + m[0].length;
+                sp.textContent = m[0];
+                el.appendChild(sp);
+                last = m.index + m[0].length;
+            }
+            if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+        }
+
+        function exitFragmentMode() {
+            if (fragEl) {
+                // Возвращаем обычный текст — токены нужны только на время выбора.
+                fragEl.textContent = fragText;
+            }
+            fragEl = null; fragMsg = null; fragText = '';
+            fragA = null; fragB = null; fragDrag = null;
+            selHandleA.classList.remove('show');
+            selHandleB.classList.remove('show');
+            closeSelMenu();
+        }
+
+        // Порядок токенов задаётся смещением в тексте, а не порядком касаний:
+        // ползунки можно протащить друг через друга.
+        function fragRange() {
+            if (!fragA || !fragB) return null;
+            const a = +fragA.dataset.s, b = +fragB.dataset.s;
+            return (a <= b) ? [fragA, fragB] : [fragB, fragA];
+        }
+
+        function paintFragment() {
+            const r = fragRange();
+            if (!fragEl || !r) return;
+            const from = +r[0].dataset.s, to = +r[1].dataset.e;
+            fragEl.querySelectorAll('.wtok').forEach(t => {
+                const s0 = +t.dataset.s;
+                t.classList.toggle('wsel', s0 >= from && +t.dataset.e <= to);
+            });
+            positionHandles();
+        }
+
+        function positionHandles() {
+            const r = fragRange();
+            if (!r) return;
+            const ra = r[0].getBoundingClientRect();
+            const rb = r[1].getBoundingClientRect();
+            selHandleA.style.left = ra.left + 'px';
+            selHandleA.style.top  = ra.top + 'px';
+            selHandleB.style.left = rb.right + 'px';
+            selHandleB.style.top  = rb.bottom + 'px';
+            selHandleA.classList.add('show');
+            selHandleB.classList.add('show');
+        }
+
+        function fragmentText() {
+            const r = fragRange();
+            if (!r) return '';
+            return fragText.slice(+r[0].dataset.s, +r[1].dataset.e);
+        }
+
+        function showFragMenu() {
+            const text = fragmentText();
+            if (!text.trim()) { closeSelMenu(); return; }
+            const wrap = fragEl ? fragEl.closest('.message-wrap') : null;
+            openSelMenu({ text, wrap }, 0, 0, true);
+        }
+
+        // Вход в режим: долгое нажатие по тексту единственного выбранного
+        // сообщения. Стартовое слово — то, что под пальцем.
+        function enterFragmentMode(el, msg, x, y) {
+            if (!el || !msg || !msg.text) return false;
+            exitFragmentMode();
+            fragEl = el;
+            fragMsg = msg;
+            fragText = msg.text;
+            tokenizeFragment(el, fragText);
+
+            const tok = tokenAtPoint(x, y);
+            if (!tok) { exitFragmentMode(); return false; }
+            fragA = tok; fragB = tok;
+            paintFragment();
+            showFragMenu();
+            return true;
+        }
+
+        function tokenAtPoint(x, y) {
+            const el = document.elementFromPoint(x, y);
+            const tok = el && el.closest ? el.closest('.wtok') : null;
+            return (tok && fragEl && fragEl.contains(tok)) ? tok : null;
+        }
+
+        // Перетаскивание ползунков.
+        function bindHandle(handle, which) {
+            handle.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                fragDrag = which;
+                closeSelMenu();          // не мешает целиться
+                selHandleA.style.pointerEvents = 'none';
+                selHandleB.style.pointerEvents = 'none';
+            }, { passive: false });
+
+            handle.addEventListener('touchmove', (e) => {
+                if (!fragDrag) return;
+                e.preventDefault();
+                const t = e.touches[0];
+                const tok = tokenAtPoint(t.clientX, t.clientY);
+                if (!tok) return;
+                if (fragDrag === 'a') fragA = tok; else fragB = tok;
+                paintFragment();
+            }, { passive: false });
+
+            const finish = () => {
+                if (!fragDrag) return;
+                fragDrag = null;
+                selHandleA.style.pointerEvents = '';
+                selHandleB.style.pointerEvents = '';
+                showFragMenu();
+            };
+            handle.addEventListener('touchend', finish);
+            handle.addEventListener('touchcancel', finish);
+
+            // Мышью ползунки тоже работают — на гибридных устройствах.
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                fragDrag = which;
+                closeSelMenu();
+                selHandleA.style.pointerEvents = 'none';
+                selHandleB.style.pointerEvents = 'none';
+                const move = (ev) => {
+                    const tok = tokenAtPoint(ev.clientX, ev.clientY);
+                    if (!tok) return;
+                    if (fragDrag === 'a') fragA = tok; else fragB = tok;
+                    paintFragment();
+                };
+                const up = () => {
+                    document.removeEventListener('mousemove', move);
+                    document.removeEventListener('mouseup', up);
+                    finish();
+                };
+                document.addEventListener('mousemove', move);
+                document.addEventListener('mouseup', up);
+            });
+        }
+        bindHandle(selHandleA, 'a');
+        bindHandle(selHandleB, 'b');
+
+        // Ползунки нарисованы в координатах экрана — при прокрутке и смене
+        // размеров их надо переставлять.
+        messagesDiv.addEventListener('scroll', () => { if (fragEl) positionHandles(); }, { passive: true });
+        window.addEventListener('resize', () => { if (fragEl) positionHandles(); });
+
         document.getElementById('selbar-cancel').addEventListener('click', exitSelection);
+
 
         // ── Выделение мышью (ПК): зажать ЛКМ и провести через 2+ сообщения ──
         // Режим выбора включается только когда протяжка захватила минимум два
@@ -10322,7 +10530,7 @@
         const selMenu   = document.getElementById('sel-menu');
         let selMenuData = null;
 
-        function openSelMenu(info, x, y) {
+        function openSelMenu(info, x, y, pinAboveInput) {
             selMenuData = {
                 text: info.text,
                 msg: info.wrap ? info.wrap.__msg : null
@@ -10333,6 +10541,20 @@
             const vw = window.innerWidth, vh = window.innerHeight;
             const rect = selMenu.getBoundingClientRect();
             const mw = rect.width || 230, mh = rect.height || 110;
+
+            if (pinAboveInput) {
+                // Сенсорный ввод: у самого выделения меню ставить нельзя — там
+                // системные ползунки. У Android оба внизу слова, у iOS один
+                // сверху и один снизу, так что свободного места рядом просто
+                // нет. Поэтому меню уезжает вниз экрана, над строкой ввода: оно
+                // не закрывает ни текст, ни ползунки, и место у него постоянное.
+                const bar = inputArea.getBoundingClientRect();
+                const bottomLimit = (bar && bar.top) ? bar.top : vh;
+                selMenu.style.left = Math.max(8, (vw - mw) / 2) + 'px';
+                selMenu.style.top  = Math.max(8, bottomLimit - mh - 12) + 'px';
+                return;
+            }
+
             selMenu.style.left = Math.max(8, Math.min(x, vw - mw - 8)) + 'px';
             selMenu.style.top  = Math.max(8, Math.min(y, vh - mh - 8)) + 'px';
         }
@@ -10341,6 +10563,8 @@
         // сенсорных: выделение там делает система, а момент «палец отпущен»
         // ловим по touchend.
         function showSelMenuForCurrentSelection() {
+            // Сенсорный путь работает через собственный разбор на слова.
+            if (fragEl) { showFragMenu(); return; }
             if (!textSelectableEl) return;
             const sel = window.getSelection();
             if (!sel || sel.isCollapsed || sel.rangeCount === 0) { closeSelMenu(); return; }
@@ -10353,10 +10577,8 @@
             if (!textSelectableEl.contains(range.commonAncestorContainer) &&
                 range.commonAncestorContainer !== textSelectableEl) { closeSelMenu(); return; }
 
-            const rect = range.getBoundingClientRect();
             const wrap = textSelectableEl.closest('.message-wrap');
-            // Под выделением, чтобы не накрыть его собой и не мешать ручкам.
-            openSelMenu({ text, wrap }, rect.left, rect.bottom + 12);
+            openSelMenu({ text, wrap }, 0, 0, true);
         }
 
         function closeSelMenu() {
@@ -10370,6 +10592,7 @@
             closeSelMenu();
             if (!data) return;
             navigator.clipboard.writeText(data.text).catch(() => {});
+            exitFragmentMode();
             if (selectionMode) exitSelection();
             // Выделение снимаем: задача выполнена, подсветка больше не нужна.
             clearTextSelection();
@@ -10382,6 +10605,7 @@
             clearTextSelection();
             // Цитата — это обычный ответ с подменённым текстом превью,
             // поэтому переиспользуем ту же панель и тот же путь отправки.
+            exitFragmentMode();
             if (selectionMode) exitSelection();
             setReplyingTo({
                 id: data.msg.id,
@@ -10637,6 +10861,12 @@
 
             // Right-click на десктопе
             messagesDiv.addEventListener('contextmenu', (e) => {
+                // Долгое нажатие пальцем Android и iOS поднимают как
+                // contextmenu. Из-за этого поверх режима выбора вылезало старое
+                // меню сообщения. Событие от пальца гасим целиком: сенсорный
+                // сценарий полностью обслуживается обработчиками touch*.
+                if (Date.now() - lastTouchAt < 1200) { e.preventDefault(); return; }
+
                 // ПКМ по выделенному фрагменту — меню для текста. Обычное меню
                 // сообщения остаётся на всех остальных случаях.
                 const info = selectionInfo();
@@ -10668,11 +10898,13 @@
             // вообще не запускалось.
             let lpTimer  = null;
             let tapTimer = null;
+            let lastTouchAt = 0;   // когда последний раз касались экрана
             let lpMoved  = false;
             let lpFired  = false;
             let lastTouch = null;
 
             messagesDiv.addEventListener('touchstart', (e) => {
+                lastTouchAt = Date.now();
                 if (e.touches.length !== 1) return;
                 lpMoved = false;
                 lpFired = false;
@@ -10682,10 +10914,17 @@
 
                 const textEl = (e.target && e.target.closest) ? e.target.closest('.msg-text') : null;
 
-                // Палец на тексте, которому разрешено выделение — не мешаем:
-                // дальше работает системное выделение с ручками.
-                if (textSelectableEl && textEl === textSelectableEl) {
+                const px = touch.clientX, py = touch.clientY;
+
+                // Долгий тап по тексту единственного выбранного сообщения —
+                // вход в выбор фрагмента.
+                if (selectionMode && textSelectableEl && textEl === textSelectableEl) {
                     lastTouch = null;
+                    lpTimer = setTimeout(() => {
+                        lpFired = true;
+                        if (lpMoved) return;
+                        enterFragmentMode(textEl, wrap.__msg, px, py);
+                    }, LONG_PRESS_MS);
                     return;
                 }
 
@@ -10693,7 +10932,7 @@
                 // этим занимается обработчик click.
                 if (selectionMode) { lastTouch = null; return; }
 
-                lastTouch = { data: wrap.__msg, wrap, px: touch.clientX, py: touch.clientY };
+                lastTouch = { data: wrap.__msg, wrap, px, py };
 
                 lpTimer = setTimeout(() => {
                     lpFired = true;
@@ -10712,22 +10951,14 @@
             messagesDiv.addEventListener('touchend', () => {
                 clearTimeout(lpTimer);
 
-                // Палец отпущен после работы с системным выделением: показываем
-                // своё меню, если что-то действительно выделено. Срабатывает и
-                // после перетаскивания ручек — меню переедет к новому фрагменту.
-                if (textSelectableEl) {
-                    setTimeout(showSelMenuForCurrentSelection, 0);
-                    return;
-                }
-
                 if (lpMoved || lpFired || selectionMode) return;
                 const t = lastTouch;
                 lastTouch = null;
                 if (!t) return;
 
-                // Двойной тап — реакция. Поэтому меню по одиночному тапу
-                // открывается с задержкой: иначе первый тап успевал бы открыть
-                // меню и до второго дело не доходило.
+                // Двойной тап — реакция по умолчанию. Ради него меню по
+                // одиночному тапу открывается с задержкой: иначе первый тап
+                // успевал бы открыть меню и до второго дело не доходило.
                 const now = Date.now();
                 if (lastTapTarget === t.wrap && now - lastTapTime < 300) {
                     lastTapTarget = null;
