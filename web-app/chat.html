@@ -535,6 +535,13 @@
             white-space: nowrap;
         }
 
+        /* У «Заметок» статуса нет, и пустой span схлопывался в нулевую высоту —
+           строка выходила ниже остальных. Подставляем неразрывный пробел: он
+           невидим, но держит строку той же высоты, что и настоящий статус.
+           Так одинаковая высота получается сама собой в любой раскладке —
+           и когда статус стоит рядом с именем, и когда он уходит под него. */
+        .dialog-status:empty::before { content: '\00a0'; }
+
         .dialog-status {
             font-size: 12px;
             font-weight: 400;
@@ -3437,7 +3444,6 @@
                 padding: 12px 12px 12px 8px;
                 margin: 0;
                 border-radius: 0;
-                border-bottom: 1px solid var(--color-results-sep);
                 font-size: 16px;
                 display: flex;
                 align-items: center;
@@ -5068,6 +5074,17 @@
         function updateTopbarTyping(isTyping) {
             const topbarSub = document.getElementById('topbar-subtitle');
             const dhStatus  = document.getElementById('dh-status');
+
+            // «Заметки» — чат с самим собой: ни «в сети», ни «Печатает» тут не
+            // имеют смысла. Отсечь надо именно здесь: получатель набора — мы
+            // сами, поэтому событие возвращается эхом и перебивает пустой
+            // статус, который корректно выставляет updateFormState.
+            if (isNotesChat(currentUser)) {
+                if (topbarSub) { topbarSub.className = ''; topbarSub.textContent = ''; }
+                if (dhStatus)  { dhStatus.className  = ''; dhStatus.textContent  = ''; }
+                return;
+            }
+
             if (isTyping) {
                 if (topbarSub) {
                     topbarSub.className = 'typing';
