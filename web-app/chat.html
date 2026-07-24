@@ -742,6 +742,111 @@
             white-space: pre-wrap;
         }
 
+        /* ── Растворение удаляемого сообщения ────────────────────────────
+           Два слоя: сам пузырь «съедается» градиентной маской слева направо,
+           а поверх летит пыль. Маска даёт рваный край, частицы — объём;
+           по отдельности ни то, ни другое не читается как рассыпание. */
+        .msg-dissolve {
+            pointer-events: none;
+            -webkit-mask-image: linear-gradient(100deg,
+                transparent 0%, transparent 30%,
+                rgba(0,0,0,0.45) 45%, #000 62%, #000 100%);
+            mask-image: linear-gradient(100deg,
+                transparent 0%, transparent 30%,
+                rgba(0,0,0,0.45) 45%, #000 62%, #000 100%);
+            -webkit-mask-size: 260% 260%;
+            mask-size: 260% 260%;
+            -webkit-mask-position: 100% 50%;
+            mask-position: 100% 50%;
+            animation: msg-dissolve-mask 900ms ease-in forwards;
+        }
+
+        @keyframes msg-dissolve-mask {
+            to {
+                -webkit-mask-position: 0% 50%;
+                mask-position: 0% 50%;
+            }
+        }
+
+        .dust-layer {
+            position: fixed;
+            pointer-events: none;
+            z-index: 250;
+            overflow: visible;
+        }
+
+        .dust {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0;
+            animation-name: dust-fly;
+            animation-timing-function: ease-out;
+            animation-fill-mode: forwards;
+        }
+
+        @keyframes dust-fly {
+            0%   { opacity: 0.9; transform: translate(0, 0) scale(1); }
+            100% { opacity: 0;   transform: translate(var(--dx), var(--dy)) scale(0.2); }
+        }
+
+        /* ── Ссылки в сообщениях ─────────────────────────────────────────── */
+        .msg-link {
+            color: inherit;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            cursor: pointer;
+            word-break: break-all;
+        }
+
+        #link-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 420;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        #link-overlay.open { display: flex; }
+
+        #link-box {
+            position: relative;
+            width: 100%;
+            max-width: 380px;
+            padding: 20px 44px 20px 20px;
+            border-radius: 14px;
+            background: var(--color-settings-bg, #1b1e25);
+            color: var(--color-text, #e8e8e8);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+        }
+
+        #link-title { font-size: 15px; margin-bottom: 10px; }
+
+        #link-url {
+            display: block;
+            font-size: 14px;
+            color: #4a90e2;
+            word-break: break-all;
+            text-decoration: underline;
+        }
+
+        #link-close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            color: inherit;
+            font-size: 24px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+        #link-close:hover { opacity: 1; }
+
         /* Мышью текст выделяется свободно. */
         @media (hover: hover) and (pointer: fine) {
             .msg-text {
@@ -4760,6 +4865,15 @@
     </div>
 
     <!-- Своё окно подтверждения (взамен системного confirm) -->
+    <!-- Подтверждение перехода по внешней ссылке -->
+    <div id="link-overlay">
+        <div id="link-box">
+            <button id="link-close" type="button" title="Закрыть">&times;</button>
+            <div id="link-title">Вы уверены, что хотите перейти на сайт</div>
+            <a id="link-url" target="_blank" rel="noopener noreferrer"></a>
+        </div>
+    </div>
+
     <div id="confirm-overlay">
         <div id="confirm-box">
             <div id="confirm-title">Удалить сообщения?</div>
@@ -6394,7 +6508,7 @@
                     // Сообщение уже улетает: если чат успел перерисоваться,
                     // анимацию нужно навесить заново, иначе оно моргнёт и
                     // пропадёт без эффекта.
-                    wrap.classList.add('animate__animated', 'animate__hinge');
+                    wrap.classList.add('msg-dissolve');
                 } else if (isFreshMessage(msg)) {
                     wrap.classList.add('animate__animated', 'animate__fadeInDown');
                 }
@@ -6485,7 +6599,7 @@
                     }
                     const textNode = document.createElement('span');
                     textNode.className = 'msg-text';
-                    textNode.textContent = msg.text;
+                    renderMsgText(textNode, msg.text);
                     bubble.appendChild(textNode);
                     wrap.appendChild(bubble);
                 }
@@ -9624,7 +9738,7 @@
             const wasActive = !!fragEl;
             if (fragEl) {
                 // Возвращаем обычный текст — токены нужны только на время выбора.
-                fragEl.textContent = fragText;
+                renderMsgText(fragEl, fragText);
             }
             fragEl = null; fragMsg = null; fragText = '';
             fragA = null; fragB = null; fragDrag = null;
@@ -10281,7 +10395,74 @@
         // Длительность hinge — вдвое больше базовой, см. CSS. Значение здесь и
         // в стилях должно совпадать, иначе сообщение либо исчезнет раньше конца
         // анимации, либо повиснет пустым местом после неё.
-        const HINGE_MS = 1200;
+        const DISSOLVE_MS = 900;   // «съедание» пузыря маской
+        const COLLAPSE_MS = 280;   // схлопывание освободившегося места
+
+        // Пыль. Частицы живут в своём слое поверх страницы, а не внутри
+        // сообщения: ему в это время режут видимость маской, и всё вложенное
+        // резалось бы вместе с ним.
+        function spawnDustParticles(el, durationMs) {
+            const r = el.getBoundingClientRect();
+            if (r.width < 4 || r.height < 4) return;
+
+            const layer = document.createElement('div');
+            layer.className = 'dust-layer';
+            layer.style.left   = r.left + 'px';
+            layer.style.top    = r.top + 'px';
+            layer.style.width  = r.width + 'px';
+            layer.style.height = r.height + 'px';
+
+            // Цвет берём с самого пузыря, чтобы пыль совпадала с тем, что
+            // рассыпается: свои сообщения синие, чужие серые.
+            const bubble = el.querySelector('.message, .file-card, .audio-player') || el;
+            let color = getComputedStyle(bubble).backgroundColor;
+            if (!color || color === 'rgba(0, 0, 0, 0)') color = '#8ab4f8';
+
+            // Плотность по площади, но с потолком: на длинном сообщении иначе
+            // родились бы тысячи узлов и кадр бы просел.
+            const count = Math.min(260, Math.round(r.width * r.height / 240));
+            for (let i = 0; i < count; i++) {
+                const px = Math.random(), py = Math.random();
+                const size = 1 + Math.random() * 2.5;
+                const p = document.createElement('i');
+                p.className = 'dust';
+                p.style.left = (px * r.width) + 'px';
+                p.style.top  = (py * r.height) + 'px';
+                p.style.width  = size + 'px';
+                p.style.height = size + 'px';
+                p.style.background = color;
+                // Задержка по горизонтали — пыль поднимается вслед за фронтом
+                // стирания, а не вся разом.
+                p.style.animationDelay = Math.round(px * durationMs * 0.72) + 'ms';
+                p.style.animationDuration = Math.round(480 + Math.random() * 420) + 'ms';
+                p.style.setProperty('--dx', Math.round(8 + Math.random() * 44) + 'px');
+                p.style.setProperty('--dy', Math.round(-18 - Math.random() * 54) + 'px');
+                layer.appendChild(p);
+            }
+
+            document.body.appendChild(layer);
+            setTimeout(() => layer.remove(), durationMs + 1400);
+        }
+
+        // Плавное схлопывание освободившегося места.
+        function collapseAndRemove(el, done) {
+            const h  = el.offsetHeight;
+            const cs = getComputedStyle(el);
+            el.style.overflow     = 'hidden';
+            el.style.height       = h + 'px';
+            el.style.marginTop    = cs.marginTop;
+            el.style.marginBottom = cs.marginBottom;
+            void el.offsetHeight;   // без принудительного пересчёта перехода не будет
+
+            el.style.transition = 'height ' + COLLAPSE_MS + 'ms ease, ' +
+                                  'margin ' + COLLAPSE_MS + 'ms ease';
+            el.style.height    = '0px';
+            el.style.marginTop = '0px';
+            // Минус величина gap у #messages: обнулить высоту мало, промежуток
+            // между соседями остался бы и место схлопнулось бы не до конца.
+            el.style.marginBottom = '-10px';
+            setTimeout(done, COLLAPSE_MS + 20);
+        }
 
         function onMessageDeleted(data) {
             if (!data || !data.message_id) return;
@@ -10318,8 +10499,9 @@
             // анимации, она навесится заново (см. renderMessages).
             const msgObj = found.state.messages[found.idx];
             if (msgObj) msgObj._deleting = true;
-            el.classList.add('animate__animated', 'animate__hinge');
-            setTimeout(removeNow, HINGE_MS);
+            spawnDustParticles(el, DISSOLVE_MS);
+            el.classList.add('msg-dissolve');
+            setTimeout(() => collapseAndRemove(el, removeNow), DISSOLVE_MS);
             renderDialogList();
         }
 
@@ -10991,6 +11173,55 @@
             toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 3200);
         }
 
+        // Раскладывает текст на обычные куски и ссылки. Адрес кладётся в
+        // data-href, а не в href: переход должен идти только через
+        // подтверждение, иначе браузер уведёт по клику сам.
+        const MSG_URL_RE = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+
+        function renderMsgText(el, text) {
+            el.textContent = '';
+            const src = text || '';
+            let last = 0, m;
+            MSG_URL_RE.lastIndex = 0;
+            while ((m = MSG_URL_RE.exec(src)) !== null) {
+                if (m.index > last) {
+                    el.appendChild(document.createTextNode(src.slice(last, m.index)));
+                }
+                const raw = m[0];
+                // Точка или скобка в конце — почти всегда знак препинания
+                // предложения, а не часть адреса.
+                const url = raw.replace(/[.,!?;:)\]}»"']+$/, '');
+                const a = document.createElement('a');
+                a.className = 'msg-link';
+                a.textContent = url;
+                a.dataset.href = /^https?:/i.test(url) ? url : ('https://' + url);
+                el.appendChild(a);
+                if (url.length < raw.length) {
+                    el.appendChild(document.createTextNode(raw.slice(url.length)));
+                }
+                last = m.index + raw.length;
+            }
+            if (last < src.length) el.appendChild(document.createTextNode(src.slice(last)));
+        }
+
+        const linkOverlay = document.getElementById('link-overlay');
+        const linkUrlEl   = document.getElementById('link-url');
+
+        function askOpenLink(href) {
+            linkUrlEl.textContent = href;
+            linkUrlEl.href = href;
+            linkOverlay.classList.add('open');
+        }
+
+        function closeLinkOverlay() { linkOverlay.classList.remove('open'); }
+
+        document.getElementById('link-close').addEventListener('click', closeLinkOverlay);
+        linkOverlay.addEventListener('click', (e) => {
+            if (e.target === linkOverlay) closeLinkOverlay();
+        });
+        // Переход открывает вкладку сам (target="_blank"), нам остаётся закрыть окно.
+        linkUrlEl.addEventListener('click', closeLinkOverlay);
+
         function getMsgPreviewText(msg) {
             if (msg.image_id) return '📷 Фото';
             if (msg.audio_id) return '🎤 Голосовое сообщение';
@@ -11058,6 +11289,15 @@
         (function initMessageGestures() {
             // В режиме выбора обычный клик/тап по строке переключает выделение
             messagesDiv.addEventListener('click', (e) => {
+                const link = (e.target && e.target.closest) ? e.target.closest('.msg-link') : null;
+                // В режиме выбора клик по сообщению переключает выделение —
+                // ссылка там не работает, иначе не выбрать сообщение с адресом.
+                if (link && !selectionMode) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    askOpenLink(link.dataset.href);
+                    return;
+                }
                 if (!selectionMode) return;
                 // Клик по тексту, с которым сейчас работают как с текстом,
                 // не должен снимать выбор сообщения.
