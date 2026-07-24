@@ -760,23 +760,42 @@
         /* Слово как единица выбора. Пробелы между словами остаются обычными
            текстовыми узлами, поэтому переносы строк и pre-wrap не страдают. */
         .wtok { border-radius: 3px; }
-        .wtok.wsel { background: rgba(74, 144, 226, 0.55); }
+
+        /* Тёплый цвет, а не синий: свой пузырь сам синий (#4a90e2), и синяя
+           подсветка на нём была неотличима от фона. Тёмный текст поверх —
+           чтобы читалось и в тёмной теме, и в светлой. */
+        .wtok.wsel {
+            background: #ffd166;
+            color: #1a1a1a;
+        }
 
         /* Свои ползунки. Ставятся по углам фрагмента: начальный — к левому
            верхнему, конечный — к правому нижнему, как принято на iOS. */
+        /* position: absolute, а не fixed: ползунки вкладываются внутрь самого
+           сообщения и едут вместе с ним. Экранные координаты не годились —
+           их сбивало всё подряд: появление панели «Выбрано», прокрутка,
+           открытие клавиатуры. */
         .sel-handle {
             display: none;
-            position: fixed;
+            position: absolute;
             width: 16px;
             height: 16px;
             margin: -8px 0 0 -8px;
             border-radius: 50%;
-            background: #4a90e2;
-            box-shadow: 0 0 0 2px rgba(255,255,255,0.85);
-            z-index: 330;
+            background: #ffd166;
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.35);
+            z-index: 5;
             touch-action: none;
         }
         .sel-handle.show { display: block; }
+
+        /* Перебивает правило .message-wrap.selected > * { position: relative },
+           которое иначе сбросило бы абсолютное позиционирование. */
+        .message-wrap.selected > .sel-handle,
+        .message-wrap > .sel-handle {
+            position: absolute;
+            z-index: 5;
+        }
         /* Невидимый запас под палец: сам кружок маленький, попадать в него
            пальцем иначе почти невозможно. */
         .sel-handle::after {
@@ -9489,6 +9508,10 @@
             fragA = null; fragB = null; fragDrag = null;
             selHandleA.classList.remove('show');
             selHandleB.classList.remove('show');
+            // Уносим из сообщения: его могут перерисовать, и ползунки уехали бы
+            // вместе с выброшенным DOM.
+            if (selHandleA.parentNode !== document.body) document.body.appendChild(selHandleA);
+            if (selHandleB.parentNode !== document.body) document.body.appendChild(selHandleB);
             closeSelMenu();
         }
 
@@ -9513,13 +9536,25 @@
 
         function positionHandles() {
             const r = fragRange();
-            if (!r) return;
+            if (!r || !fragEl) return;
+            const wrap = fragEl.closest('.message-wrap');
+            if (!wrap) return;
+
+            // Ползунки должны быть детьми сообщения — тогда они едут вместе с
+            // ним при любом сдвиге вёрстки.
+            if (selHandleA.parentNode !== wrap) wrap.appendChild(selHandleA);
+            if (selHandleB.parentNode !== wrap) wrap.appendChild(selHandleB);
+
+            // Обе метрики снимаются в одной системе координат, поэтому их
+            // разность от сдвигов не зависит.
+            const rw = wrap.getBoundingClientRect();
             const ra = r[0].getBoundingClientRect();
             const rb = r[1].getBoundingClientRect();
-            selHandleA.style.left = ra.left + 'px';
-            selHandleA.style.top  = ra.top + 'px';
-            selHandleB.style.left = rb.right + 'px';
-            selHandleB.style.top  = rb.bottom + 'px';
+
+            selHandleA.style.left = (ra.left  - rw.left) + 'px';
+            selHandleA.style.top  = (ra.top   - rw.top)  + 'px';
+            selHandleB.style.left = (rb.right - rw.left) + 'px';
+            selHandleB.style.top  = (rb.bottom - rw.top) + 'px';
             selHandleA.classList.add('show');
             selHandleB.classList.add('show');
         }
@@ -9616,9 +9651,9 @@
         bindHandle(selHandleA, 'a');
         bindHandle(selHandleB, 'b');
 
-        // Ползунки нарисованы в координатах экрана — при прокрутке и смене
-        // размеров их надо переставлять.
-        messagesDiv.addEventListener('scroll', () => { if (fragEl) positionHandles(); }, { passive: true });
+        // При прокрутке пересчёт не нужен: ползунки лежат внутри сообщения и
+        // едут вместе с ним. А вот при смене размеров окна текст перетекает,
+        // и слова оказываются на других местах — тут пересчёт обязателен.
         window.addEventListener('resize', () => { if (fragEl) positionHandles(); });
 
         document.getElementById('selbar-cancel').addEventListener('click', exitSelection);
