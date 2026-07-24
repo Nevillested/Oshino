@@ -617,7 +617,15 @@
 
         #messages {
             flex: 1;
-            padding: 16px;
+            /* Горизонтальный отступ разделён между padding и прозрачной рамкой
+               (в сумме те же 16px, что были). Смысл рамки: overflow обрезает
+               содержимое по padding-box, то есть по внутреннему краю рамки.
+               Благодаря этому полосы выделения и подсветки, растянутые далеко
+               за пределы своего сообщения, останавливаются в 6px от края
+               панели, а не упираются в неё. */
+            padding: 16px 10px;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
             overflow-y: auto;
             overflow-x: hidden;
             display: flex;
@@ -903,7 +911,31 @@
         .message-wrap.selected .message,
         .message-wrap.selected .message-image,
         .message-wrap.selected .audio-player { outline: 2px solid #4a90e2; outline-offset: 2px; }
-        .message-wrap.selected { background: rgba(74,144,226,0.10); border-radius: 10px; }
+
+        /* Выделяется вся строка целиком, а не коробка вокруг пузыря. Приём тот
+           же, что у подсветки найденного сообщения: полоса — псевдоэлемент,
+           растянутый далеко влево и вправо (сам .message-wrap не шире 80% и
+           прижат к своему краю), а до края панели её не пускает рамка
+           #messages. */
+        .message-wrap.selected::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            bottom: -4px;
+            left: -2000px;
+            right: -2000px;
+            z-index: 0;
+            pointer-events: none;
+            border-radius: 6px;
+            background: rgba(74, 144, 226, 0.16);
+        }
+
+        /* Псевдоэлемент позиционирован и иначе лёг бы поверх пузыря —
+           поднимаем содержимое над полосой. */
+        .message-wrap.selected > * {
+            position: relative;
+            z-index: 1;
+        }
 
         #select-bar {
             display: none;
@@ -915,7 +947,14 @@
             flex-shrink: 0;
         }
         #select-bar.show { display: flex; }
-        #select-count { font-weight: 600; margin-right: auto; }
+        /* Цвет наследовался откуда придётся и в тёмной теме оставался почти
+           чёрным. Берём тот же цвет, что и текст сообщений: он определён в
+           обеих темах. */
+        #select-count {
+            font-weight: 600;
+            margin-right: auto;
+            color: var(--color-bubble-text);
+        }
         .selbar-btn {
             background: none;
             border: none;
