@@ -1526,6 +1526,12 @@
            вместо них появляется кнопка отправки. */
         #input-area {
             display: none;
+            /* Колонка, а не строка: полоска пересылки должна вставать НАД формой
+               ввода, а не сжиматься в остаток строки справа от неё (на узком
+               экране туда не помещалась и подпись). В потоке здесь только
+               #form-area, #forward-bar и #blocked-bar — подсказка и оверлей
+               записи позиционированы абсолютно и на раскладку не влияют. */
+            flex-direction: column;
             padding: 8px 10px;
             background: var(--color-input-bar-bg);
             border-top: 1px solid var(--color-input-bar-sep);
@@ -1938,14 +1944,17 @@
            Абсолютная позиция — чтобы появление и скрытие не двигало вёрстку. */
         #forward-bar {
             display: none;
+            /* order сдвигает полоску выше формы ввода, не трогая порядок в
+               разметке (она осталась рядом с остальными служебными блоками). */
+            order: -1;
             align-items: center;
             gap: 8px;
-            padding: 8px 14px;
+            padding: 8px 12px;
+            margin: 0 2px 6px;
             font-size: 13px;
             color: var(--color-fwd-text);
             background: var(--color-fwd-bg);
             border-radius: 10px;
-            margin: 0 8px 6px;
         }
 
         #forward-bar.show { display: flex; }
@@ -1959,17 +1968,25 @@
         }
 
         #forward-bar-cancel {
+            flex-shrink: 0;
             border: none;
             background: none;
             cursor: pointer;
-            font-size: 20px;
+            font-size: 22px;
             line-height: 1;
-            padding: 0 4px;
+            /* Область нажатия под палец, а не под курсор */
+            min-width: 32px;
+            height: 32px;
+            padding: 0;
             color: inherit;
             opacity: 0.7;
         }
 
         #forward-bar-cancel:active { opacity: 1; }
+
+        @media (hover: hover) {
+            #forward-bar-cancel:hover { opacity: 1; }
+        }
 
         /* При отложенной пересылке отправлять есть что и с пустым полем */
         #input-area.forwarding #mic-btn { display: none; }
@@ -1988,9 +2005,10 @@
 
         /* flex-basis 100% вместо width: как элемент flex-строки надпись иначе
            сжимается по содержимому и центрируется не по чату, а по себе самой. */
+        /* flex: 1 1 100% здесь больше не нужен и вреден: в колонке базис
+           считается по высоте. Ширину даёт растяжение по умолчанию. */
         #blocked-bar.show {
             display: flex;
-            flex: 1 1 100%;
             align-items: center;
             justify-content: center;
             text-align: center;
@@ -6146,14 +6164,11 @@
 
                     const fwdFrom = document.createElement('span');
                     fwdFrom.className = 'msg-forward-from';
-                    // Если автор оригинала — вы сами (например, переслали свою
-                    // же реплику в «Заметки»), подписывать её «Заметки» нельзя:
-                    // это имя чата, а не человека. В остальных случаях берём
-                    // отображаемое имя, а при его отсутствии — логин (этим
-                    // занимается getDisplayName).
-                    fwdFrom.textContent = isNotesChat(msg.forwarded_from)
-                        ? 'вас'
-                        : getDisplayName(msg.forwarded_from);
+                    // Строго логин, без исключений: отображаемое имя можно
+                    // сменить, а «Заметки» — вообще имя чата, а не человека
+                    // (из-за него своя же пересылка подписывалась «от Заметки»).
+                    // Логин есть всегда и однозначно указывает на автора.
+                    fwdFrom.textContent = msg.forwarded_from;
                     fwdFrom.dataset.login = msg.forwarded_from;
                     fwd.appendChild(fwdFrom);
 
@@ -9805,8 +9820,9 @@
         // ждущих отправки. Переключение между чатами её не теряет.
         const pendingForwards = {};
 
-        // Подпись «от кого». Пересылать можно и свои, и чужие сообщения сразу,
-        // поэтому при нескольких авторах имя не называем.
+        // Подпись «от кого» — строго логин, как и на самой плашке пересылки.
+        // Пересылать можно свои и чужие сообщения сразу, поэтому при нескольких
+        // авторах логин не называем вовсе.
         function forwardAuthorLabel(ids) {
             const state = historyState[currentUser];
             if (!state) return '';
@@ -9815,7 +9831,7 @@
                 const m = state.messages.find(x => x.id === id);
                 if (m) authors.add(m.own ? currentLogin : (m.from || currentUser));
             });
-            if (authors.size === 1) return getDisplayName([...authors][0]);
+            if (authors.size === 1) return [...authors][0];
             if (authors.size === 0) return '';
             return 'нескольких пользователей';
         }
