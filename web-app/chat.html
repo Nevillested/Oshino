@@ -627,7 +627,6 @@
             border-left: 6px solid transparent;
             border-right: 6px solid transparent;
             overflow-y: auto;
-    overflow-anchor: none;
             overflow-x: hidden;
             display: flex;
             flex-direction: column;
@@ -10515,29 +10514,6 @@
             requestAnimationFrame(frame);
         }
 
-        // Плавное схлопывание освободившегося места.
-        function collapseAndRemove(el, done) {
-            const h  = el.offsetHeight;
-            const cs = getComputedStyle(el);
-            el.style.overflow     = 'hidden';
-            el.style.height       = h + 'px';
-            el.style.marginTop    = cs.marginTop;
-            el.style.marginBottom = cs.marginBottom;
-            void el.offsetHeight;   // без принудительного пересчёта перехода не будет
-
-            // Плавная кривая вместо ease: у ease резкий старт, и схлопывание
-            // читалось как рывок сразу после того, как осела пыль.
-            const EASE = 'cubic-bezier(0.99, 0, 0.01, 1)';
-            el.style.transition = 'height ' + COLLAPSE_MS + 'ms ' + EASE + ', ' +
-                                  'margin ' + COLLAPSE_MS + 'ms ' + EASE;
-            el.style.height    = '0px';
-            el.style.marginTop = '0px';
-            // Минус величина gap у #messages: обнулить высоту мало, промежуток
-            // между соседями остался бы и место схлопнулось бы не до конца.
-            el.style.marginBottom = '-10px';
-            setTimeout(done, COLLAPSE_MS + 20);
-        }
-
         function onMessageDeleted(data) {
             if (!data || !data.message_id) return;
             const found = findMessageEverywhere(data.message_id);
@@ -10575,7 +10551,7 @@
             if (msgObj) msgObj._deleting = true;
             spawnDustParticles(el, DISSOLVE_MS);
             el.classList.add('msg-dissolve');
-            setTimeout(() => collapseAndRemove(el, removeNow), DISSOLVE_MS);
+            setTimeout(removeNow, DISSOLVE_MS);
             renderDialogList();
         }
 
