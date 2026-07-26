@@ -1091,6 +1091,19 @@
             box-shadow: 0 8px 30px rgba(0,0,0,0.4);
         }
         #dlg-menu.open { display: block; }
+
+        /* Плавное появление всех контекстных меню: быстрый scale+fade из угла у
+           курсора. Анимации закрытия нет — чтобы не надоедало (как в Telegram). */
+        @keyframes ctx-pop-in {
+            from { opacity: 0; transform: scale(0.96); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        #ctx-menu.open,
+        #dlg-menu.open,
+        #sel-menu.open {
+            transform-origin: top left;
+            animation: ctx-pop-in 0.12s ease-out;
+        }
         .dialog-pin-mark { margin-left: 6px; opacity: 0.7; font-size: 12px; }
 
         /* ── Множественный выбор сообщений ─────────────────────────────── */
@@ -6771,10 +6784,14 @@
                     cell.appendChild(img);
                 }
                 cell.addEventListener('click', () => openMediaViewer(run, m));
-                if (m.id > 0) attachContextMenuHandlers(cell, m);
                 row.appendChild(cell);
             });
             wrap.appendChild(row);
+
+            // Контекстное меню — на всю обёртку альбома (по первому элементу
+            // группы). ПКМ прямо по превью отдаётся браузеру (сохранить), это
+            // разруливается в делегированном обработчике contextmenu ниже.
+            if (run[0].id > 0) attachContextMenuHandlers(wrap, run[0]);
 
             // Время и галочки прочтения — по последнему сообщению группы.
             const last = run[run.length - 1];
@@ -11711,9 +11728,11 @@
             // зажимаем их в границы экрана — иначе на невысоком окне ПК низ
             // меню уходил за край и пункт «Удалить» просто не был виден.
             const vw = window.innerWidth, vh = window.innerHeight;
-            const rect = ctxMenu.getBoundingClientRect();
-            const mw = rect.width  || 220;
-            const mh = rect.height || 280;
+            // offsetWidth/Height не зависят от transform — важно, т.к. меню при
+            // открытии проигрывает scale-анимацию, и getBoundingClientRect на
+            // первом кадре вернул бы уменьшенный размер (сбивало бы позицию).
+            const mw = ctxMenu.offsetWidth  || 220;
+            const mh = ctxMenu.offsetHeight || 280;
             let left = Math.min(x, vw - mw - 8);
             let top  = (y + mh > vh - 8) ? (y - mh) : y;
             if (top  < 8) top  = Math.max(8, vh - mh - 8);
@@ -11781,8 +11800,7 @@
             if (!pinAboveInput) ctxBackdrop.classList.add('open');
 
             const vw = window.innerWidth, vh = window.innerHeight;
-            const rect = selMenu.getBoundingClientRect();
-            const mw = rect.width || 230, mh = rect.height || 110;
+            const mw = selMenu.offsetWidth || 230, mh = selMenu.offsetHeight || 110;
 
             if (pinAboveInput) {
                 // Сенсорный ввод: у самого выделения меню ставить нельзя — там
@@ -12164,6 +12182,13 @@
                 // меню сообщения. Событие от пальца гасим целиком: сенсорный
                 // сценарий полностью обслуживается обработчиками touch*.
                 if (Date.now() - lastTouchAt < 1200) { e.preventDefault(); return; }
+
+                // ПКМ прямо по превью в альбоме — отдаём браузерное меню, чтобы
+                // картинку можно было сохранить. Клик по остальной области
+                // альбома (обёртка, время, отступы) обслуживается нашим меню.
+                if (e.target && e.target.closest && e.target.closest('.album-cell')) {
+                    return;
+                }
 
                 // ПКМ по выделенному фрагменту — меню для текста. Обычное меню
                 // сообщения остаётся на всех остальных случаях.
