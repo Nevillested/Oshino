@@ -6542,16 +6542,23 @@
         // Догружает старые сообщения, пока лента не заполнит вьюпорт или история
         // не кончится. Нужна для компактного контента (ряды-альбомы), который не
         // создаёт прокрутки — иначе подгрузка по скроллу не запускается вовсе.
+        let autoFilling = false;
         async function fillViewport(user) {
-            let guard = 0;
-            while (currentUser === user && guard < 8) {
-                const state = historyState[user];
-                if (!state || state.allLoaded || state.loading) break;
-                if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 60) break;
-                const before = messagesDiv.scrollHeight;
-                await loadHistory(user, state.oldestId, 20);
-                if (messagesDiv.scrollHeight <= before) break; // ничего не добавилось
-                guard++;
+            if (autoFilling) return;
+            autoFilling = true;
+            try {
+                let guard = 0;
+                while (currentUser === user && guard < 12) {
+                    const state = historyState[user];
+                    if (!state || state.allLoaded || state.loading) break;
+                    if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 60) break;
+                    const before = messagesDiv.scrollHeight;
+                    await loadHistory(user, state.oldestId, 20);
+                    if (messagesDiv.scrollHeight <= before) break; // ничего не добавилось
+                    guard++;
+                }
+            } finally {
+                autoFilling = false;
             }
         }
 
@@ -6560,6 +6567,9 @@
             if (!state || state.allLoaded) return;
             if (state.loading) return;
             state.loading = true;
+            // «загрузка…» — только на время реальной догрузки старых сообщений.
+            const showLoader = beforeId > 0 && currentUser === user;
+            if (showLoader) loadMoreIndicator.style.display = 'block';
 
             try {
                 const url = `/history?with=${encodeURIComponent(user)}&before_id=${beforeId}&limit=${limit}`;
@@ -6593,6 +6603,7 @@
                 console.error('Ошибка загрузки истории:', e);
             } finally {
                 state.loading = false;
+                if (currentUser === user) loadMoreIndicator.style.display = 'none';
             }
         }
 
@@ -7018,7 +7029,10 @@
             messagesDiv.appendChild(loadMoreIndicator);
 
             const state = historyState[currentUser];
-            loadMoreIndicator.style.display = (state && !state.allLoaded) ? 'block' : 'none';
+            // Индикатор «загрузка…» больше НЕ висит постоянно при !allLoaded
+            // (это выглядело как зависание). Его показывает и прячет loadHistory
+            // строго на время активной догрузки старых сообщений.
+            loadMoreIndicator.style.display = 'none';
 
             // Тело отрисовки одного сообщения. Вызывается ниже — либо напрямую,
             // либо в обход, когда несколько подряд идущих медиа сворачиваются в
@@ -7381,6 +7395,7 @@
 
             if (messagesDiv.scrollTop > 40) return;
             if (!currentUser) return;
+            if (autoFilling) return; // идёт автозаполнение — не перебиваем
             const state = historyState[currentUser];
             if (!state || state.allLoaded || state.loading) return;
 
