@@ -341,6 +341,24 @@ func main() {
 	// bd.sql ещё не применён вручную) — деплой не требует отдельного шага в psql.
 	app.ensureFcmTable()
 
+	// Таблица стейджинга вложений (лоток) — тоже идемпотентно при старте.
+	app.ensureStagingTable()
+
+	// Периодическая уборка брошенного стейджинга: файлы прикрепили к панели, но
+	// вкладку закрыли, не отправив. Раз в час удаляем всё старше 6 часов —
+	// отправленное к этому моменту уже перенесено в messages и удалено.
+	go func() {
+		t := time.NewTicker(1 * time.Hour)
+		defer t.Stop()
+		for range t.C {
+			if _, err := app.db.Exec(
+				"DELETE FROM messenger.staging_files WHERE created_at < (NOW() AT TIME ZONE 'UTC') - INTERVAL '6 hours'",
+			); err != nil {
+				log.Println("Уборка стейджинга:", err)
+			}
+		}
+	}()
+
 	if err := app.db.QueryRow("SELECT login FROM messenger.users WHERE id = 1").Scan(&app.defaultContact); err != nil {
 		log.Printf("Не удалось получить дефолтный контакт (id=1): %v", err)
 	}
@@ -394,6 +412,10 @@ func main() {
 	http.HandleFunc("/video/", app.handleGetVideo)
 	http.HandleFunc("/upload-file", app.handleUploadFile)
 	http.HandleFunc("/file/", app.handleGetFile)
+	// Лоток вложений: заливка в стейджинг (без создания сообщения) и финализация
+	// (перенос стейджинга в messages: сначала текст, потом файлы по порядку).
+	http.HandleFunc("/stage-upload", app.handleStageUpload)
+	http.HandleFunc("/send-staged", app.handleSendStaged)
 	http.HandleFunc("/message-location", app.handleMessageLocation)
 	http.HandleFunc("/turn-credentials", app.handleTurnCredentials)
 	http.HandleFunc("/push-public-key", app.handlePushPublicKey)
@@ -2322,7 +2344,288 @@ func (a *App) handleGetFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, filename, time.Now(), bytes.NewReader(fileData))
 }
 
-// handleMessageLocation — GET /message-location?id=<msgID>.
+// ensureStagingTable идемпотентно создаёт таблицу стейджинга при старте, чтобы
+// деплой не требовал ручного шага в psql (как ensureFcmTable).
+func (a *App) ensureStagingTable() {
+	_, err := a.db.Exec(`
+		CREATE TABLE IF NOT EXISTS messenger.staging_files (
+			id serial PRIMARY KEY,
+			user_id integer NOT NULL REFERENCES messenger.users(id) ON DELETE CASCADE,
+			kind varchar(10) NOT NULL,
+			data bytea NOT NULL,
+			mime varchar(255),
+			name varchar(255),
+			size bigint,
+			duration integer,
+			is_circle boolean NOT NULL DEFAULT false,
+			created_at timestamp without time zone DEFAULT (NOW() AT TIME ZONE 'UTC')
+		);
+		CREATE INDEX IF NOT EXISTS idx_staging_files_user ON messenger.staging_files(user_id);
+		CREATE INDEX IF NOT EXISTS idx_staging_files_created ON messenger.staging_files(created_at);
+	`)
+	if err != nil {
+		log.Println("ensureStagingTable:", err)
+	}
+}
+
+// handleStageUpload — POST /stage-upload (multipart: file, kind=image|video|file).
+// Кладёт вложение в стейджинг и возвращает его id. Сообщение при этом НЕ
+// создаётся — оно появится только при финализации (/send-staged). Так лоток на
+// клиенте показывает реальный прогресс загрузки ещё до отправки.
+func (a *App) handleStageUpload(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	writeErr := func(code int, m string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		json.NewEncoder(w).Encode(map[string]string{"error": m})
+	}
+
+	var myID int
+	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&myID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxFileSize+(1<<20))
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeErr(http.StatusBadRequest, "Файл слишком большой или форма повреждена")
+		return
+	}
+
+	kind := r.FormValue("kind")
+	if kind != "image" && kind != "video" && kind != "file" {
+		writeErr(http.StatusBadRequest, "Неизвестный тип вложения")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeErr(http.StatusBadRequest, "Файл не найден")
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxFileSize+1))
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+	if len(data) == 0 {
+		writeErr(http.StatusBadRequest, "Пустой файл")
+		return
+	}
+
+	name := header.Filename
+	var mime string
+	var duration int
+
+	switch kind {
+	case "image":
+		sniff := 512
+		if len(data) < sniff {
+			sniff = len(data)
+		}
+		mime = http.DetectContentType(data[:sniff])
+		if !allowedImageMimes[mime] {
+			writeErr(http.StatusBadRequest, "Недопустимый тип картинки. Разрешены: JPG, PNG, WEBP, GIF")
+			return
+		}
+		if name == "" {
+			name = "image"
+		}
+	case "video":
+		// Транскодируем в единый H.264+AAC MP4, как и обычная загрузка видео.
+		transcoded, probed, terr := transcodeVideo(data, false)
+		if terr != nil {
+			log.Println("Стейджинг видео, транскодирование:", terr)
+			writeErr(http.StatusBadRequest, "Не удалось обработать видеофайл")
+			return
+		}
+		data = transcoded
+		mime = outputVideoMime
+		duration = probed
+	default: // file
+		name = sanitizeFilename(name)
+		sniff := 512
+		if len(data) < sniff {
+			sniff = len(data)
+		}
+		mime = http.DetectContentType(data[:sniff])
+		if mime == "" {
+			mime = "application/octet-stream"
+		}
+	}
+
+	var stagingID int
+	err = a.db.QueryRow(`
+		INSERT INTO messenger.staging_files (user_id, kind, data, mime, name, size, duration, is_circle)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+		RETURNING id
+	`, myID, kind, data, mime, name, int64(len(data)), duration).Scan(&stagingID)
+	if err != nil {
+		log.Println("Стейджинг, вставка:", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Оппортунистическая уборка брошенного стейджинга этого пользователя.
+	a.db.Exec("DELETE FROM messenger.staging_files WHERE user_id=$1 AND created_at < (NOW() AT TIME ZONE 'UTC') - INTERVAL '6 hours'", myID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"staging_id": stagingID,
+		"kind":       kind,
+		"name":       name,
+		"mime":       mime,
+		"size":       len(data),
+		"duration":   duration,
+	})
+}
+
+// handleSendStaged — POST /send-staged (JSON). Финализирует лоток: сначала
+// создаёт текстовое сообщение (если есть), затем по очереди переносит вложения
+// из стейджинга в messages. Порядок «текст → файлы» и порядок самих файлов
+// задаётся тем, что всё создаётся здесь строго последовательно (id растут).
+func (a *App) handleSendStaged(w http.ResponseWriter, r *http.Request) {
+	login := a.getSessionLogin(r)
+	if login == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		To      string `json:"to"`
+		Text    string `json:"text"`
+		ReplyTo int    `json:"reply_to"`
+		Items   []struct {
+			StagingID int    `json:"staging_id"`
+			GroupID   string `json:"group_id"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	if req.To == "" {
+		http.Error(w, "Не указан получатель", http.StatusBadRequest)
+		return
+	}
+	req.Text = strings.TrimSpace(req.Text)
+	if req.Text == "" && len(req.Items) == 0 {
+		http.Error(w, "Нечего отправлять", http.StatusBadRequest)
+		return
+	}
+
+	var myID int
+	if err := a.db.QueryRow("SELECT id FROM messenger.users WHERE LOWER(login)=LOWER($1)", login).Scan(&myID); err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Ответ (reply) привязываем к ПЕРВОМУ созданному сообщению: к тексту, а если
+	// текста нет — к первому вложению. Дальше уже обычные сообщения.
+	replyTo := req.ReplyTo
+	nextReply := func() int {
+		rt := replyTo
+		replyTo = 0
+		return rt
+	}
+	previewFor := func(rt int) *ReplyPreview {
+		if rt > 0 {
+			if p, err := a.getMessagePreview(rt); err == nil {
+				return p
+			}
+		}
+		return nil
+	}
+
+	// 1) Текст — первым.
+	if req.Text != "" {
+		rt := nextReply()
+		if msgID, createdAt, err := a.saveMessage(login, req.To, req.Text, rt, ""); err == nil {
+			msg := Message{From: login, To: req.To, Text: req.Text, CreatedAt: createdAt, MsgID: msgID, ReplyToID: rt, ReplyPreview: previewFor(rt)}
+			a.routeMessage(msg)
+		} else {
+			log.Println("send-staged, текст:", err)
+		}
+	}
+
+	// 2) Вложения — по очереди.
+	for _, it := range req.Items {
+		var kind, mime, name string
+		var data []byte
+		var size, duration sql.NullInt64
+		var isCircle bool
+		err := a.db.QueryRow(`
+			SELECT kind, data, COALESCE(mime,''), COALESCE(name,''), size, duration, is_circle
+			FROM messenger.staging_files WHERE id=$1 AND user_id=$2
+		`, it.StagingID, myID).Scan(&kind, &data, &mime, &name, &size, &duration, &isCircle)
+		if err != nil {
+			continue // не наше / уже использовано / прибрано
+		}
+
+		rt := nextReply()
+		var msg Message
+		ok := true
+		switch kind {
+		case "image":
+			id, createdAt, e := a.saveImageMessage(login, req.To, data, mime, name, rt, it.GroupID)
+			if e != nil {
+				log.Println("send-staged, картинка:", e)
+				ok = false
+			} else {
+				msg = Message{From: login, To: req.To, CreatedAt: createdAt, MsgID: id, ImageID: id, ImageName: name, ImageMime: mime, ReplyToID: rt, MediaGroupID: it.GroupID}
+			}
+		case "video":
+			dur := 0
+			if duration.Valid {
+				dur = int(duration.Int64)
+			}
+			id, createdAt, e := a.saveVideoMessage(login, req.To, data, mime, dur, false, rt, it.GroupID)
+			if e != nil {
+				log.Println("send-staged, видео:", e)
+				ok = false
+			} else {
+				msg = Message{From: login, To: req.To, CreatedAt: createdAt, MsgID: id, VideoID: id, VideoDuration: dur, ReplyToID: rt, MediaGroupID: it.GroupID}
+			}
+		default: // file
+			sz := int64(len(data))
+			if size.Valid {
+				sz = size.Int64
+			}
+			id, createdAt, e := a.saveFileMessage(login, req.To, data, name, mime, sz, rt)
+			if e != nil {
+				log.Println("send-staged, файл:", e)
+				ok = false
+			} else {
+				msg = Message{From: login, To: req.To, CreatedAt: createdAt, MsgID: id, FileID: id, FileName: name, FileMime: mime, FileSize: sz, ReplyToID: rt}
+			}
+		}
+		if ok {
+			msg.ReplyPreview = previewFor(rt)
+			a.routeMessage(msg)
+			a.db.Exec("DELETE FROM messenger.staging_files WHERE id=$1 AND user_id=$2", it.StagingID, myID)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
 // Отвечает на вопрос «могу ли я открыть это сообщение и в каком чате».
 // Нужен плашке «Переслано от…»: она ведёт к первоисточнику, но первоисточник
 // вполне может лежать в чужой переписке (А написал Б, Б переслал В — у В

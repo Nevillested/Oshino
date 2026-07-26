@@ -4239,6 +4239,116 @@
             border-radius: 18px;
             background: rgba(74, 122, 170, 0.35);
         }
+
+        /* ── Лоток вложений над композером ────────────────────────────────── */
+        #attach-tray {
+            display: none;
+            order: -1; /* выше формы ввода, как #forward-bar */
+            margin: 0 2px 6px;
+            padding: 8px;
+            background: var(--color-fwd-bg);
+            border-radius: 10px;
+        }
+        #input-area.has-attachments #attach-tray { display: block; }
+        #attach-tray-list {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 2px;
+        }
+        .attach-tile {
+            position: relative;
+            flex-shrink: 0;
+            width: 64px;
+            height: 64px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #2b2f45;
+        }
+        .attach-tile img,
+        .attach-tile video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .attach-tile .attach-file-ic {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            padding: 4px;
+            color: #cbd2ff;
+            background: #3a3f5c;
+        }
+        .attach-tile .attach-file-ext {
+            font-size: 9px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .attach-tile .attach-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.45);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .attach-tile.done .attach-overlay { display: none; }
+        .attach-tile.error .attach-overlay {
+            background: rgba(180, 40, 40, 0.72);
+            font-size: 11px;
+            text-align: center;
+            padding: 2px;
+        }
+        .attach-tile .attach-check {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.22);
+        }
+        .attach-tile.done .attach-check { display: flex; }
+        .attach-tile .attach-check svg { width: 30px; height: 30px; }
+        .attach-tile .attach-check svg path {
+            stroke-dasharray: 30;
+            stroke-dashoffset: 30;
+            animation: attach-check-draw 0.35s ease forwards;
+        }
+        @keyframes attach-check-draw { to { stroke-dashoffset: 0; } }
+        .attach-tile-remove {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            z-index: 2;
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 13px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* При наличии вложений в лотке отправлять есть что и с пустым полем */
+        #input-area.has-attachments #mic-btn { display: none; }
+        #input-area.has-attachments #send-btn { display: flex; }
     </style>
 </head>
 <body>
@@ -4704,6 +4814,11 @@
                 </div>
             </div>
             <div id="composer-hint"></div>
+            <!-- Лоток вложений: прикреплённые файлы висят над композером,
+                 грузятся в стейджинг с прогрессом, уходят в чат по «Отправить» -->
+            <div id="attach-tray">
+                <div id="attach-tray-list"></div>
+            </div>
             <!-- Панель отложенной пересылки: висит над композером до отправки -->
             <div id="forward-bar">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -6913,6 +7028,14 @@
         function sendMessage() {
             if (!currentUser) return;
             if (sendingForbidden(currentUser)) { showToast(blockReasonText(currentUser)); return; }
+
+            // Есть прикреплённые файлы — это отправка лотка: сначала текст, потом
+            // файлы. Режим правки сообщения сюда не попадает (там лотка нет).
+            if (attachTray.length > 0 && !editingMsg) {
+                flushAttachTray();
+                return;
+            }
+
             const text = inputField.value.trim();
 
             // Отложенная пересылка. Если поле пустое — уходят только пересылки;
@@ -8126,30 +8249,268 @@
         // Первый шаг переработки: файлы уходят сразу, строго по очереди слева
         // направо (общий прогресс-бар — один на файл). Лоток превью с процентами
         // и галочкой, подпись к пачке и группировка альбомов — следующий шаг.
-        async function handleSelectedFiles(fileList) {
+        // Выбранные скрепкой или брошенные в чат файлы попадают в ЛОТОК над
+        // композером, а не уходят сразу. В лотке они грузятся в стейджинг с
+        // прогрессом и галочкой; в чат уходят только по «Отправить» — тогда же
+        // соблюдается порядок «сначала текст, потом файлы».
+        function handleSelectedFiles(fileList) {
             if (!currentUser) { alert('Выберите чат'); return; }
             const files = Array.from(fileList || []);
-            if (!files.length) return;
+            if (files.length) addToTray(files);
+        }
 
-            // Лимиты на размер и количество временно сняты (доведём до ума позже).
-            const okImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        // ── Лоток вложений ───────────────────────────────────────────────────
+        const attachTray = [];            // {uid,file,kind,name,previewUrl,stagingId,progress,done,error,xhr,el,uploadPromise}
+        const trayEl = document.getElementById('attach-tray');
+        const trayListEl = document.getElementById('attach-tray-list');
+        let trayUploading = false;        // грузим строго по очереди — один файл за раз
+        let traySending = false;          // защита от двойной финализации
 
+        const OK_IMG_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        const fileIconSVG = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+        const checkSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>`;
+
+        function kindOf(file) {
+            if (file.type.startsWith('image/') && OK_IMG_TYPES.includes(file.type)) return 'image';
+            if (file.type.startsWith('video/')) return 'video';
+            return 'file';
+        }
+
+        function updateTrayVisibility() {
+            const has = attachTray.length > 0;
+            inputArea.classList.toggle('has-attachments', has);
+            trayEl.style.display = has ? 'block' : 'none';
+        }
+
+        function addToTray(files) {
             for (const file of files) {
                 if (!file || file.size === 0) continue;
-                await new Promise((resolve) => {
-                    // Настоящее фото (JPG/PNG/WEBP/GIF) — как превью-фото; видео —
-                    // как видео; всё остальное (в т.ч. экзотические картинки вроде
-                    // HEIC/SVG) — обычным файлом. Ограничение по формату здесь —
-                    // не лимит, а маршрутизация: /upload-image принимает только
-                    // эти четыре типа.
-                    if (file.type.startsWith('image/') && okImageTypes.includes(file.type)) {
-                        uploadImage(file, resolve);
-                    } else if (file.type.startsWith('video/')) {
-                        uploadVideo(file, 0, false, resolve);
-                    } else {
-                        uploadFile(file, resolve);
+                const kind = kindOf(file);
+                const item = {
+                    uid: 'a' + Date.now() + Math.random().toString(36).slice(2, 7),
+                    file, kind,
+                    name: file.name || (kind === 'image' ? 'image' : 'file'),
+                    previewUrl: (kind === 'image' || kind === 'video') ? URL.createObjectURL(file) : null,
+                    stagingId: null, progress: 0, done: false, error: false, xhr: null, uploadPromise: null
+                };
+                item.el = buildTile(item);
+                trayListEl.appendChild(item.el);
+                attachTray.push(item);
+            }
+            updateTrayVisibility();
+            startTrayUploads();
+        }
+
+        function buildTile(item) {
+            const tile = document.createElement('div');
+            tile.className = 'attach-tile';
+
+            if (item.kind === 'image') {
+                const img = document.createElement('img');
+                img.src = item.previewUrl;
+                tile.appendChild(img);
+            } else if (item.kind === 'video') {
+                const vid = document.createElement('video');
+                vid.src = item.previewUrl;
+                vid.muted = true;
+                vid.playsInline = true;
+                tile.appendChild(vid);
+            } else {
+                const ic = document.createElement('div');
+                ic.className = 'attach-file-ic';
+                const ext = (item.name.split('.').pop() || '').slice(0, 6).toUpperCase();
+                ic.innerHTML = fileIconSVG + '<span class="attach-file-ext">' + (ext || 'ФАЙЛ') + '</span>';
+                tile.appendChild(ic);
+            }
+
+            const overlay = document.createElement('div');
+            overlay.className = 'attach-overlay';
+            overlay.textContent = '0%';
+            tile.appendChild(overlay);
+
+            const check = document.createElement('div');
+            check.className = 'attach-check';
+            check.innerHTML = checkSVG;
+            tile.appendChild(check);
+
+            const rm = document.createElement('button');
+            rm.className = 'attach-tile-remove';
+            rm.type = 'button';
+            rm.textContent = '×';
+            rm.addEventListener('click', () => removeTrayItem(item));
+            tile.appendChild(rm);
+
+            return tile;
+        }
+
+        function setTileProgress(item, pct) {
+            const o = item.el && item.el.querySelector('.attach-overlay');
+            if (o) o.textContent = pct + '%';
+        }
+        function setTileDone(item) {
+            if (item.el) item.el.classList.add('done');
+        }
+        function setTileError(item, msg) {
+            if (!item.el) return;
+            item.el.classList.add('error');
+            const o = item.el.querySelector('.attach-overlay');
+            if (o) o.textContent = msg || 'ошибка';
+        }
+
+        function removeTrayItem(item) {
+            if (item.xhr) { try { item.xhr.abort(); } catch (e) {} }
+            if (item.previewUrl) { try { URL.revokeObjectURL(item.previewUrl); } catch (e) {} }
+            const i = attachTray.indexOf(item);
+            if (i !== -1) attachTray.splice(i, 1);
+            if (item.el && item.el.parentNode) item.el.parentNode.removeChild(item.el);
+            updateTrayVisibility();
+            if (!trayUploading) startTrayUploads();
+        }
+
+        function clearAttachTray() {
+            for (const item of attachTray) {
+                if (item.xhr) { try { item.xhr.abort(); } catch (e) {} }
+                if (item.previewUrl) { try { URL.revokeObjectURL(item.previewUrl); } catch (e) {} }
+            }
+            attachTray.length = 0;
+            trayListEl.innerHTML = '';
+            trayUploading = false;
+            updateTrayVisibility();
+        }
+
+        // Заливаем в стейджинг строго по очереди, слева направо.
+        function startTrayUploads() {
+            if (trayUploading) return;
+            const next = attachTray.find(it => !it.done && !it.error && !it.stagingId && !it.uploadPromise);
+            if (!next) return;
+            trayUploading = true;
+            next.uploadPromise = stageUpload(next).finally(() => {
+                trayUploading = false;
+                startTrayUploads();
+            });
+        }
+
+        function stageUpload(item) {
+            return new Promise((resolve) => {
+                const fd = new FormData();
+                fd.append('file', item.file, item.name);
+                fd.append('kind', item.kind);
+
+                const xhr = new XMLHttpRequest();
+                item.xhr = xhr;
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        item.progress = Math.round((e.loaded / e.total) * 100);
+                        // Пока льются байты — реальный процент. У видео дальше ещё
+                        // транскодирование на сервере, поэтому на залитых 100%
+                        // держим 99% до ответа, чтобы галочка не появлялась раньше.
+                        setTileProgress(item, Math.min(item.progress, item.kind === 'video' ? 99 : 100));
                     }
                 });
+                xhr.addEventListener('load', () => {
+                    item.xhr = null;
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        let resp = {};
+                        try { resp = JSON.parse(xhr.responseText); } catch (e) {}
+                        item.stagingId = resp.staging_id || null;
+                        if (item.stagingId) {
+                            item.done = true;
+                            setTileProgress(item, 100);
+                            setTileDone(item);
+                        } else {
+                            item.error = true;
+                            setTileError(item, 'ошибка');
+                        }
+                    } else {
+                        let m = 'ошибка';
+                        try { m = JSON.parse(xhr.responseText).error || m; } catch (e) {}
+                        item.error = true;
+                        setTileError(item, m);
+                    }
+                    resolve();
+                });
+                xhr.addEventListener('error', () => {
+                    item.xhr = null; item.error = true; setTileError(item, 'нет сети'); resolve();
+                });
+                xhr.addEventListener('abort', () => { item.xhr = null; resolve(); });
+
+                xhr.open('POST', '/stage-upload');
+                xhr.send(fd);
+            });
+        }
+
+        // Разбивка на элементы для /send-staged: медиа (фото/видео) подряд —
+        // в альбомы по 10 (общий group_id), файлы — отдельными сообщениями.
+        function buildStagedItems(staged) {
+            const out = [];
+            let groupId = null, groupCount = 0;
+            for (const it of staged) {
+                if (it.kind === 'image' || it.kind === 'video') {
+                    if (!groupId || groupCount >= 10) {
+                        groupId = (crypto.randomUUID ? crypto.randomUUID()
+                            : 'g' + Date.now() + Math.random().toString(36).slice(2));
+                        groupCount = 0;
+                    }
+                    out.push({ staging_id: it.stagingId, group_id: groupId });
+                    groupCount++;
+                } else {
+                    groupId = null; groupCount = 0; // файл разрывает альбом
+                    out.push({ staging_id: it.stagingId, group_id: '' });
+                }
+            }
+            return out;
+        }
+
+        // Финализация лотка: ждём завершения всех заливок, затем один запрос
+        // /send-staged (сервер создаёт сначала текст, потом файлы по порядку).
+        async function flushAttachTray() {
+            if (traySending) return;
+            traySending = true;
+            try {
+                await flushAttachTrayInner();
+            } finally {
+                traySending = false;
+            }
+        }
+
+        async function flushAttachTrayInner() {
+            const target = currentUser;
+            const text = inputField.value.trim();
+            const replyToId = replyingTo ? replyingTo.id : 0;
+
+            // Ждём завершения уже идущих заливок и догоняем ещё не начатые.
+            await Promise.all(attachTray.map(it => it.uploadPromise).filter(Boolean));
+            while (attachTray.some(it => !it.done && !it.error)) {
+                startTrayUploads();
+                await Promise.all(attachTray.map(it => it.uploadPromise).filter(Boolean));
+            }
+
+            const staged = attachTray.filter(it => it.stagingId);
+            if (!staged.length && !text) {
+                if (attachTray.some(it => it.error)) alert('Не удалось загрузить вложения');
+                return;
+            }
+
+            const items = buildStagedItems(staged);
+            const body = { to: target, text, reply_to: replyToId, items };
+
+            // Оптимистично чистим панель — сами сообщения приедут по WebSocket.
+            clearAttachTray();
+            inputField.value = '';
+            inputField.dispatchEvent(new Event('input', { bubbles: true }));
+            delete drafts[target];
+            if (replyToId) cancelReply();
+
+            try {
+                const res = await fetch('/send-staged', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) alert('Не удалось отправить вложения');
+            } catch (e) {
+                alert('Нет соединения');
             }
         }
 

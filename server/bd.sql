@@ -425,3 +425,41 @@ ALTER TABLE messenger.messages ADD COLUMN IF NOT EXISTS media_group_id text;
 CREATE INDEX IF NOT EXISTS idx_messages_media_group
     ON messenger.messages USING btree (media_group_id)
     WHERE media_group_id IS NOT NULL;
+
+-- ── Стейджинг вложений (лоток перед отправкой) ──────────────────────────────
+-- Файлы, прикреплённые к панели ввода, но ещё не отправленные. Заливаются сюда
+-- сразу при прикреплении (с прогрессом на клиенте), а в messages превращаются
+-- только по нажатию «Отправить» — тогда же соблюдается порядок «сначала текст,
+-- потом файлы». Так загрузка идёт заранее, но сообщение в чате не появляется,
+-- пока пользователь не отправил.
+--
+-- Строки живут недолго: удаляются при финализации (перенос в messages) и
+-- периодической уборкой брошенного (вкладку закрыли, не отправив) — см.
+-- ensureStagingTable + фоновая горутина в main.go. Поэтому таблица маленькая,
+-- несмотря на bytea.
+--
+-- kind: 'image' | 'video' | 'file'. duration — для video (секунды, посчитан
+-- ffprobe при заливке). Таблицу сервер создаёт идемпотентно при старте
+-- (ensureStagingTable), поэтому вручную применять блок не обязательно.
+CREATE TABLE IF NOT EXISTS messenger.staging_files
+(
+    id serial NOT NULL,
+    user_id integer NOT NULL,
+    kind character varying(10) NOT NULL,
+    data bytea NOT NULL,
+    mime character varying(255),
+    name character varying(255),
+    size bigint,
+    duration integer,
+    is_circle boolean NOT NULL DEFAULT false,
+    created_at timestamp without time zone DEFAULT (NOW() AT TIME ZONE 'UTC'),
+    CONSTRAINT staging_files_pkey PRIMARY KEY (id),
+    CONSTRAINT staging_files_user_id_fkey FOREIGN KEY (user_id)
+        REFERENCES messenger.users (id) ON DELETE CASCADE
+)
+TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_staging_files_user
+    ON messenger.staging_files USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_staging_files_created
+    ON messenger.staging_files USING btree (created_at);
