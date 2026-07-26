@@ -4404,6 +4404,38 @@
             justify-content: center;
             pointer-events: none;
         }
+        /* Выбор отдельных превью в режиме выделения */
+        .album-cell-check {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            z-index: 3;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .album-cell.cell-selected .album-cell-check { display: flex; }
+        .album-cell.cell-selected { outline: 2px solid #4a90e2; outline-offset: -2px; }
+        .album-cell.cell-selected img,
+        .album-cell.cell-selected video { opacity: 0.72; }
+        /* Реакции на конкретной миниатюре */
+        .album-cell-reactions {
+            position: absolute;
+            left: 3px;
+            bottom: 3px;
+            z-index: 2;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            transform: scale(0.85);
+            transform-origin: bottom left;
+        }
 
         /* ── Просмотрщик альбома ────────────────────────────────────────────── */
         #album-viewer {
@@ -6746,6 +6778,7 @@
         }
 
         const albumPlaySVG = `<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M8 5v14l11-7z"></path></svg>`;
+        const albumCheckSVG = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>`;
 
         // Компактный ряд превью для медиагруппы (альбома). Каждая ячейка ведёт в
         // просмотрщик с листанием. Контекстное меню — по конкретному сообщению
@@ -6759,12 +6792,28 @@
                 wrap.classList.add('animate__animated', 'animate__fadeInDown');
             }
             if (run[0].id > 0) wrap.dataset.msgId = run[0].id;
+            wrap.__albumIds = run.map(m => m.id);
+
+            // Плашка «Переслано от…», если группа переслана (по первому элементу).
+            if (run[0].forwarded_from) {
+                const fwd = document.createElement('div');
+                fwd.className = 'msg-forward-label';
+                fwd.appendChild(document.createTextNode('↗ Переслано от '));
+                const fwdFrom = document.createElement('span');
+                fwdFrom.className = 'msg-forward-from';
+                fwdFrom.textContent = run[0].forwarded_from;
+                fwdFrom.dataset.login = run[0].forwarded_from;
+                if (run[0].forwarded_from_id) fwdFrom.dataset.msgId = run[0].forwarded_from_id;
+                fwd.appendChild(fwdFrom);
+                wrap.appendChild(fwd);
+            }
 
             const row = document.createElement('div');
             row.className = 'album-row';
             run.forEach(m => {
                 const cell = document.createElement('div');
                 cell.className = 'album-cell';
+                if (m.id > 0) cell.dataset.msgId = m.id;
                 const isVideo = !(m.image_id || m.local_preview);
                 if (isVideo) {
                     const v = document.createElement('video');
@@ -6783,7 +6832,28 @@
                     img.loading = 'lazy';
                     cell.appendChild(img);
                 }
-                cell.addEventListener('click', () => openMediaViewer(run, m));
+                // Галочка выбора (видна в режиме выделения на выбранной ячейке).
+                const chk = document.createElement('div');
+                chk.className = 'album-cell-check';
+                chk.innerHTML = albumCheckSVG;
+                cell.appendChild(chk);
+                if (selectionMode && selectedIds.has(m.id)) cell.classList.add('cell-selected');
+
+                // Реакции на конкретной миниатюре.
+                if (m.reactions && m.reactions.length) {
+                    const rc = buildReactionBadges(m.reactions, m.id);
+                    rc.classList.add('album-cell-reactions');
+                    cell.appendChild(rc);
+                }
+
+                cell.addEventListener('click', (e) => {
+                    if (selectionMode) {
+                        e.stopPropagation();
+                        toggleSelected(m.id);
+                    } else {
+                        openMediaViewer(run, m);
+                    }
+                });
                 row.appendChild(cell);
             });
             wrap.appendChild(row);
@@ -6791,7 +6861,10 @@
             // Контекстное меню — на всю обёртку альбома (по первому элементу
             // группы). ПКМ прямо по превью отдаётся браузеру (сохранить), это
             // разруливается в делегированном обработчике contextmenu ниже.
-            if (run[0].id > 0) attachContextMenuHandlers(wrap, run[0]);
+            if (run[0].id > 0) {
+                attachContextMenuHandlers(wrap, run[0]);
+                wrap.__msg.albumIds = run.map(m => m.id);
+            }
 
             // Время и галочки прочтения — по последнему сообщению группы.
             const last = run[run.length - 1];
@@ -6808,6 +6881,10 @@
                     timeDiv.appendChild(ticks);
                 }
                 wrap.appendChild(timeDiv);
+            }
+
+            if (selectionMode && run.some(m => selectedIds.has(m.id))) {
+                wrap.classList.add('selected');
             }
 
             messagesDiv.appendChild(wrap);
@@ -10436,6 +10513,8 @@
             applyTextSelectable();
             document.querySelectorAll('.message-wrap.selected')
                     .forEach(el => el.classList.remove('selected'));
+            document.querySelectorAll('.album-cell.cell-selected')
+                    .forEach(el => el.classList.remove('cell-selected'));
         }
 
         function toggleSelected(id) {
@@ -10464,8 +10543,18 @@
         function updateSelectionUI() {
             selectCountEl.textContent = 'Выбрано: ' + selectedIds.size;
             document.querySelectorAll('.message-wrap').forEach(el => {
-                const id = parseInt(el.dataset.msgId, 10);
-                el.classList.toggle('selected', selectedIds.has(id));
+                if (el.__albumIds) {
+                    // Альбом: рамка если выбран хоть один элемент, галочки — по
+                    // конкретным выбранным ячейкам.
+                    el.classList.toggle('selected', el.__albumIds.some(id => selectedIds.has(id)));
+                    el.querySelectorAll('.album-cell').forEach(cell => {
+                        const cid = parseInt(cell.dataset.msgId, 10);
+                        cell.classList.toggle('cell-selected', selectedIds.has(cid));
+                    });
+                } else {
+                    const id = parseInt(el.dataset.msgId, 10);
+                    el.classList.toggle('selected', selectedIds.has(id));
+                }
             });
             applyTextSelectable();
         }
@@ -10840,6 +10929,10 @@
         document.getElementById('selbar-forward').addEventListener('click', () => {
             if (!selectedIds.size) return;
             pendingForwardIds = Array.from(selectedIds).sort((a, b) => a - b);
+            const _fstate = historyState[currentUser];
+            const _byId = {};
+            if (_fstate) _fstate.messages.forEach(m => { _byId[m.id] = m; });
+            pendingForwardGroups = computeForwardGroups(pendingForwardIds, _byId);
             openForwardModal();
         });
 
@@ -11469,6 +11562,37 @@
         // Пересылка нескольких сообщений: если задан pendingForwardIds — шлём их
         // по очереди (сервер принимает по одному), сохраняя исходный порядок.
         let pendingForwardIds = null;
+        let pendingForwardGroups = null;   // map id→groupId для медиа при пересылке
+
+        function forwardRandomId() {
+            return (crypto.randomUUID ? crypto.randomUUID()
+                : 'g' + Date.now() + Math.random().toString(36).slice(2));
+        }
+
+        // Пересылаемые фото/видео подряд сбиваются в альбомы по 10 (общий
+        // group_id); файлы/аудио/текст группу разрывают. Одиночные медиа группу
+        // не получают (одному незачем).
+        function computeForwardGroups(ids, byId) {
+            const groups = {};
+            let gid = null, count = 0;
+            for (const id of ids) {
+                const m = byId[id];
+                const isMedia = m && (m.image_id || m.video_id) && !m.video_is_circle;
+                if (isMedia) {
+                    if (!gid || count >= 10) { gid = forwardRandomId(); count = 0; }
+                    groups[id] = gid;
+                    count++;
+                } else {
+                    gid = null; count = 0;
+                }
+            }
+            const counts = {};
+            Object.values(groups).forEach(g => { counts[g] = (counts[g] || 0) + 1; });
+            for (const id of Object.keys(groups)) {
+                if (counts[groups[id]] < 2) delete groups[id];
+            }
+            return groups;
+        }
 
         // Отложенная пересылка: на каждый чат — своя «корзина» сообщений,
         // ждущих отправки. Переключение между чатами её не теряет.
@@ -11533,6 +11657,8 @@
                 const fd = new FormData();
                 fd.append('message_id', String(id));
                 fd.append('to', user);
+                const g = pf.groups && pf.groups[id];
+                if (g) fd.append('group_id', g);
                 try {
                     const res = await fetch('/forward', { method: 'POST', body: fd });
                     if (!res.ok) { showToast('Не удалось переслать сообщение'); break; }
@@ -11582,8 +11708,9 @@
                         // «корзину» целевого чата и открываем его. Отправка —
                         // по кнопке, вместе с сопроводительным сообщением, если
                         // человек его напишет.
-                        pendingForwards[u] = { ids: ids.slice(), from: forwardAuthorLabel(ids) };
+                        pendingForwards[u] = { ids: ids.slice(), groups: (pendingForwardGroups || {}), from: forwardAuthorLabel(ids) };
                         pendingForwardIds = null;
+                        pendingForwardGroups = null;
                         if (selectionMode) exitSelection();
                         openChatWith(u);
                     });
@@ -11600,11 +11727,13 @@
         forwardModalClose.addEventListener('click', () => {
             forwardModalOverlay.classList.remove('open');
             pendingForwardIds = null;
+            pendingForwardGroups = null;
         });
         forwardModalOverlay.addEventListener('click', (e) => {
             if (e.target === forwardModalOverlay) {
                 forwardModalOverlay.classList.remove('open');
                 pendingForwardIds = null;
+                pendingForwardGroups = null;
             }
         });
 
@@ -11928,9 +12057,15 @@
         // ── Выбрать сообщения (множественный выбор) ─────────────────────────
         ctxItem(ctxSelect, () => {
             if (!ctxTargetMsg) return;
-            const id = ctxTargetMsg.id;
+            const ids = (ctxTargetMsg.albumIds && ctxTargetMsg.albumIds.length)
+                        ? ctxTargetMsg.albumIds : [ctxTargetMsg.id];
             closeCtxMenu();
-            enterSelection(id);
+            enterSelection(ids[0]);
+            for (let k = 1; k < ids.length; k++) {
+                if (selectedIds.size >= MAX_SELECTED) break;
+                selectedIds.add(ids[k]);
+            }
+            updateSelectionUI();
         });
 
         // ── Удалить сообщение ───────────────────────────────────────────────

@@ -1477,7 +1477,7 @@ func (a *App) saveAudioMessage(from, to string, audioData []byte, mime string, d
 // пересылаемое сообщение уже само было переслано откуда-то, источник не
 // переписывается на текущего форвардера, цепочка всегда указывает на
 // первоисточник, как и положено.
-func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (Message, error) {
+func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int, mediaGroupID string) (Message, error) {
 	var msg Message
 
 	var senderLogin, content string
@@ -1543,6 +1543,14 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 		originMsgIDArg = &originMsgID
 	}
 
+	// Медиагруппа применяется только к пересылаемым фото/видео (не кружкам):
+	// у файлов/аудио/текста альбомов нет.
+	isMediaFwd := imageData != nil || (videoData != nil && !videoIsCircle.Bool)
+	var groupArg *string
+	if mediaGroupID != "" && isMediaFwd {
+		groupArg = &mediaGroupID
+	}
+
 	var msgID int
 	var createdAt time.Time
 	err = a.db.QueryRow(`
@@ -1551,14 +1559,14 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 			 audio_data, audio_mime, audio_duration,
 			 video_data, video_mime, video_duration, video_is_circle,
 			 file_data, file_name, file_mime, file_size,
-			 forwarded_from, forwarded_from_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+			 forwarded_from, forwarded_from_id, media_group_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
 	`, convID, forwarderID, content, imageData, imageMime, imageFilename,
 		audioData, audioMime, audioDuration,
 		videoData, videoMime, videoDuration, videoIsCircle,
 		fileData, fileName, fileMime, fileSize,
-		originLogin, originMsgIDArg).Scan(&msgID, &createdAt)
+		originLogin, originMsgIDArg, groupArg).Scan(&msgID, &createdAt)
 	if err != nil {
 		return msg, err
 	}
@@ -1591,6 +1599,9 @@ func (a *App) saveForwardedMessage(forwarder, toLogin string, sourceMsgID int) (
 		msg.VideoID = msgID
 		msg.VideoDuration = int(videoDuration.Int64)
 		msg.VideoIsCircle = videoIsCircle.Bool
+	}
+	if groupArg != nil {
+		msg.MediaGroupID = mediaGroupID
 	}
 
 	return msg, nil
@@ -4145,7 +4156,8 @@ func (a *App) handleForward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := a.saveForwardedMessage(login, to, messageID)
+	groupID := r.FormValue("group_id")
+	msg, err := a.saveForwardedMessage(login, to, messageID, groupID)
 	if err != nil {
 		log.Println("Ошибка пересылки:", err)
 		w.Header().Set("Content-Type", "application/json")
