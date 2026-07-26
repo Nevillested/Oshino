@@ -1269,6 +1269,12 @@
         #ctx-reactions-more.show { display: flex; align-items: center; justify-content: center; }
         #ctx-reactions-wrap.expanded #ctx-reactions-more { transform: rotate(180deg); }
 
+        /* Раскрыт полный список эмодзи — значит пользователь ищет реакцию, а не
+           действие. Прячем остальные пункты меню (Ответить/Копировать/…), чтобы
+           не отвлекали. Свернёт список — пункты вернутся (их видимость иначе
+           задаётся инлайном по типу сообщения, поэтому !important). */
+        #ctx-reactions-wrap.expanded ~ .ctx-item { display: none !important; }
+
         .ctx-reaction-btn {
             display: flex;
             align-items: center;
@@ -5560,7 +5566,13 @@
                     onReactionUpdate(JSON.parse(message.substring(9)));
                 } else if (message.startsWith('read:')) {
                     const data = JSON.parse(message.substring(5));
-                    applyReadReceipt(data.by, data.with);
+                    if ((data.by || '').toLowerCase() === (currentLogin || '').toLowerCase()) {
+                        // Это я прочитал переписку — возможно, на другом устройстве.
+                        // Снимаем непрочитанное по этому чату и здесь.
+                        onSelfRead(data.with);
+                    } else {
+                        applyReadReceipt(data.by, data.with);
+                    }
                 } else if (message.startsWith('typing:')) {
                     const data = JSON.parse(message.substring(7));
                     if (data.from) setTypingIndicator(data.from);
@@ -6508,6 +6520,12 @@
                 loadMoreIndicator.style.display = 'none';
                 // Первая загрузка
                 await loadHistory(user, 0, 20);
+                // Компактный контент (ряды-альбомы) может не заполнить экран —
+                // тогда подгрузка старых по скроллу не сработает (прокручивать
+                // нечего). Догружаем, пока лента не заполнит вьюпорт или история
+                // не кончится, и держим низ (последние сообщения).
+                await fillViewport(user);
+                if (currentUser === user) messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
 
             // Отложенный переход к конкретному сообщению (плашка «Переслано
@@ -6518,6 +6536,22 @@
                 const target = pendingScrollMsgId;
                 pendingScrollMsgId = null;
                 if (currentUser === user) scrollToMessage(target);
+            }
+        }
+
+        // Догружает старые сообщения, пока лента не заполнит вьюпорт или история
+        // не кончится. Нужна для компактного контента (ряды-альбомы), который не
+        // создаёт прокрутки — иначе подгрузка по скроллу не запускается вовсе.
+        async function fillViewport(user) {
+            let guard = 0;
+            while (currentUser === user && guard < 8) {
+                const state = historyState[user];
+                if (!state || state.allLoaded || state.loading) break;
+                if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 60) break;
+                const before = messagesDiv.scrollHeight;
+                await loadHistory(user, state.oldestId, 20);
+                if (messagesDiv.scrollHeight <= before) break; // ничего не добавилось
+                guard++;
             }
         }
 
@@ -7578,6 +7612,22 @@
                 el.classList.add('read');
                 el.innerHTML = ticksSVG(true);
             });
+        }
+
+        // Я прочитал переписку с withUser (в т.ч. на другом устройстве) — снимаем
+        // непрочитанное по этому чату и здесь, не дожидаясь ручных действий.
+        function onSelfRead(withUser) {
+            if (!withUser) return;
+            const lw = withUser.toLowerCase();
+            Object.keys(unreadCount).forEach(k => {
+                if (k.toLowerCase() === lw) unreadCount[k] = 0;
+            });
+            Object.keys(historyState).forEach(k => {
+                if (k.toLowerCase() !== lw) return;
+                const st = historyState[k];
+                if (st && st.messages) st.messages.forEach(m => { if (!m.own) m.is_read = true; });
+            });
+            renderDialogList();
         }
 
         function applyMessageAck(msg) {
@@ -10541,6 +10591,14 @@
             updateSelectionUI();
         }
 
+        // Разворачивает id в полную медиагруппу, если он относится к альбому
+        // (обёртка альбома хранит все id группы в __albumIds). Иначе — сам id.
+        function albumIdsFor(id) {
+            const wrap = messagesDiv.querySelector('.message-wrap[data-msg-id="' + id + '"]');
+            if (wrap && wrap.__albumIds && wrap.__albumIds.length) return wrap.__albumIds;
+            return [id];
+        }
+
         let limitToastShown = 0;
         function showToastLimit() {
             const now = Date.now();
@@ -10880,9 +10938,11 @@
 
                 let overflow = false;
                 dragIds.forEach(id => {
-                    if (selectedIds.has(id)) return;
-                    if (selectedIds.size >= MAX_SELECTED) { overflow = true; return; }
-                    selectedIds.add(id);
+                    albumIdsFor(id).forEach(aid => {
+                        if (selectedIds.has(aid)) return;
+                        if (selectedIds.size >= MAX_SELECTED) { overflow = true; return; }
+                        selectedIds.add(aid);
+                    });
                 });
                 updateSelectionUI();
                 if (overflow) showToastLimit();
@@ -10921,7 +10981,9 @@
                     const sel = window.getSelection();
                     if (sel && sel.removeAllRanges) sel.removeAllRanges();
                     enterSelection(null);
-                    selectedIds.add(fromWrap.__msg.id);
+                    albumIdsFor(fromWrap.__msg.id).forEach(aid => {
+                        if (selectedIds.size < MAX_SELECTED) selectedIds.add(aid);
+                    });
                     updateSelectionUI();
                 }, 0);
             });
@@ -11454,7 +11516,8 @@
             };
 
             const el = (currentUser === found.peer)
-                ? messagesDiv.querySelector(`[data-msg-id="${data.message_id}"]`)
+                ? (messagesDiv.querySelector(`.album-cell[data-msg-id="${data.message_id}"]`)
+                   || messagesDiv.querySelector(`[data-msg-id="${data.message_id}"]`))
                 : null;
 
             if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {

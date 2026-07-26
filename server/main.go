@@ -3899,6 +3899,12 @@ func (a *App) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 	for c := range a.clients[strings.ToLower(withUser)] {
 		c.trySend(notifPayload)
 	}
+	// И другим устройствам самого читателя — чтобы там тоже снялось
+	// непрочитанное по этому чату (счётчик не должен висеть после прочтения
+	// на другом устройстве).
+	for c := range a.clients[strings.ToLower(login)] {
+		c.trySend(notifPayload)
+	}
 	a.mu.Unlock()
 
 	w.WriteHeader(http.StatusOK)
