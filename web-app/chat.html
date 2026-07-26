@@ -4369,6 +4369,12 @@
         #input-area.has-attachments #mic-btn { display: none; }
         #input-area.has-attachments #send-btn { display: flex; }
 
+        /* Заблокированная кнопка шторки (взаимоблокировка типов вложений) */
+        .attach-opt.disabled {
+            opacity: 0.32;
+            pointer-events: none;
+        }
+
         /* ── Альбом (медиагруппа) в чате: компактный ряд превью ─────────────── */
         .album-row {
             display: flex;
@@ -4629,30 +4635,42 @@
         <div id="attach-handle"><span></span></div>
         <div id="attach-title">Вложение</div>
         <div id="attach-options">
-            <button class="attach-opt" id="attach-camera" type="button">
-                <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <button class="attach-opt" id="attach-gallery" type="button">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <path d="M21 15l-5-5L5 21"></path>
+                </svg>
+                Галерея
+            </button>
+            <button class="attach-opt" id="attach-quickpic" type="button">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                     <circle cx="12" cy="13" r="4"></circle>
                 </svg>
                 Камера
             </button>
-            <button class="attach-opt" id="attach-gallery" type="button">
-                <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                    <path d="M21 15l-5-5L5 21"></path>
-                </svg>
-                Фото или видео
-            </button>
             <button class="attach-opt" id="attach-file" type="button">
-                <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
                 </svg>
                 Файл
+            </button>
+            <button class="attach-opt" id="attach-location" type="button">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                    <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                Гео
             </button>
         </div>
         <div id="attach-note">Смахните шторку вниз, чтобы закрыть</div>
     </div>
+
+    <!-- Скрытые инпуты мобильной шторки: системные пикеры телефона -->
+    <input type="file" id="msheet-gallery-input" accept="image/*,video/*" multiple hidden>
+    <input type="file" id="msheet-file-input" multiple hidden>
 
     <!-- Desktop app layout wrapper (на мобайле игнорируется через CSS) -->
     <div id="app-layout">
@@ -5967,9 +5985,12 @@
             let wasOpenAtStart = false;
 
             function shouldIgnoreStart() {
-                // Поверх показан просмотр картинки, или идёт запись голосового —
-                // свайп в этих состояниях ничего не должен делать.
+                // Поверх показан просмотр картинки/альбома, или идёт запись
+                // голосового — свайп «назад к чатам» в этих состояниях не работает.
+                // В просмотрщике альбома свайпы влево/вправо листают медиа.
+                const av = document.getElementById('album-viewer');
                 return imageModalOverlay.classList.contains('open')
+                    || (av && av.classList.contains('open'))
                     || inputArea.classList.contains('recording')
                     // Идёт выбор фрагмента: палец ходит по тексту, и движение
                     // слева направо — это протяжка ползунка, а не жест «назад».
@@ -7004,6 +7025,25 @@
                 else if (e.key === 'ArrowLeft') albumViewerGo(-1);
                 else if (e.key === 'ArrowRight') albumViewerGo(1);
             });
+
+            // Свайп-листание на сенсорных: влево — следующее, вправо — предыдущее.
+            // Свайп «назад к чатам» при открытом просмотрщике заблокирован
+            // (см. shouldIgnoreStart) — здесь горизонтальный свайп только листает.
+            let vsx = 0, vsy = 0, vTrack = false;
+            albumViewerEl.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) { vTrack = false; return; }
+                vsx = e.touches[0].clientX; vsy = e.touches[0].clientY; vTrack = true;
+            }, { passive: true });
+            albumViewerEl.addEventListener('touchend', (e) => {
+                if (!vTrack) return;
+                vTrack = false;
+                const t = e.changedTouches[0];
+                if (!t) return;
+                const dx = t.clientX - vsx, dy = t.clientY - vsy;
+                if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+                    albumViewerGo(dx < 0 ? 1 : -1);
+                }
+            }, { passive: true });
         }
 
         function renderMessages(msgs) {
@@ -8160,7 +8200,7 @@
                 if (!blob) return;
                 const file = new File([blob], 'photo_' + Date.now() + '.jpg', { type: 'image/jpeg' });
                 closeCamera();
-                uploadImage(file);
+                handleSelectedFiles([file]);   // в лоток, как медиа
             }, 'image/jpeg', 0.9);
         });
 
@@ -8691,6 +8731,7 @@
 
         function openAttachSheet() {
             if (!currentUser) { alert('Выберите пользователя'); return; }
+            updateAttachButtons();
             attachSheet.style.transform = '';
             attachSheet.classList.add('open');
             attachBackdrop.classList.add('open');
@@ -8729,10 +8770,10 @@
         // композером, а не уходят сразу. В лотке они грузятся в стейджинг с
         // прогрессом и галочкой; в чат уходят только по «Отправить» — тогда же
         // соблюдается порядок «сначала текст, потом файлы».
-        function handleSelectedFiles(fileList) {
+        function handleSelectedFiles(fileList, forceKind) {
             if (!currentUser) { alert('Выберите чат'); return; }
             const files = Array.from(fileList || []);
-            if (files.length) addToTray(files);
+            if (files.length) addToTray(files, forceKind);
         }
 
         // ── Лоток вложений ───────────────────────────────────────────────────
@@ -8756,12 +8797,14 @@
             const has = attachTray.length > 0;
             inputArea.classList.toggle('has-attachments', has);
             trayEl.style.display = has ? 'block' : 'none';
+            updateAttachButtons();
         }
 
-        function addToTray(files) {
+        function addToTray(files, forceKind) {
             for (const file of files) {
                 if (!file || file.size === 0) continue;
-                const kind = kindOf(file);
+                if (attachTray.length >= 100) { showToast('Не больше 100 вложений'); break; }
+                const kind = forceKind || kindOf(file);
                 const item = {
                     uid: 'a' + Date.now() + Math.random().toString(36).slice(2, 7),
                     file, kind,
@@ -9037,19 +9080,62 @@
             });
         })();
 
-        document.getElementById('attach-camera').addEventListener('click', () => {
-            closeAttachSheet();
-            openCamera();
-        });
+        // ── Кнопки мобильной шторки → общий лоток ────────────────────────────
+        const msheetGalleryInput = document.getElementById('msheet-gallery-input');
+        const msheetFileInput    = document.getElementById('msheet-file-input');
+
+        // Тип текущего набора в лотке: 'media' (фото/видео), 'file', 'location'
+        // или null (пусто). На нём держится взаимоблокировка кнопок.
+        function trayCategory() {
+            for (const it of attachTray) {
+                if (it.kind === 'image' || it.kind === 'video') return 'media';
+                if (it.kind === 'location') return 'location';
+                return 'file';
+            }
+            return null;
+        }
+
+        // Тусклит недоступные кнопки шторки по типу вложений в лотке:
+        // media → доступны Галерея и Камера; file → только Файл; location →
+        // только Гео; пусто → всё.
+        function updateAttachButtons() {
+            const cat = trayCategory();
+            const set = (id, enabled) => {
+                const b = document.getElementById(id);
+                if (b) b.classList.toggle('disabled', !enabled);
+            };
+            set('attach-gallery',  cat === null || cat === 'media');
+            set('attach-quickpic', cat === null || cat === 'media');
+            set('attach-file',     cat === null || cat === 'file');
+            set('attach-location', cat === null || cat === 'location');
+        }
 
         document.getElementById('attach-gallery').addEventListener('click', () => {
             closeAttachSheet();
-            mediaInput.click();
+            msheetGalleryInput.click();
         });
-
+        document.getElementById('attach-quickpic').addEventListener('click', () => {
+            closeAttachSheet();
+            openCamera();
+        });
         document.getElementById('attach-file').addEventListener('click', () => {
             closeAttachSheet();
-            fileInput.click();
+            msheetFileInput.click();
+        });
+        document.getElementById('attach-location').addEventListener('click', () => {
+            closeAttachSheet();
+            showToast('Геопозиция — скоро'); // заглушка, доделаем
+        });
+
+        msheetGalleryInput.addEventListener('change', () => {
+            const files = Array.from(msheetGalleryInput.files || []);
+            msheetGalleryInput.value = '';
+            handleSelectedFiles(files);            // фото/видео — как медиа
+        });
+        msheetFileInput.addEventListener('change', () => {
+            const files = Array.from(msheetFileInput.files || []);
+            msheetFileInput.value = '';
+            handleSelectedFiles(files, 'file');    // всё — как файлы (оригиналы)
         });
 
         // Произвольный файл. В отличие от галереи тип не проверяем совсем —
