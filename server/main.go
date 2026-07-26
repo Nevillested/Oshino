@@ -124,6 +124,11 @@ type Message struct {
 	FileName string `json:"file_name,omitempty"`
 	FileMime string `json:"file_mime,omitempty"`
 	FileSize int64  `json:"file_size,omitempty"`
+	// MediaGroupID — идентификатор альбома. Фото/видео, отправленные одной
+	// пачкой, получают одинаковое значение и рисуются на клиенте единым
+	// компактным пузырём (как медиагруппа в Telegram). Пустая строка —
+	// одиночное вложение вне альбома. Файлы (не фото/видео) в группы не входят.
+	MediaGroupID string `json:"media_group_id,omitempty"`
 	// Поля системной записи о звонке (см. saveCallMessage) — звонок логируется как
 	// сообщение без текста, с этими полями, и отображается в чате отдельной
 	// "системной" отметкой, как в Telegram, а не обычным пузырём.
@@ -136,12 +141,12 @@ type Message struct {
 	// реалтайм-доставке (а не только при следующей загрузке истории), чтобы
 	// reply/pin/forward/реакции можно было применить к свежему сообщению, не
 	// дожидаясь перезагрузки страницы.
-	MsgID         int           `json:"msg_id,omitempty"`
-	ReplyToID     int           `json:"reply_to_id,omitempty"`
+	MsgID     int `json:"msg_id,omitempty"`
+	ReplyToID int `json:"reply_to_id,omitempty"`
 	// QuoteText — выделенный получателем кусок исходного сообщения. Если задан,
 	// подменяет собой текст превью ответа; в остальном цитата ничем от ответа
 	// не отличается — ни хранением, ни отрисовкой.
-	QuoteText string `json:"quote_text,omitempty"`
+	QuoteText     string        `json:"quote_text,omitempty"`
 	ReplyPreview  *ReplyPreview `json:"reply_preview,omitempty"`
 	ForwardedFrom string        `json:"forwarded_from,omitempty"`
 	// ForwardedFromID — id ИСХОДНОГО сообщения (первоисточника цепочки).
@@ -794,7 +799,7 @@ func (a *App) saveMessage(from, to, text string, replyToID int, quoteText string
 }
 
 // saveImageMessage сохраняет сообщение-картинку в БД и возвращает id сообщения и время отправки
-func (a *App) saveImageMessage(from, to string, imageData []byte, mime, filename string, replyToID int) (int, string, error) {
+func (a *App) saveImageMessage(from, to string, imageData []byte, mime, filename string, replyToID int, mediaGroupID string) (int, string, error) {
 	convID, err := a.getOrCreateConversation(from, to)
 	if err != nil {
 		return 0, "", err
@@ -811,13 +816,20 @@ func (a *App) saveImageMessage(from, to string, imageData []byte, mime, filename
 		replyTo = &replyToID
 	}
 
+	// Пустой идентификатор группы — это одиночное вложение: пишем NULL, а не
+	// пустую строку, чтобы «нет альбома» и «альбом с пустым id» не путались.
+	var group *string
+	if mediaGroupID != "" {
+		group = &mediaGroupID
+	}
+
 	var msgID int
 	var createdAt time.Time
 	err = a.db.QueryRow(`
-		INSERT INTO messenger.messages (conversation_id, sender_id, content, image_data, image_mime, image_filename, reply_to_id)
-		VALUES ($1, $2, '', $3, $4, $5, $6)
+		INSERT INTO messenger.messages (conversation_id, sender_id, content, image_data, image_mime, image_filename, reply_to_id, media_group_id)
+		VALUES ($1, $2, '', $3, $4, $5, $6, $7)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
-	`, convID, senderID, imageData, mime, filename, replyTo).Scan(&msgID, &createdAt)
+	`, convID, senderID, imageData, mime, filename, replyTo, group).Scan(&msgID, &createdAt)
 	if err != nil {
 		return 0, "", err
 	}
@@ -879,14 +891,16 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
 			       (rm.video_data IS NOT NULL), rm.video_is_circle,
 			       (rm.file_data IS NOT NULL), rm.call_type,
-			       m.forwarded_from, m.forwarded_from_id, m.is_read, m.edited_at
+			       m.forwarded_from, m.forwarded_from_id, m.is_read, m.edited_at,
+			       m.media_group_id
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration,
 				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
 				       call_type, call_status, call_duration,
 				       (file_data IS NOT NULL) AS has_file, file_name, file_mime, file_size,
-				       reply_to_id, quote_text, forwarded_from, forwarded_from_id, is_read, edited_at
+				       reply_to_id, quote_text, forwarded_from, forwarded_from_id, is_read, edited_at,
+				       media_group_id
 				FROM messenger.messages
 				WHERE conversation_id = $1
 				  AND NOT EXISTS (
@@ -913,14 +927,16 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			       (rm.image_data IS NOT NULL), (rm.audio_data IS NOT NULL),
 			       (rm.video_data IS NOT NULL), rm.video_is_circle,
 			       (rm.file_data IS NOT NULL), rm.call_type,
-			       m.forwarded_from, m.forwarded_from_id, m.is_read, m.edited_at
+			       m.forwarded_from, m.forwarded_from_id, m.is_read, m.edited_at,
+			       m.media_group_id
 			FROM (
 				SELECT id, sender_id, content, created_at, image_mime, image_filename, image_data,
 				       audio_data, audio_duration,
 				       (video_data IS NOT NULL) AS has_video, video_duration, video_is_circle,
 				       call_type, call_status, call_duration,
 				       (file_data IS NOT NULL) AS has_file, file_name, file_mime, file_size,
-				       reply_to_id, quote_text, forwarded_from, forwarded_from_id, is_read, edited_at
+				       reply_to_id, quote_text, forwarded_from, forwarded_from_id, is_read, edited_at,
+				       media_group_id
 				FROM messenger.messages
 				WHERE conversation_id = $1 AND id < $2
 				  AND NOT EXISTS (
@@ -944,29 +960,30 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type HistMsg struct {
-		ID            int            `json:"id"`
-		From          string         `json:"from"`
-		Text          string         `json:"text"`
-		Own           bool           `json:"own"`
-		CreatedAt     string         `json:"created_at"`
-		ImageID       int            `json:"image_id,omitempty"`
-		ImageName     string         `json:"image_name,omitempty"`
-		ImageMime     string         `json:"image_mime,omitempty"`
-		AudioID       int            `json:"audio_id,omitempty"`
-		AudioDuration int            `json:"audio_duration,omitempty"`
-		VideoID       int            `json:"video_id,omitempty"`
-		VideoDuration int            `json:"video_duration,omitempty"`
-		VideoIsCircle bool           `json:"video_is_circle,omitempty"`
-		FileID        int            `json:"file_id,omitempty"`
-		FileName      string         `json:"file_name,omitempty"`
-		FileMime      string         `json:"file_mime,omitempty"`
-		FileSize      int64          `json:"file_size,omitempty"`
-		CallType      string         `json:"call_type,omitempty"`
-		CallStatus    string         `json:"call_status,omitempty"`
-		CallDuration  *int           `json:"call_duration,omitempty"`
-		ReplyToID     int            `json:"reply_to_id,omitempty"`
-		ReplyPreview  *ReplyPreview  `json:"reply_preview,omitempty"`
-		ForwardedFrom string         `json:"forwarded_from,omitempty"`
+		ID            int           `json:"id"`
+		From          string        `json:"from"`
+		Text          string        `json:"text"`
+		Own           bool          `json:"own"`
+		CreatedAt     string        `json:"created_at"`
+		ImageID       int           `json:"image_id,omitempty"`
+		ImageName     string        `json:"image_name,omitempty"`
+		ImageMime     string        `json:"image_mime,omitempty"`
+		AudioID       int           `json:"audio_id,omitempty"`
+		AudioDuration int           `json:"audio_duration,omitempty"`
+		VideoID       int           `json:"video_id,omitempty"`
+		VideoDuration int           `json:"video_duration,omitempty"`
+		VideoIsCircle bool          `json:"video_is_circle,omitempty"`
+		FileID        int           `json:"file_id,omitempty"`
+		FileName      string        `json:"file_name,omitempty"`
+		FileMime      string        `json:"file_mime,omitempty"`
+		FileSize      int64         `json:"file_size,omitempty"`
+		MediaGroupID  string        `json:"media_group_id,omitempty"`
+		CallType      string        `json:"call_type,omitempty"`
+		CallStatus    string        `json:"call_status,omitempty"`
+		CallDuration  *int          `json:"call_duration,omitempty"`
+		ReplyToID     int           `json:"reply_to_id,omitempty"`
+		ReplyPreview  *ReplyPreview `json:"reply_preview,omitempty"`
+		ForwardedFrom string        `json:"forwarded_from,omitempty"`
 		// id первоисточника: по нему плашка «Переслано от…» прыгает к
 		// оригиналу. У сообщений, пересланных до появления колонки, его нет.
 		ForwardedFromID int            `json:"forwarded_from_id,omitempty"`
@@ -997,6 +1014,7 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		var forwardedFrom sql.NullString
 		var forwardedFromID sql.NullInt64
 		var editedAt sql.NullTime
+		var mediaGroupID sql.NullString
 		if err := rows.Scan(&m.ID, &m.From, &m.Text, &createdAt,
 			&imageMime, &imageFilename, &hasImage,
 			&hasAudio, &audioDuration,
@@ -1006,7 +1024,8 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 			&replyToID, &quoteText, &replyFrom, &replyContent,
 			&replyHasImage, &replyHasAudio,
 			&replyHasVideo, &replyVideoIsCircle, &replyHasFile, &replyCallType,
-			&forwardedFrom, &forwardedFromID, &m.IsRead, &editedAt); err != nil {
+			&forwardedFrom, &forwardedFromID, &m.IsRead, &editedAt,
+			&mediaGroupID); err != nil {
 			log.Printf("handleHistory Scan error: %v", err)
 			continue
 		}
@@ -1069,6 +1088,9 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		if forwardedFromID.Valid {
 			m.ForwardedFromID = int(forwardedFromID.Int64)
+		}
+		if mediaGroupID.Valid {
+			m.MediaGroupID = mediaGroupID.String
 		}
 		ids = append(ids, m.ID)
 		messages = append(messages, m)
@@ -1312,8 +1334,11 @@ func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	replyToID, _ := strconv.Atoi(r.FormValue("reply_to"))
+	// group_id генерирует клиент — по одному на альбом. Сервер его не толкует,
+	// а просто сохраняет и возвращает: группировкой занимается отрисовка.
+	mediaGroupID := r.FormValue("group_id")
 
-	msgID, createdAt, err := a.saveImageMessage(login, to, imageData, detectedMime, filename, replyToID)
+	msgID, createdAt, err := a.saveImageMessage(login, to, imageData, detectedMime, filename, replyToID, mediaGroupID)
 	if err != nil {
 		log.Println("Ошибка сохранения картинки:", err)
 		http.Error(w, "Error", http.StatusInternalServerError)
@@ -1321,14 +1346,15 @@ func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := Message{
-		From:      login,
-		To:        to,
-		CreatedAt: createdAt,
-		MsgID:     msgID,
-		ImageID:   msgID,
-		ImageName: filename,
-		ImageMime: detectedMime,
-		ReplyToID: replyToID,
+		From:         login,
+		To:           to,
+		CreatedAt:    createdAt,
+		MsgID:        msgID,
+		ImageID:      msgID,
+		ImageName:    filename,
+		ImageMime:    detectedMime,
+		ReplyToID:    replyToID,
+		MediaGroupID: mediaGroupID,
 	}
 	if replyToID > 0 {
 		if preview, err := a.getMessagePreview(replyToID); err == nil {
@@ -1340,9 +1366,10 @@ func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":    true,
-		"image_id":   msgID,
-		"created_at": createdAt,
+		"success":        true,
+		"image_id":       msgID,
+		"media_group_id": mediaGroupID,
+		"created_at":     createdAt,
 	})
 }
 
@@ -1849,7 +1876,7 @@ func probeDurationSec(path string) int {
 }
 
 // saveVideoMessage сохраняет видеосообщение в БД
-func (a *App) saveVideoMessage(from, to string, videoData []byte, mime string, duration int, isCircle bool, replyToID int) (int, string, error) {
+func (a *App) saveVideoMessage(from, to string, videoData []byte, mime string, duration int, isCircle bool, replyToID int, mediaGroupID string) (int, string, error) {
 	convID, err := a.getOrCreateConversation(from, to)
 	if err != nil {
 		return 0, "", err
@@ -1866,14 +1893,22 @@ func (a *App) saveVideoMessage(from, to string, videoData []byte, mime string, d
 		replyTo = &replyToID
 	}
 
+	// Видеокружок в альбом попасть не может — он записывается отдельным жестом,
+	// а не выбирается пачкой. Но параметр общий с обычным видео, поэтому просто
+	// пишем NULL, когда группы нет.
+	var group *string
+	if mediaGroupID != "" {
+		group = &mediaGroupID
+	}
+
 	var msgID int
 	var createdAt time.Time
 	err = a.db.QueryRow(`
 		INSERT INTO messenger.messages
-			(conversation_id, sender_id, content, video_data, video_mime, video_duration, video_is_circle, reply_to_id)
-		VALUES ($1, $2, '', $3, $4, $5, $6, $7)
+			(conversation_id, sender_id, content, video_data, video_mime, video_duration, video_is_circle, reply_to_id, media_group_id)
+		VALUES ($1, $2, '', $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at AT TIME ZONE 'UTC'
-	`, convID, senderID, videoData, mime, duration, isCircle, replyTo).Scan(&msgID, &createdAt)
+	`, convID, senderID, videoData, mime, duration, isCircle, replyTo, group).Scan(&msgID, &createdAt)
 	if err != nil {
 		return 0, "", err
 	}
@@ -1962,8 +1997,14 @@ func (a *App) handleUploadVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	replyToID, _ := strconv.Atoi(r.FormValue("reply_to"))
+	// group_id генерирует клиент — по одному на альбом. Видеокружок его не шлёт
+	// (записывается отдельным жестом), обычное видео из пачки — шлёт.
+	mediaGroupID := r.FormValue("group_id")
+	if isCircle {
+		mediaGroupID = "" // кружок в альбом не группируется никогда
+	}
 
-	msgID, createdAt, err := a.saveVideoMessage(login, to, transcoded, outputVideoMime, durationSec, isCircle, replyToID)
+	msgID, createdAt, err := a.saveVideoMessage(login, to, transcoded, outputVideoMime, durationSec, isCircle, replyToID, mediaGroupID)
 	if err != nil {
 		log.Println("Ошибка сохранения видеосообщения:", err)
 		http.Error(w, "Error", http.StatusInternalServerError)
@@ -1979,6 +2020,7 @@ func (a *App) handleUploadVideo(w http.ResponseWriter, r *http.Request) {
 		VideoDuration: durationSec,
 		VideoIsCircle: isCircle,
 		ReplyToID:     replyToID,
+		MediaGroupID:  mediaGroupID,
 	}
 	if replyToID > 0 {
 		if preview, err := a.getMessagePreview(replyToID); err == nil {
@@ -1994,6 +2036,7 @@ func (a *App) handleUploadVideo(w http.ResponseWriter, r *http.Request) {
 		"video_id":        msgID,
 		"video_duration":  durationSec,
 		"video_is_circle": isCircle,
+		"media_group_id":  mediaGroupID,
 		"created_at":      createdAt,
 	})
 }
