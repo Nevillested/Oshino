@@ -4212,6 +4212,33 @@
         }
         .app-status-dot.green { background: #3ba55d; }
         .app-status-dot.red   { background: #e04b4b; }
+        /* ── Оверлей перетаскивания файлов (десктоп) ─────────────────────── */
+        #drop-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 4000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(20, 24, 40, 0.55);
+            -webkit-backdrop-filter: blur(2px);
+            backdrop-filter: blur(2px);
+            pointer-events: none; /* не мешаем событию drop, оно ловится на window */
+        }
+        #drop-overlay.show { display: flex; }
+        #drop-overlay .drop-inner {
+            max-width: 480px;
+            padding: 32px 40px;
+            text-align: center;
+            color: #fff;
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 1.4;
+            border: 2px dashed rgba(255, 255, 255, 0.85);
+            border-radius: 18px;
+            background: rgba(74, 122, 170, 0.35);
+        }
     </style>
 </head>
 <body>
@@ -4661,6 +4688,9 @@
                 <input type="file" id="media-input" accept="image/*,video/*" hidden>
                 <!-- Без accept: через этот вход идёт любой файл, ограничение только по размеру -->
                 <input type="file" id="file-input" hidden>
+                <!-- Десктопная скрепка: любой тип, несколько файлов сразу.
+                     Мобильная шторка (media-input/file-input выше) не трогается. -->
+                <input type="file" id="desktop-attach-input" multiple hidden>
                 <div id="composer">
                     <button id="emoji-btn" class="composer-btn" type="button" title="Эмодзи"></button>
                     <textarea id="msg-input" rows="1" placeholder="Сообщение"></textarea>
@@ -6339,26 +6369,27 @@
             const date = new Date(isoString);
             if (isNaN(date.getTime())) return '';
 
-            const now = new Date();
-            const isToday = date.getFullYear() === now.getFullYear()
-                && date.getMonth() === now.getMonth()
-                && date.getDate() === now.getDate();
+            // Время приходит с сервера строго в UTC (…Z). Показываем его в поясе
+            // пользователя. По умолчанию — пояс устройства. Если устройство
+            // настроено неверно (например, отдаёт UTC при реальном МСК), пояс
+            // можно задать явно: localStorage 'tz_override' = 'Europe/Moscow'.
+            // Полноценная настройка пояса в интерфейсе — следующим шагом.
+            const tz = localStorage.getItem('tz_override') || undefined;
 
-            const timePart = date.toLocaleTimeString('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
+            const timeOpts = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            if (tz) timeOpts.timeZone = tz;
+            const timePart = date.toLocaleTimeString('ru-RU', timeOpts);
 
-            if (isToday) {
-                return timePart;
-            }
+            // «Сегодня?» считаем в том же поясе, что и показываем, иначе у границы
+            // суток дата и время разъезжались бы. en-CA даёт YYYY-MM-DD.
+            const dayOpts = tz ? { timeZone: tz } : {};
+            const ymd = (d) => d.toLocaleDateString('en-CA', dayOpts);
+            const isToday = ymd(date) === ymd(new Date());
+            if (isToday) return timePart;
 
-            const datePart = date.toLocaleDateString('ru-RU', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
+            const dateOpts = { day: '2-digit', month: '2-digit', year: 'numeric' };
+            if (tz) dateOpts.timeZone = tz;
+            const datePart = date.toLocaleDateString('ru-RU', dateOpts);
 
             return datePart + ' ' + timePart;
         }
@@ -7537,8 +7568,8 @@
             }, 'image/jpeg', 0.9);
         });
 
-        function uploadImage(file) {
-            if (!currentUser) return;
+        function uploadImage(file, onComplete) {
+            if (!currentUser) { if (onComplete) onComplete(); return; }
 
             uploadProgressBar.style.display = 'block';
             uploadProgressFill.style.width = '0%';
@@ -7585,6 +7616,7 @@
                 uploadProgressBar.style.display = 'none';
             });
 
+            xhr.addEventListener('loadend', () => { if (onComplete) onComplete(); });
             xhr.open('POST', '/upload-image');
             xhr.send(formData);
         }
@@ -7592,8 +7624,8 @@
         // Загрузка произвольного файла. Отличий от картинки два: превью строить
         // не из чего (показываем имя и «Отправка…»), и типа файла мы не знаем —
         // проверять нечего.
-        function uploadFile(file) {
-            if (!currentUser) return;
+        function uploadFile(file, onComplete) {
+            if (!currentUser) { if (onComplete) onComplete(); return; }
 
             const targetUser = currentUser;
             const replyToId = replyingTo ? replyingTo.id : 0;
@@ -7643,6 +7675,7 @@
                 uploadProgressBar.style.display = 'none';
             });
 
+            xhr.addEventListener('loadend', () => { if (onComplete) onComplete(); });
             xhr.open('POST', '/upload-file');
             xhr.send(formData);
 
@@ -8073,8 +8106,100 @@
             attachBackdrop.classList.remove('open');
         }
 
-        attachBtn.addEventListener('click', openAttachSheet);
+        // ── Скрепка ──────────────────────────────────────────────────────
+        // Десктоп: сразу системный выбор файлов (любой тип, можно несколько),
+        // без шторки. Тач-устройства: прежняя шторка «Камера/Галерея/Файл» —
+        // мобильную часть перерабатываем позже.
+        const desktopAttachInput = document.getElementById('desktop-attach-input');
+
+        attachBtn.addEventListener('click', () => {
+            if (!currentUser) { alert('Выберите пользователя'); return; }
+            if (isTouchLayout()) { openAttachSheet(); return; }
+            desktopAttachInput.click();
+        });
         attachBackdrop.addEventListener('click', closeAttachSheet);
+
+        desktopAttachInput.addEventListener('change', () => {
+            const files = Array.from(desktopAttachInput.files || []);
+            desktopAttachInput.value = '';
+            handleSelectedFiles(files);
+        });
+
+        // Единая точка входа для файлов из скрепки и из drag-and-drop.
+        // Первый шаг переработки: файлы уходят сразу, строго по очереди слева
+        // направо (общий прогресс-бар — один на файл). Лоток превью с процентами
+        // и галочкой, подпись к пачке и группировка альбомов — следующий шаг.
+        async function handleSelectedFiles(fileList) {
+            if (!currentUser) { alert('Выберите чат'); return; }
+            const files = Array.from(fileList || []);
+            if (!files.length) return;
+            if (files.length > 50) { alert('За раз можно приложить не больше 50 файлов'); return; }
+
+            const IMG_MAX = 10 * 1024 * 1024;
+            const okImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+            for (const file of files) {
+                if (!file || file.size === 0) continue;
+                if (file.size > MAX_FILE_BYTES) {
+                    alert('Файл «' + file.name + '» больше 100 МБ — пропущен');
+                    continue;
+                }
+                await new Promise((resolve) => {
+                    // Фото в поддерживаемом формате и до 10 МБ — как превью-фото.
+                    // Всё прочее (крупные/экзотические картинки, видео, документы)
+                    // — как есть: сервер /upload-image принимает только
+                    // JPG/PNG/WEBP/GIF до 10 МБ, остальное пойдёт файлом/видео.
+                    if (file.type.startsWith('image/') && file.size <= IMG_MAX && okImageTypes.includes(file.type)) {
+                        uploadImage(file, resolve);
+                    } else if (file.type.startsWith('video/')) {
+                        uploadVideo(file, 0, false, resolve);
+                    } else {
+                        uploadFile(file, resolve);
+                    }
+                });
+            }
+        }
+
+        // ── Drag & drop файлов в чат (только десктоп) ────────────────────────
+        // Без preventDefault на dragover браузер по отпусканию просто открывает
+        // файл в новой вкладке — поэтому гасим стандартное поведение, а саму
+        // подсказку показываем только когда открыт какой-то чат.
+        (function setupChatDragDrop() {
+            const overlay = document.getElementById('drop-overlay');
+            let dragDepth = 0;
+
+            const desktop = () => !isTouchLayout();
+            const hasFiles = (e) => {
+                const t = e.dataTransfer && e.dataTransfer.types;
+                return !!t && Array.prototype.indexOf.call(t, 'Files') !== -1;
+            };
+
+            window.addEventListener('dragenter', (e) => {
+                if (!desktop() || !hasFiles(e)) return;
+                e.preventDefault();
+                dragDepth++;
+                if (currentUser) overlay.classList.add('show');
+            });
+            window.addEventListener('dragover', (e) => {
+                if (!desktop() || !hasFiles(e)) return;
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+            });
+            window.addEventListener('dragleave', (e) => {
+                if (!desktop()) return;
+                dragDepth = Math.max(0, dragDepth - 1);
+                if (dragDepth === 0) overlay.classList.remove('show');
+            });
+            window.addEventListener('drop', (e) => {
+                if (!desktop() || !hasFiles(e)) return;
+                e.preventDefault();
+                dragDepth = 0;
+                overlay.classList.remove('show');
+                if (!currentUser) return;
+                const files = e.dataTransfer && e.dataTransfer.files;
+                if (files && files.length) handleSelectedFiles(files);
+            });
+        })();
 
         document.getElementById('attach-camera').addEventListener('click', () => {
             closeAttachSheet();
@@ -8505,8 +8630,8 @@
 
         /* ── Отправка видео (кружок и обычное из галереи) ────────────────── */
 
-        function uploadVideo(fileOrBlob, duration, isCircle) {
-            if (!currentUser) return;
+        function uploadVideo(fileOrBlob, duration, isCircle, onComplete) {
+            if (!currentUser) { if (onComplete) onComplete(); return; }
 
             const type = fileOrBlob.type || 'video/webm';
             const ext = type.includes('mp4') ? 'mp4' : type.includes('quicktime') ? 'mov' : 'webm';
@@ -8554,6 +8679,7 @@
                 uploadProgressBar.style.display = 'none';
             });
 
+            xhr.addEventListener('loadend', () => { if (onComplete) onComplete(); });
             xhr.open('POST', '/upload-video');
             xhr.send(formData);
         }
@@ -12720,5 +12846,7 @@
         if (document.body.classList.contains('bg-anim-off')) p5inst.noLoop();
     })();
     </script>
+    <!-- Подсказка при перетаскивании файлов в чат (только десктоп) -->
+    <div id="drop-overlay"><div class="drop-inner">📎 Отпустите файлы, чтобы прикрепить их к сообщению</div></div>
 </body>
 </html>
