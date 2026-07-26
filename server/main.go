@@ -3168,13 +3168,21 @@ const (
 func (c *Client) readPump(a *App) {
 	defer func() {
 		a.mu.Lock()
+		wentOffline := false
 		if conns, ok := a.clients[c.login]; ok {
 			delete(conns, c)
 			if len(conns) == 0 {
 				delete(a.clients, c.login)
+				wentOffline = true
 			}
 		}
 		a.mu.Unlock()
+		// Пользователь ушёл в офлайн (закрылось последнее соединение) —
+		// фиксируем last_seen как ЭТОТ момент: он был онлайн вплоть до него.
+		// Синхронно и до broadcast, чтобы рассылка presence отдала свежую дату.
+		if wentOffline {
+			a.updateLastSeen(c.login)
+		}
 		close(c.done)
 		c.conn.Close()
 		fmt.Printf("%s отключился\n", c.login)

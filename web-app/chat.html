@@ -6788,7 +6788,7 @@
             const wrap = document.createElement('div');
             wrap.className = 'message-wrap ' + (own ? 'own' : 'other');
             run.forEach(m => { m._rendered = true; });
-            if (run.some(isFreshMessage)) {
+            if (!run.some(m => m._deleting) && run.some(isFreshMessage)) {
                 wrap.classList.add('animate__animated', 'animate__fadeInDown');
             }
             if (run[0].id > 0) wrap.dataset.msgId = run[0].id;
@@ -6811,6 +6811,7 @@
             const row = document.createElement('div');
             row.className = 'album-row';
             run.forEach(m => {
+                if (m._deleting) return; // удаляемый элемент не перерисовываем — он растворяется
                 const cell = document.createElement('div');
                 cell.className = 'album-cell';
                 if (m.id > 0) cell.dataset.msgId = m.id;
@@ -7010,10 +7011,14 @@
                 wrap.className = 'message-wrap ' + (msg.own ? 'own' : 'other');
 
                 if (msg._deleting) {
-                    // Сообщение уже улетает: если чат успел перерисоваться,
-                    // анимацию нужно навесить заново, иначе оно моргнёт и
-                    // пропадёт без эффекта.
-                    wrap.classList.add('msg-dissolve');
+                    // Сообщение уже удаляется. Раньше здесь заново вешалась
+                    // анимация растворения — но на новом элементе она стартует
+                    // с полностью видимого кадра, из-за чего сообщение на миг
+                    // «оживало» и моргало. Теперь просто прячем: сам эффект
+                    // растворения уносят частицы (отдельный холст), а запись
+                    // вот-вот удалится из состояния.
+                    wrap.style.opacity = '0';
+                    wrap.style.pointerEvents = 'none';
                 } else if (isFreshMessage(msg)) {
                     wrap.classList.add('animate__animated', 'animate__fadeInDown');
                 }
@@ -7611,6 +7616,7 @@
                     file_name: msg.file_name || undefined,
                     file_mime: msg.file_mime || undefined,
                     file_size: msg.file_size || undefined,
+                    media_group_id: msg.media_group_id || undefined,
                     forwarded_from: msg.forwarded_from,
                     forwarded_from_id: msg.forwarded_from_id
                 });
@@ -10430,6 +10436,10 @@
 
         document.getElementById('logout-btn-sidebar').addEventListener('click', () => {
             localStorage.removeItem('oshino_session');
+            // Закрываем WebSocket сразу: сервер по чистому close-фрейму тут же
+            // снимает нас с онлайна и фиксирует last_seen. Иначе присутствие
+            // держалось бы до срабатывания pong-таймаута (десятки секунд).
+            try { if (typeof ws !== 'undefined' && ws) ws.close(); } catch (e) {}
             window.location.href = '/logout';
         });
 
@@ -12317,13 +12327,6 @@
                 // меню сообщения. Событие от пальца гасим целиком: сенсорный
                 // сценарий полностью обслуживается обработчиками touch*.
                 if (Date.now() - lastTouchAt < 1200) { e.preventDefault(); return; }
-
-                // ПКМ прямо по превью в альбоме — отдаём браузерное меню, чтобы
-                // картинку можно было сохранить. Клик по остальной области
-                // альбома (обёртка, время, отступы) обслуживается нашим меню.
-                if (e.target && e.target.closest && e.target.closest('.album-cell')) {
-                    return;
-                }
 
                 // ПКМ по выделенному фрагменту — меню для текста. Обычное меню
                 // сообщения остаётся на всех остальных случаях.

@@ -63,7 +63,11 @@ html, body {
     -webkit-tap-highlight-color: transparent;
 }
 .dp:active { background: #ffe000; color: #000; }
-@media (min-width: 1024px) { #dpad { display: none; } }
+/* Кнопки управления нужны только на сенсорных устройствах. Скрываем их на
+   десктопе (точный указатель + hover = мышь), а не по ширине экрана: иначе
+   d-pad пропадал бы на iPad в альбомной ориентации и вылезал на десктопе в
+   узком окне. На тач-устройствах (телефон, планшет, iPad) — остаётся. */
+@media (hover: hover) and (pointer: fine) { #dpad { display: none; } }
 
 </style>
 </head>
