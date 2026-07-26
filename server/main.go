@@ -218,20 +218,20 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-const maxImageSize = 10 << 20 // 10 МБ
+// Лимиты на размер вложений временно сняты до практического потолка в 1 ГиБ.
+// Выше поднимать нельзя без переработки хранения: вложение целиком читается в
+// память и кладётся в bytea-колонку, а bytea в PostgreSQL ограничен ~1 ГБ на
+// значение. Настоящую поддержку крупных файлов (стриминг во внешнее хранилище)
+// доведём до ума отдельно.
+const maxImageSize = 1 << 30  // 1 ГиБ (временно; было 10 МБ)
 const maxAudioSize = 20 << 20 // 20 МБ
 
-// maxVideoSize — потолок на входящий файл ДО транскодирования. Видеокружок в
-// 60 секунд весит единицы мегабайт, но через ту же ручку идёт и видео из
-// галереи телефона, где минута 4K легко занимает сотни мегабайт. Совсем без
-// потолка нельзя: файл целиком читается в память и кладётся в bytea-колонку.
-const maxVideoSize = 100 << 20 // 100 МБ
+// maxVideoSize — потолок на входящий файл ДО транскодирования.
+const maxVideoSize = 1 << 30 // 1 ГиБ (временно; было 100 МБ)
 
 // maxFileSize — потолок на произвольное вложение из скрепки. Тип файла не
-// ограничен ничем: это закрытый мессенджер на узкий круг, фильтровать
-// расширения тут не от кого. Ограничен только размер — файл читается в память
-// целиком и кладётся в bytea, как и остальные вложения.
-const maxFileSize = 100 << 20 // 100 МБ
+// ограничен ничем: это закрытый мессенджер на узкий круг.
+const maxFileSize = 1 << 30 // 1 ГиБ (временно; было 100 МБ)
 
 var allowedImageMimes = map[string]bool{
 	"image/jpeg": true,
@@ -1267,7 +1267,7 @@ func (a *App) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize+(1<<20)) // небольшой запас на метаданные формы
 
-	if err := r.ParseMultipartForm(maxImageSize + (1 << 20)); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // до 32 МБ в RAM, крупнее — во временный файл
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой или форма повреждена"})
@@ -1930,7 +1930,7 @@ func (a *App) handleUploadVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxVideoSize+(1<<20))
-	if err := r.ParseMultipartForm(maxVideoSize + (1 << 20)); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // до 32 МБ в RAM, крупнее — во временный файл
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой или форма повреждена"})
@@ -2163,7 +2163,7 @@ func (a *App) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileSize+(1<<20))
-	if err := r.ParseMultipartForm(maxFileSize + (1 << 20)); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // до 32 МБ в RAM, крупнее — во временный файл
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Файл слишком большой или форма повреждена"})

@@ -6369,28 +6369,25 @@
             const date = new Date(isoString);
             if (isNaN(date.getTime())) return '';
 
-            // Время приходит с сервера строго в UTC (…Z). Показываем его в поясе
-            // пользователя. По умолчанию — пояс устройства. Если устройство
-            // настроено неверно (например, отдаёт UTC при реальном МСК), пояс
-            // можно задать явно: localStorage 'tz_override' = 'Europe/Moscow'.
-            // Полноценная настройка пояса в интерфейсе — следующим шагом.
-            const tz = localStorage.getItem('tz_override') || undefined;
+            // Сервер отдаёт время строго в UTC (…Z). Показываем его в часовом
+            // поясе устройства — toLocaleTimeString без опции timeZone берёт пояс
+            // системы автоматически. Это тот самый «пересчёт по поясу клиента».
+            const timePart = date.toLocaleTimeString('ru-RU', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
 
-            const timeOpts = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
-            if (tz) timeOpts.timeZone = tz;
-            const timePart = date.toLocaleTimeString('ru-RU', timeOpts);
-
-            // «Сегодня?» считаем в том же поясе, что и показываем, иначе у границы
-            // суток дата и время разъезжались бы. en-CA даёт YYYY-MM-DD.
-            const dayOpts = tz ? { timeZone: tz } : {};
-            const ymd = (d) => d.toLocaleDateString('en-CA', dayOpts);
-            const isToday = ymd(date) === ymd(new Date());
+            // «Сегодня?» — тоже по локальному поясу устройства (getFullYear/
+            // getMonth/getDate локальные), иначе у границы суток дата и время
+            // разъезжались бы.
+            const now = new Date();
+            const isToday = date.getFullYear() === now.getFullYear()
+                && date.getMonth() === now.getMonth()
+                && date.getDate() === now.getDate();
             if (isToday) return timePart;
 
-            const dateOpts = { day: '2-digit', month: '2-digit', year: 'numeric' };
-            if (tz) dateOpts.timeZone = tz;
-            const datePart = date.toLocaleDateString('ru-RU', dateOpts);
-
+            const datePart = date.toLocaleDateString('ru-RU', {
+                day: '2-digit', month: '2-digit', year: 'numeric'
+            });
             return datePart + ' ' + timePart;
         }
 
@@ -8133,23 +8130,19 @@
             if (!currentUser) { alert('Выберите чат'); return; }
             const files = Array.from(fileList || []);
             if (!files.length) return;
-            if (files.length > 50) { alert('За раз можно приложить не больше 50 файлов'); return; }
 
-            const IMG_MAX = 10 * 1024 * 1024;
+            // Лимиты на размер и количество временно сняты (доведём до ума позже).
             const okImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
             for (const file of files) {
                 if (!file || file.size === 0) continue;
-                if (file.size > MAX_FILE_BYTES) {
-                    alert('Файл «' + file.name + '» больше 100 МБ — пропущен');
-                    continue;
-                }
                 await new Promise((resolve) => {
-                    // Фото в поддерживаемом формате и до 10 МБ — как превью-фото.
-                    // Всё прочее (крупные/экзотические картинки, видео, документы)
-                    // — как есть: сервер /upload-image принимает только
-                    // JPG/PNG/WEBP/GIF до 10 МБ, остальное пойдёт файлом/видео.
-                    if (file.type.startsWith('image/') && file.size <= IMG_MAX && okImageTypes.includes(file.type)) {
+                    // Настоящее фото (JPG/PNG/WEBP/GIF) — как превью-фото; видео —
+                    // как видео; всё остальное (в т.ч. экзотические картинки вроде
+                    // HEIC/SVG) — обычным файлом. Ограничение по формату здесь —
+                    // не лимит, а маршрутизация: /upload-image принимает только
+                    // эти четыре типа.
+                    if (file.type.startsWith('image/') && okImageTypes.includes(file.type)) {
                         uploadImage(file, resolve);
                     } else if (file.type.startsWith('video/')) {
                         uploadVideo(file, 0, false, resolve);
@@ -8165,8 +8158,14 @@
         // файл в новой вкладке — поэтому гасим стандартное поведение, а саму
         // подсказку показываем только когда открыт какой-то чат.
         (function setupChatDragDrop() {
-            const overlay = document.getElementById('drop-overlay');
+            // Оверлей ищем лениво (в момент события), а не один раз при старте:
+            // сам элемент объявлен в конце body, ниже этого скрипта, поэтому на
+            // момент выполнения скрипта его в DOM ещё нет — кэшированная ссылка
+            // была бы null. К моменту первого перетаскивания страница загружена,
+            // и getElementById его находит.
             let dragDepth = 0;
+            const showOverlay = () => { const o = document.getElementById('drop-overlay'); if (o) o.classList.add('show'); };
+            const hideOverlay = () => { const o = document.getElementById('drop-overlay'); if (o) o.classList.remove('show'); };
 
             const desktop = () => !isTouchLayout();
             const hasFiles = (e) => {
@@ -8178,7 +8177,7 @@
                 if (!desktop() || !hasFiles(e)) return;
                 e.preventDefault();
                 dragDepth++;
-                if (currentUser) overlay.classList.add('show');
+                if (currentUser) showOverlay();
             });
             window.addEventListener('dragover', (e) => {
                 if (!desktop() || !hasFiles(e)) return;
@@ -8188,13 +8187,13 @@
             window.addEventListener('dragleave', (e) => {
                 if (!desktop()) return;
                 dragDepth = Math.max(0, dragDepth - 1);
-                if (dragDepth === 0) overlay.classList.remove('show');
+                if (dragDepth === 0) hideOverlay();
             });
             window.addEventListener('drop', (e) => {
                 if (!desktop() || !hasFiles(e)) return;
                 e.preventDefault();
                 dragDepth = 0;
-                overlay.classList.remove('show');
+                hideOverlay();
                 if (!currentUser) return;
                 const files = e.dataTransfer && e.dataTransfer.files;
                 if (files && files.length) handleSelectedFiles(files);
