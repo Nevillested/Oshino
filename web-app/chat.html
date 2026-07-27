@@ -1729,6 +1729,17 @@
             user-select: text;
         }
 
+        /* Никакого нативного выделения в интерфейсе (имена в списке чатов,
+           заголовки, результаты поиска): на Android оно всплывало вместе с
+           подсказкой «искать это слово». Поля ввода (выше) и текст сообщений на
+           десктопе (правило .msg-text в @media hover) выделяются — их
+           специфичность выше, чем у body, поэтому они не затрагиваются. */
+        body {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
         #welcome-screen {
             flex: 1;
             display: flex;
@@ -6470,7 +6481,43 @@
 
         // ── История сообщений ────────────────────────────────────────────────────
 
+        // Позиция скролла по каждому чату — только в рамках сессии (в памяти).
+        // При F5/перезапуске приложения обнуляется, и тогда чат открывается на
+        // первом непрочитанном или внизу.
+        const chatScrollMem = {};
+
+        // Куда проскроллить при открытии чата:
+        // 1) если в этой сессии уже были в чате — туда, где остановились;
+        // 2) иначе на первое непрочитанное (hadUnread входящих с конца);
+        // 3) иначе вниз.
+        function applyOpenScroll(user, hadUnread) {
+            if (currentUser !== user) return;
+            const mem = chatScrollMem[user];
+            if (mem != null) { messagesDiv.scrollTop = mem; return; }
+
+            const state = historyState[user];
+            if (hadUnread > 0 && state && state.messages.length) {
+                let cnt = 0, target = null;
+                for (let i = state.messages.length - 1; i >= 0; i--) {
+                    if (!state.messages[i].own) {
+                        cnt++;
+                        if (cnt === hadUnread) { target = state.messages[i]; break; }
+                    }
+                }
+                if (target) {
+                    const el = messagesDiv.querySelector('[data-msg-id="' + target.id + '"]');
+                    if (el) { el.scrollIntoView({ block: 'center' }); return; }
+                }
+            }
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
         async function openDialog(user) {
+            // Запоминаем позицию скролла покидаемого чата — в рамках сессии,
+            // чтобы при возврате открыть его на том же месте.
+            if (currentUser && currentUser !== user) {
+                chatScrollMem[currentUser] = messagesDiv.scrollTop;
+            }
             // Сбрасываем typing-флаг предыдущего диалога перед сменой
             if (myTypingSent && currentUser && wsReady) {
                 myTypingSent = false;
@@ -6500,6 +6547,7 @@
                     if (!m.own) m.is_read = true;
                 });
             }
+            const hadUnread = unreadCount[user] || 0;
             unreadCount[user] = 0;
             renderDialogList();
             applyForwardBar(user);
@@ -6524,6 +6572,7 @@
             // подтянется (был баг: «загрузка...» висит, старая переписка не грузится).
             if (state && state.historyLoaded && state.messages && state.messages.length > 0) {
                 renderMessages(state.messages);
+                applyOpenScroll(user, hadUnread);
             } else {
                 // Сбрасываем состояние и грузим начисто. Возможные «живые» сообщения
                 // не теряются — они уже в БД и придут заново из истории, без дублей.
@@ -6537,10 +6586,9 @@
                 await loadHistory(user, 0, 20);
                 // Компактный контент (ряды-альбомы) может не заполнить экран —
                 // тогда подгрузка старых по скроллу не сработает (прокручивать
-                // нечего). Догружаем, пока лента не заполнит вьюпорт или история
-                // не кончится, и держим низ (последние сообщения).
+                // нечего). Догружаем до 20 логических сообщений / заполнения.
                 await fillViewport(user);
-                if (currentUser === user) messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                applyOpenScroll(user, hadUnread);
             }
 
             // Отложенный переход к конкретному сообщению (плашка «Переслано
@@ -12510,6 +12558,21 @@
                 if (!wrap) return;
                 e.preventDefault();
                 e.stopPropagation();
+                // Тап по конкретной миниатюре альбома обрабатывает сама ячейка
+                // (снимает выделение с неё) со stopPropagation, сюда он не
+                // доходит. Значит это тап по ОБЛАСТИ альбома — переключаем всю
+                // группу: если что-то выбрано, снимаем всё; иначе выбираем всё.
+                if (wrap.__albumIds && wrap.__albumIds.length) {
+                    const anySel = wrap.__albumIds.some(id => selectedIds.has(id));
+                    if (anySel) {
+                        wrap.__albumIds.forEach(id => selectedIds.delete(id));
+                    } else {
+                        wrap.__albumIds.forEach(id => { if (selectedIds.size < MAX_SELECTED) selectedIds.add(id); });
+                    }
+                    if (selectedIds.size === 0) { exitSelection(); return; }
+                    updateSelectionUI();
+                    return;
+                }
                 toggleSelected(wrap.__msg.id);
             });
 
@@ -13591,11 +13654,18 @@
                 tsX = t.clientX; tsY = t.clientY;
                 // Во время записи жест «влево» — это отмена голосового/видеосообщения,
                 // а не переключение страницы: навигацию на это время глушим.
+                // Открыт просмотрщик альбома или картинка на весь экран —
+                // горизонтальные свайпы принадлежат листанию медиа, а не
+                // переключению страниц приложения.
+                const av = document.getElementById('album-viewer');
+                const mediaOpen = imageModalOverlay.classList.contains('open')
+                    || (av && av.classList.contains('open'));
                 tracking = (tsX >= 30)
                     && !inputArea.classList.contains('recording')
                     // См. выше: во время выбора фрагмента горизонтальные
                     // движения принадлежат ползункам, а не навигации.
-                    && !fragEl;
+                    && !fragEl
+                    && !mediaOpen;
                 dir = null;
             }, { passive: true });
 
