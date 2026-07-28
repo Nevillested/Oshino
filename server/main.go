@@ -449,7 +449,6 @@ func main() {
 	})
 	// Встроенные приложения (проксирование к контейнерам через frpc-туннель).
 	http.HandleFunc("/app/mia/", app.newAppProxy("http://127.0.0.1:6800", "can_channel", false))
-	http.HandleFunc("/app/files/", app.newAppProxy("http://127.0.0.1:6555", "can_files", true))
 	http.HandleFunc("/apps-health", app.handleAppsHealth)
 	app.startAppsHealthProbe()
 

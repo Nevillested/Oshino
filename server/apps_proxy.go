@@ -14,23 +14,21 @@ import (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Встроенные приложения (Мама-я-азиат, файловое хранилище).
+// Встроенные приложения (сейчас — только «Мама, я азиат»).
 //
-// Контейнеры физически живут на сетевом хранилище в Японии и доступны на
-// московском сервере как локальные порты, которые отдаёт frps (см. frpc.toml):
-//   filebrowser   127.0.0.1:6555
+// Контейнер живёт на сетевом хранилище в Японии и доступен на московском
+// сервере как локальный порт, который отдаёт frps (см. frpc.toml):
 //   mom-im-asian  127.0.0.1:6800
 //
-// Мессенджер проксирует к ним запросы под путями /app/files/ и /app/mia/,
-// предварительно проверяя сессию и персональный флаг доступа в БД. Публичный
-// доступ к контейнерам (субдомены) убран — единственная точка входа теперь
-// мессенджер, поэтому повторная авторизация внутри приложений не нужна.
+// Мессенджер проксирует к нему запросы под путём /app/mia/, предварительно
+// проверяя сессию и персональный флаг доступа в БД. Публичного доступа к
+// контейнеру (субдомена) нет — единственная точка входа мессенджер, поэтому
+// повторная авторизация внутри приложения не нужна.
 //
-// filebrowser настроен на proxy-auth: он определяет пользователя по заголовку
-// X-User. Этот заголовок ставит ТОЛЬКО прокси (из логина сессии), а любой
-// X-User, присланный клиентом, вырезается — иначе можно было бы притвориться
-// чужим логином. Доверять заголовку безопасно, потому что снаружи к контейнеру
-// доступа нет: только этот прокси через туннель.
+// newAppProxy умеет proxy-auth (заголовок X-User из логина сессии) — это
+// использовалось снятым filebrowser. Механизм оставлен на будущее: при
+// injectUser=true любой клиентский X-User вырезается и подставляется
+// доверенный логин из сессии, притвориться чужим нельзя.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // appProxyTransport — общий транспорт для reverse-proxy к контейнерам.
@@ -52,7 +50,7 @@ var appProxyTransport http.RoundTripper = &http.Transport{
 }
 
 // userHasFlag проверяет булев флаг доступа пользователя (колонка smallint 0/1).
-// column — строковый литерал из кода (can_channel / can_files), НЕ пользовательский
+// column — строковый литерал из кода (например can_channel), НЕ пользовательский
 // ввод, поэтому конкатенация в SQL здесь безопасна.
 func (a *App) userHasFlag(login, column string) bool {
 	var v int
@@ -65,11 +63,11 @@ func (a *App) userHasFlag(login, column string) bool {
 
 // newAppProxy собирает gated reverse-proxy к одному контейнеру.
 //   targetURL   — например "http://127.0.0.1:6800"
-//   flagColumn  — колонка-флаг доступа (can_channel / can_files)
+//   flagColumn  — колонка-флаг доступа (например can_channel)
 //   injectUser  — ставить ли заголовок X-User=<логин сессии> (нужно filebrowser,
 //                 не нужно mom-im-asian). При true клиентский X-User вырезается.
 // Путь запроса форвардится как есть (у target нет своего пути), поэтому
-// приложение на той стороне должно слушать под тем же префиксом (/app/mia, /app/files).
+// приложение на той стороне должно слушать под тем же префиксом (/app/mia).
 func (a *App) newAppProxy(targetURL, flagColumn string, injectUser bool) http.HandlerFunc {
 	target, err := url.Parse(targetURL)
 	if err != nil {
@@ -119,8 +117,7 @@ const (
 )
 
 var probeTargets = map[string]string{
-	"mia":   "http://127.0.0.1:6800/app/mia/",
-	"files": "http://127.0.0.1:6555/app/files/",
+	"mia": "http://127.0.0.1:6800/app/mia/",
 }
 
 type appProbe struct {
@@ -182,8 +179,8 @@ func (a *App) startAppsHealthProbe() {
 }
 
 // probeOnce — лёгкая проверка «отвечает ли приложение».
-// Любой ответ кроме 5xx считаем живым: 401/403 от filebrowser означает, что
-// сервис на месте (просто мы стучимся без заголовка пользователя).
+// Любой ответ кроме 5xx считаем живым: 401/403 тоже означает, что сервис на
+// месте (просто мы стучимся без заголовка пользователя).
 func probeOnce(url string) (ok bool, ms int64, errStr string) {
 	start := time.Now()
 	resp, err := healthProbeClient.Get(url)
@@ -223,10 +220,8 @@ func (a *App) handleAppsHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	miaOK, miaMs := probeStatus("mia")
-	filesOK, filesMs := probeStatus("files")
 
 	canChannel := a.userHasFlag(login, "can_channel")
-	canFiles := a.userHasFlag(login, "can_files")
 
 	status := func(allowed, alive bool) string {
 		if !allowed {
@@ -241,10 +236,7 @@ func (a *App) handleAppsHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"mia":         status(canChannel, miaOK),
-		"files":       status(canFiles, filesOK),
 		"can_channel": canChannel,
-		"can_files":   canFiles,
 		"mia_ms":      miaMs,
-		"files_ms":    filesMs,
 	})
 }

@@ -3736,7 +3736,6 @@
             #sidebar-main .theme-switch-wrap,
             #pacman-sidebar-btn,
             #mia-sidebar-btn,
-            #files-sidebar-btn,
             #settings-open-btn,
             #logout-btn-sidebar { display: none !important; }
             #close-menu-btn     { display: none !important; }
@@ -4214,14 +4213,14 @@
             display: block;
         }
 
-        /* ── Встроенные приложения (Мама-я-азиат, файловое хранилище) ──────── */
-        #mia-block, #files-block {
+        /* ── Встроенные приложения (Мама, я азиат) ──────── */
+        #mia-block {
             flex: 1;
             flex-direction: column;
             min-height: 0;
             background: #000;
         }
-        #mia-block iframe, #files-block iframe {
+        #mia-block iframe {
             width: 100%;
             height: 100%;
             border: none;
@@ -4599,7 +4598,6 @@
             </div>
             <button id="pgm-pacman-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
             <button id="pgm-mia-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>🍚 Мама, я азиат</span><span class="app-status-dot" id="pgm-mia-dot"></span></button>
-            <button id="pgm-files-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>📁 Файловое хранилище</span><span class="app-status-dot" id="pgm-files-dot"></span></button>
             <button id="pgm-settings-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
             <button id="pgm-logout-btn">Выход</button>
         </div>
@@ -4700,7 +4698,6 @@
             </div>
             <button id="pacman-sidebar-btn" class="settings-menu-item" style="margin-bottom: 8px;">🕹 Pac-Man</button>
             <button id="mia-sidebar-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>🍚 Мама, я азиат</span><span class="app-status-dot" id="mia-status-dot"></span></button>
-            <button id="files-sidebar-btn" class="settings-menu-item app-menu-item" style="margin-bottom: 8px; display: none;"><span>📁 Файловое хранилище</span><span class="app-status-dot" id="files-status-dot"></span></button>
             <button id="settings-open-btn" class="settings-menu-item" style="margin-bottom: 10px;">⚙ Настройки</button>
             <button id="logout-btn-sidebar">Выход</button>
         </div>
@@ -4936,7 +4933,6 @@
 
         <!-- Блоки встроенных приложений (iframe к контейнерам через прокси) -->
         <div id="mia-block" style="display: none;"></div>
-        <div id="files-block" style="display: none;"></div>
 
         <div id="offline-notice">Пользователь не в сети</div>
         <div id="select-bar">
@@ -9793,7 +9789,7 @@
             if (frame) frame.src = 'about:blank';
 
             // Прячем встроенные приложения при возврате в чат
-            ['mia-block', 'files-block'].forEach(id => {
+            ['mia-block'].forEach(id => {
                 const b = document.getElementById(id);
                 if (b) { b.style.display = 'none'; const f = b.querySelector('iframe'); if (f) f.src = 'about:blank'; }
             });
@@ -13174,7 +13170,7 @@
             if (desktopHeader) desktopHeader.classList.add('hidden');
 
             // Прячем блоки встроенных приложений, если были открыты
-            ['mia-block', 'files-block'].forEach(id => {
+            ['mia-block'].forEach(id => {
                 const b = document.getElementById(id);
                 if (b) { b.style.display = 'none'; const f = b.querySelector('iframe'); if (f) f.src = 'about:blank'; }
             });
@@ -13212,9 +13208,7 @@
 
         // ── Встроенные приложения: «Мама, я азиат» и «Файловое хранилище» ─────
         const miaBlock         = document.getElementById('mia-block');
-        const filesBlock       = document.getElementById('files-block');
         const miaSidebarBtn     = document.getElementById('mia-sidebar-btn');
-        const filesSidebarBtn   = document.getElementById('files-sidebar-btn');
 
         // Показ приложения в правой панели (как Pac-Man, адрес не меняется)
         function showAppBlock(block, url, title) {
@@ -13223,9 +13217,6 @@
             inputArea.style.display      = 'none';
             offlineNotice.style.display  = 'none';
             pacmanBlock.style.display    = 'none';
-            // прячем соседний блок-приложение, если был открыт
-            const other = (block === miaBlock) ? filesBlock : miaBlock;
-            if (other) { other.style.display = 'none'; const of = other.querySelector('iframe'); if (of) of.src = 'about:blank'; }
 
             const desktopHeader = document.getElementById('desktop-chat-header');
             if (desktopHeader) desktopHeader.classList.add('hidden');
@@ -13255,11 +13246,6 @@
             overlay.classList.remove('open');
             showAppBlock(miaBlock, '/app/mia/', '🍚 Мама, я азиат');
         });
-        if (filesSidebarBtn) filesSidebarBtn.addEventListener('click', () => {
-            sidebar.classList.remove('open');
-            overlay.classList.remove('open');
-            showAppBlock(filesBlock, '/app/files/', '📁 Файловое хранилище');
-        });
 
         // Огоньки доступности + показ кнопок по правам (одним запросом к /apps-health)
         function applyAppButton(btn, dot, status) {
@@ -13277,10 +13263,8 @@
                 if (!res.ok) return;
                 const h = await res.json();
                 applyAppButton(miaSidebarBtn,   document.getElementById('mia-status-dot'),   h.mia);
-                applyAppButton(filesSidebarBtn, document.getElementById('files-status-dot'), h.files);
                 // Мобильное меню — те же кнопки/огоньки
                 applyAppButton(document.getElementById('pgm-mia-btn'),   document.getElementById('pgm-mia-dot'),   h.mia);
-                applyAppButton(document.getElementById('pgm-files-btn'), document.getElementById('pgm-files-dot'), h.files);
             } catch (e) { /* тихо: сеть/сервер временно недоступны */ }
         }
         refreshAppsHealth();
@@ -13516,7 +13500,6 @@
             const mobAppPage   = document.getElementById('mob-app-page');
             const mobAppIframe = document.getElementById('mob-app-iframe');
             const pgmMiaBtn    = document.getElementById('pgm-mia-btn');
-            const pgmFilesBtn  = document.getElementById('pgm-files-btn');
 
             function openMobApp(url) {
                 if (mobAppIframe) mobAppIframe.src = url;
@@ -13608,7 +13591,6 @@
 
             if (pgmPacman)   pgmPacman.addEventListener('click',   () => openMobApp('/pacman'));
             if (pgmMiaBtn)   pgmMiaBtn.addEventListener('click',    () => openMobApp('/app/mia/'));
-            if (pgmFilesBtn) pgmFilesBtn.addEventListener('click',  () => openMobApp('/app/files/'));
 
             // ── Logout ───────────────────────────────────────────────
             if (pgmLogout) pgmLogout.addEventListener('click', () => {
