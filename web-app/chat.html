@@ -1380,6 +1380,12 @@
             padding: 4px 8px;
             margin-bottom: 6px;
             border-radius: 0 4px 4px 0;
+            /* Не даём цитате распирать пузырь и вылезать за экран: жёсткий потолок
+               по ширине вьюпорта (минус запас на паддинги пузыря/цитаты и рамку).
+               Внутренний текст ниже обрезается многоточием под эту ширину. */
+            max-width: calc(100vw - 96px);
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         .message.own .msg-reply-quote {
@@ -1391,6 +1397,9 @@
             font-weight: 600;
             margin-bottom: 2px;
             opacity: 0.85;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .msg-reply-quote-text {
@@ -5241,7 +5250,14 @@
     </div>
 
     <div id="call-overlay">
-        <video id="call-remote-video" autoplay playsinline></video>
+        <!-- Входящее видео собеседника (только картинка; звук вынесен в отдельный
+             <audio>, т.к. мобильные браузеры паузят <video> при гашении экрана,
+             а вместе с ним глушат и его звук). Поэтому call-remote-video ниже
+             всегда muted, а голос играет через call-remote-audio. -->
+        <video id="call-remote-video" autoplay playsinline muted></video>
+        <!-- Входящий голос собеседника. Аудио-элемент браузер держит как фоновый
+             звук и продолжает проигрывать при заблокированном/погашенном экране. -->
+        <audio id="call-remote-audio" autoplay></audio>
         <video id="call-local-video" autoplay playsinline muted></video>
         <div id="call-screen">
             <div id="call-info">
@@ -5488,6 +5504,7 @@
         const callVideoBtn = document.getElementById('call-video-btn');
         const callFlipCameraBtn = document.getElementById('call-flip-camera-btn');
         const callRemoteVideo = document.getElementById('call-remote-video');
+        const callRemoteAudio = document.getElementById('call-remote-audio');
         const callLocalVideo = document.getElementById('call-local-video');
         const iosPushBanner = document.getElementById('ios-push-banner');
         const iosPushEnableBtn = document.getElementById('ios-push-enable-btn');
@@ -9938,6 +9955,13 @@
             };
 
             peer.ontrack = (e) => {
+                // Один и тот же поток вешаем на два элемента:
+                //  - callRemoteAudio (<audio>) — играет ГОЛОС, в т.ч. при погашенном
+                //    экране (аудио-элемент браузер не паузит в фоне);
+                //  - callRemoteVideo (<video>, muted) — показывает только КАРТИНКУ,
+                //    без звука, чтобы голос не дублировался и не пропадал вместе с
+                //    видео при блокировке экрана.
+                callRemoteAudio.srcObject = e.streams[0];
                 callRemoteVideo.srcObject = e.streams[0];
                 if (e.track.kind === 'video') {
                     // track.muted у входящего видеотрека отражает, шлёт ли собеседник
@@ -10129,6 +10153,7 @@
                 localStream = null;
             }
             callRemoteVideo.srcObject = null;
+            callRemoteAudio.srcObject = null;
             callLocalVideo.srcObject = null;
             pendingRemoteCandidates = [];
             isMuted = false;
@@ -10638,8 +10663,10 @@
                 }
             } catch (e) {}
 
-            if (earpieceDeviceId && typeof callRemoteVideo.setSinkId === 'function') {
-                try { await callRemoteVideo.setSinkId(earpieceDeviceId); } catch (e) {}
+            // setSinkId вешаем на аудио-элемент — именно он теперь проигрывает голос
+            // (видео-элемент немой). На видео это уже не имеет смысла.
+            if (earpieceDeviceId && typeof callRemoteAudio.setSinkId === 'function') {
+                try { await callRemoteAudio.setSinkId(earpieceDeviceId); } catch (e) {}
             }
         }
 
