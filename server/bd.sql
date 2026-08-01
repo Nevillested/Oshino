@@ -463,3 +463,9 @@ CREATE INDEX IF NOT EXISTS idx_staging_files_user
     ON messenger.staging_files USING btree (user_id);
 CREATE INDEX IF NOT EXISTS idx_staging_files_created
     ON messenger.staging_files USING btree (created_at);
+
+-- ── Доступ к каналу mia (мама я азиат) ──────────────────────────────────────
+-- Персональный флаг доступа к встроенному каналу-фиду в сайдбаре мессенджера.
+-- 1 — кнопка канала показывается и проксируется, 0 — скрыта. Гейтится сервером.
+-- (Парная колонка can_files удалена вместе со сносом filebrowser.)
+ALTER TABLE messenger.users ADD COLUMN IF NOT EXISTS can_channel smallint NOT NULL DEFAULT 0;
